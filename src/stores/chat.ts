@@ -6,6 +6,7 @@ import { resolveStoredImageUrls, reviveStoredImageUrls } from '../utils/imagePer
 import { getDesktopChatHistory, setMetadataValue } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
 import { STORAGE_KEYS } from '../utils/constants'
+import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
 
 export const useChatStore = defineStore('chat', () => {
   // State
@@ -48,8 +49,10 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteMessage(messageId: string): Promise<void> {
     const index = messages.value.findIndex((msg) => msg.id === messageId)
     if (index !== -1) {
+      const removedImages = messages.value[index].images || []
       messages.value.splice(index, 1)
       await saveHistory()
+      await deleteUnreferencedLocalImages(removedImages)
     }
   }
 
@@ -112,12 +115,14 @@ export const useChatStore = defineStore('chat', () => {
 
   async function clearMessages(): Promise<void> {
     await flushHistorySave()
+    const removedImages = messages.value.flatMap(message => message.images || [])
     messages.value = []
     clearChatHistory()
     if (isTauriRuntime()) {
       pendingHistorySave = setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, cloneMessages())
       await pendingHistorySave
     }
+    await deleteUnreferencedLocalImages(removedImages)
   }
 
   function saveHistory(): Promise<void> {

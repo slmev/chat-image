@@ -11,6 +11,7 @@ import {
   setMetadataValue,
 } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
+import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
 
 // 获取历史记录列表
 function getHistoryList(): ChatHistory[] {
@@ -47,6 +48,16 @@ function getHistoryMessages(historyId: string): ChatMessage[] {
   } catch {
     return []
   }
+}
+
+async function readHistoryMessages(historyId: string): Promise<ChatMessage[]> {
+  return isTauriRuntime()
+    ? await getMetadataValue<ChatMessage[]>(HISTORY_MESSAGES_PREFIX + historyId, [])
+    : getHistoryMessages(historyId)
+}
+
+function collectImages(messages: ChatMessage[]) {
+  return messages.flatMap(message => message.images || [])
 }
 
 // 保存历史对话消息
@@ -185,9 +196,7 @@ export function useHistory() {
 
   // 加载历史对话
   async function loadHistoryChat(historyId: string): Promise<ChatMessage[] | null> {
-    const messages = isTauriRuntime()
-      ? await getMetadataValue<ChatMessage[]>(HISTORY_MESSAGES_PREFIX + historyId, [])
-      : getHistoryMessages(historyId)
+    const messages = await readHistoryMessages(historyId)
     if (messages.length === 0) return null
 
     // 恢复消息到 chatStore
@@ -199,17 +208,23 @@ export function useHistory() {
 
   // 删除历史记录
   async function deleteHistoryItem(id: string): Promise<void> {
+    const removedMessages = await readHistoryMessages(id)
     historyList.value = historyList.value.filter(h => h.id !== id)
     await setHistoryList(historyList.value)
     await deleteHistoryMessages(id)
+    await deleteUnreferencedLocalImages(collectImages(removedMessages))
   }
 
   // 清空所有历史记录
   async function clearHistory(): Promise<void> {
+    const removedMessages = (await Promise.all(
+      historyList.value.map(h => readHistoryMessages(h.id)),
+    )).flat()
     // 删除所有历史消息
     await Promise.all(historyList.value.map(h => deleteHistoryMessages(h.id)))
     historyList.value = []
     await setHistoryList([])
+    await deleteUnreferencedLocalImages(collectImages(removedMessages))
   }
 
   // 切换收藏状态

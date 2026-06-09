@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { STORAGE_KEYS } from '../../utils/constants'
 
 const setMetadataValue = vi.fn<(...args: [string, unknown]) => Promise<void>>()
+const deleteUnreferencedLocalImages = vi.fn<(...args: [unknown[]]) => Promise<void>>()
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => true,
@@ -13,10 +14,17 @@ vi.mock('../../platform/metadataStore', () => ({
   setMetadataValue,
 }))
 
+vi.mock('../../platform/imageReferenceCleanup', () => ({
+  deleteUnreferencedLocalImages,
+}))
+
 describe('chat store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     setMetadataValue.mockReset()
+    setMetadataValue.mockResolvedValue(undefined)
+    deleteUnreferencedLocalImages.mockReset()
+    deleteUnreferencedLocalImages.mockResolvedValue(undefined)
     localStorage.clear()
   })
 
@@ -61,6 +69,31 @@ describe('chat store', () => {
     expect(setMetadataValue.mock.calls[1][1]).toMatchObject([
       { content: 'first prompt' },
       { content: 'pending image' },
+    ])
+  })
+
+  it('passes removed current chat images to local image cleanup when clearing messages', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+
+    store.addMessage({
+      type: 'assistant',
+      content: 'generated',
+      status: 'success',
+      images: [{
+        id: 'image-1',
+        url: '',
+        localPath: 'images/image-1.png',
+        timestamp: 1,
+      }],
+    })
+    await store.flushHistorySave()
+
+    await store.clearMessages()
+
+    expect(deleteUnreferencedLocalImages).toHaveBeenCalledWith([
+      expect.objectContaining({ localPath: 'images/image-1.png' }),
     ])
   })
 })
