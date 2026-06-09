@@ -1,0 +1,123 @@
+export default {
+  // Header
+  skipToContent: 'Skip to main content',
+  history: 'History',
+  imageGen: 'Image Generator',
+  mainNav: 'Main navigation',
+  newChat: 'New Chat',
+  gallery: 'Gallery',
+  apiConfig: 'API Settings',
+  switchTheme: 'Switch theme',
+  clearChat: 'Clear Chat',
+  clearChatConfirm: 'Are you sure you want to clear all conversations? This action cannot be undone.',
+  clear: 'Clear',
+
+  // ChatContainer
+  messageArea: 'Message area',
+  generating: 'Generating image',
+  startCreating: 'Start Creating',
+  startDescription: 'Describe the image you want, and AI will generate it for you',
+  noResults: 'No matching messages found',
+  noResultsHint: 'Try different keywords or clear filters',
+  cancel: 'Cancel',
+
+  // ChatInput
+  promptTemplates: 'Prompt templates',
+  inputPlaceholder: 'Describe an image, e.g.: a cute cat playing in the garden',
+  imageDescription: 'Image description',
+  send: 'Send',
+  generationOptions: 'Generation options',
+  size: 'Size',
+  quality: 'Quality',
+  count: 'Count',
+  decrease: 'Decrease count',
+  increase: 'Increase count',
+  style: 'Style',
+  none: 'None',
+
+  // ConfigModal
+  close: 'Close',
+  apiEndpoint: 'API Endpoint',
+  endpointPlaceholder: 'e.g.: https://api.openai.com',
+  endpointHint: 'Enter your API service endpoint',
+  apiKey: 'API Key',
+  apiKeyPlaceholder: 'Enter your API Key',
+  apiKeyHint: 'Key is stored locally only, never uploaded to any server',
+  hideApiKey: 'Hide API Key',
+  showApiKey: 'Show API Key',
+  model: 'Model',
+  modelPlaceholder: 'e.g.: gpt-image-2',
+  clearConfig: 'Clear Config',
+  testing: 'Testing...',
+  testConnection: 'Test Connection',
+  saveConfig: 'Save Config',
+  configSaved: 'Config saved',
+  localStorage: 'Local Storage',
+  localStorageHint: 'Review generated images saved by the desktop app and clean unused files',
+  refresh: 'Refresh',
+  imageCount: 'Images',
+  storageUsed: 'Storage Used',
+  orphanImages: 'Orphan Images',
+  reclaimableSpace: 'Reclaimable',
+  cleanupOrphans: 'Clean Orphans',
+  cleanupOrphansConfirm: 'Clean {count} local images no longer referenced by history and reclaim {size}. This cannot be undone.',
+  cleanupComplete: 'Cleaned {count} images and reclaimed {size}',
+  cleanupPartial: '{count} files could not be cleaned; the rest were processed',
+  cleanupFailed: 'Cleanup failed. Please try again later.',
+  storageStatsFailed: 'Failed to read local storage stats',
+
+  // HistorySidebar
+  closeSidebar: 'Close sidebar',
+  searchHistory: 'Search history...',
+  historyTab: 'History',
+  favorites: 'Favorites',
+  noHistory: 'No history yet',
+  noFavorites: 'No favorites yet',
+  clearAll: 'Clear All',
+  clearHistory: 'Clear History',
+  clearHistoryConfirm: 'Are you sure you want to clear all history? This action cannot be undone.',
+  favorite: 'Favorite',
+  unfavorite: 'Unfavorite',
+  delete: 'Delete',
+
+  // Time
+  justNow: 'Just now',
+  minutesAgo: '{n} min ago',
+  hoursAgo: '{n} hr ago',
+  daysAgo: '{n} days ago',
+
+  // PromptPanel
+  promptTemplatesTitle: 'Prompt Templates',
+  searchPrompts: 'Search prompts...',
+  recentUsed: 'Recent',
+  noMatchingPrompts: 'No matching prompts found',
+  noRecentUsage: 'No recent usage',
+
+  // Quick start categories
+  people: 'People',
+  landscape: 'Landscape',
+  animals: 'Animals',
+  abstract: 'Abstract',
+
+  // Loading texts
+  aiThinking: 'AI is thinking',
+  mixingColors: 'Mixing colors',
+  drawingDetails: 'Drawing details',
+  almostDone: 'Almost done',
+
+  // Update prompt
+  updateAvailable: 'New version available',
+  update: 'Update',
+
+  // Custom styles
+  createStyle: 'Create Style',
+  editStyle: 'Edit Style',
+  styleName: 'Style Name',
+  styleNamePlaceholder: 'e.g.: Vintage Film',
+  styleDesc: 'Description',
+  styleDescPlaceholder: 'e.g.: Nostalgic film photography style',
+  stylePromptSuffix: 'Prompt Suffix',
+  styleSuffixPlaceholder: 'e.g.: vintage film photography, grain texture, warm tones',
+  styleSuffixHint: 'These keywords will be appended to your prompt automatically',
+  save: 'Save',
+}

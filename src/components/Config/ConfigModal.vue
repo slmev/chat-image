@@ -62,6 +62,53 @@
           />
         </div>
 
+        <div v-if="isDesktop" class="storage-section">
+          <div class="storage-header">
+            <div>
+              <h3 class="storage-title">{{ t('localStorage') }}</h3>
+              <p class="form-hint">{{ t('localStorageHint') }}</p>
+            </div>
+            <button
+              @click="loadStorageStats"
+              class="btn-secondary compact"
+              :disabled="isStorageLoading"
+              type="button"
+            >
+              <Loader2 v-if="isStorageLoading" :size="14" class="spin" />
+              <span>{{ t('refresh') }}</span>
+            </button>
+          </div>
+
+          <div class="storage-grid">
+            <div class="storage-stat">
+              <span class="storage-label">{{ t('imageCount') }}</span>
+              <strong>{{ storageStats.totalCount }}</strong>
+            </div>
+            <div class="storage-stat">
+              <span class="storage-label">{{ t('storageUsed') }}</span>
+              <strong>{{ formatBytes(storageStats.totalBytes) }}</strong>
+            </div>
+            <div class="storage-stat">
+              <span class="storage-label">{{ t('orphanImages') }}</span>
+              <strong>{{ storageStats.orphanCount }}</strong>
+            </div>
+            <div class="storage-stat">
+              <span class="storage-label">{{ t('reclaimableSpace') }}</span>
+              <strong>{{ formatBytes(storageStats.orphanBytes) }}</strong>
+            </div>
+          </div>
+
+          <button
+            @click="showCleanupConfirm = true"
+            class="btn-ghost danger storage-cleanup"
+            :disabled="storageStats.orphanCount === 0 || isStorageLoading || isCleaningStorage"
+            type="button"
+          >
+            <Loader2 v-if="isCleaningStorage" :size="16" class="spin" />
+            <span>{{ t('cleanupOrphans') }}</span>
+          </button>
+        </div>
+
         <!-- Test Result -->
         <Transition name="slide-up">
           <div v-if="testResult" :class="['test-result', testResult.success ? 'success' : 'error']" role="alert">
@@ -100,6 +147,19 @@
         </button>
       </div>
     </div>
+
+    <ConfirmModal
+      :is-open="showCleanupConfirm"
+      :title="t('cleanupOrphans')"
+      :message="t('cleanupOrphansConfirm', {
+        count: storageStats.orphanCount,
+        size: formatBytes(storageStats.orphanBytes),
+      })"
+      :confirm-text="t('clear')"
+      type="warning"
+      @confirm="handleCleanupOrphans"
+      @cancel="showCleanupConfirm = false"
+    />
   </div>
 </template>
 
@@ -108,10 +168,19 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Settings, X, Eye, EyeOff, Save, Zap, Loader2, CheckCircle, AlertCircle } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useConfig } from '../../composables/useConfig'
+import { useToast } from '../../composables/useToast'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ApiConfig } from '../../types'
 import { DEFAULT_MODEL } from '../../utils/constants'
+import { isTauriRuntime } from '../../platform/runtime'
+import {
+  cleanupOrphanedLocalImages,
+  getLocalImageStorageStats,
+  type LocalImageStorageStats,
+} from '../../platform/imageReferenceCleanup'
 
 const { t } = useI18n()
+const { success, warning, error: showError } = useToast()
 
 const emit = defineEmits<{
   close: []
@@ -123,8 +192,21 @@ const localConfig = ref<ApiConfig>(initializeConfig())
 const isTesting = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const showApiKey = ref(false)
+const isDesktop = isTauriRuntime()
+const isStorageLoading = ref(false)
+const isCleaningStorage = ref(false)
+const showCleanupConfirm = ref(false)
+const storageStats = ref<LocalImageStorageStats>({
+  totalCount: 0,
+  totalBytes: 0,
+  orphanCount: 0,
+  orphanBytes: 0,
+})
 
 function handleKeydown(event: KeyboardEvent) {
+  if (showCleanupConfirm.value) {
+    return
+  }
   if (event.key === 'Escape') {
     emit('close')
   }
@@ -132,6 +214,9 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
+  if (isDesktop) {
+    void loadStorageStats()
+  }
 })
 
 onUnmounted(() => {
@@ -145,6 +230,56 @@ const isFormValid = computed(() => {
     localConfig.value.model.trim() !== ''
   )
 })
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const value = bytes / 1024 ** index
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+async function loadStorageStats() {
+  if (!isDesktop) return
+  isStorageLoading.value = true
+  try {
+    storageStats.value = await getLocalImageStorageStats()
+  } catch (error) {
+    console.error('Load local image storage stats failed:', error)
+    showError(t('storageStatsFailed'))
+  } finally {
+    isStorageLoading.value = false
+  }
+}
+
+async function handleCleanupOrphans() {
+  if (!isDesktop) return
+  showCleanupConfirm.value = false
+  isCleaningStorage.value = true
+  try {
+    const result = await cleanupOrphanedLocalImages()
+    storageStats.value = {
+      totalCount: result.totalCount,
+      totalBytes: result.totalBytes,
+      orphanCount: result.orphanCount,
+      orphanBytes: result.orphanBytes,
+    }
+
+    if (result.failedCount > 0) {
+      warning(t('cleanupPartial', { count: result.failedCount }))
+    } else {
+      success(t('cleanupComplete', {
+        count: result.deletedCount,
+        size: formatBytes(result.deletedBytes),
+      }))
+    }
+  } catch (error) {
+    console.error('Cleanup orphan image files failed:', error)
+    showError(t('cleanupFailed'))
+  } finally {
+    isCleaningStorage.value = false
+  }
+}
 
 async function handleSave() {
   if (isFormValid.value) {
@@ -327,6 +462,73 @@ async function handleClear() {
   color: #dc2626;
 }
 
+.storage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+
+.storage-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storage-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.btn-secondary.compact {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.storage-stat {
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+}
+
+.storage-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.storage-stat strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.storage-cleanup {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 :root.dark .test-result.success {
   background: #064e3b;
   color: #34d399;
@@ -400,6 +602,16 @@ async function handleClear() {
   .btn-primary,
   .btn-secondary {
     flex: 1;
+  }
+
+  .storage-header {
+    flex-direction: column;
+  }
+
+  .btn-secondary.compact,
+  .storage-cleanup {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

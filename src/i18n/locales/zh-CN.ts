@@ -1,0 +1,123 @@
+export default {
+  // Header
+  skipToContent: '跳转到主要内容',
+  history: '历史记录',
+  imageGen: '图片生成',
+  mainNav: '主导航',
+  newChat: '新对话',
+  gallery: '图片画廊',
+  apiConfig: 'API 配置',
+  switchTheme: '切换主题',
+  clearChat: '清空对话',
+  clearChatConfirm: '确定要清空所有对话吗？此操作不可恢复。',
+  clear: '清空',
+
+  // ChatContainer
+  messageArea: '消息区域',
+  generating: '正在生成图片',
+  startCreating: '开始创作',
+  startDescription: '输入图片描述，AI 将为您生成精美的图片',
+  noResults: '没有找到匹配的消息',
+  noResultsHint: '尝试使用不同的关键词或清除筛选条件',
+  cancel: '取消',
+
+  // ChatInput
+  promptTemplates: '提示词模板',
+  inputPlaceholder: '输入图片描述，例如：一只可爱的猫咪在花园里玩耍',
+  imageDescription: '图片描述',
+  send: '发送',
+  generationOptions: '生成选项',
+  size: '尺寸',
+  quality: '质量',
+  count: '数量',
+  decrease: '减少数量',
+  increase: '增加数量',
+  style: '风格',
+  none: '无',
+
+  // ConfigModal
+  close: '关闭',
+  apiEndpoint: 'API 端点地址',
+  endpointPlaceholder: '例如: https://api.openai.com',
+  endpointHint: '输入您的 API 服务端点地址',
+  apiKey: 'API Key',
+  apiKeyPlaceholder: '输入您的 API Key',
+  apiKeyHint: '密钥仅存储在本地，不会上传到服务器',
+  hideApiKey: '隐藏 API Key',
+  showApiKey: '显示 API Key',
+  model: '模型',
+  modelPlaceholder: '例如: gpt-image-2',
+  clearConfig: '清除配置',
+  testing: '测试中...',
+  testConnection: '测试连接',
+  saveConfig: '保存配置',
+  configSaved: '配置已保存',
+  localStorage: '本地存储',
+  localStorageHint: '统计桌面端保存的生成图片和可清理文件',
+  refresh: '刷新',
+  imageCount: '图片数量',
+  storageUsed: '占用空间',
+  orphanImages: '孤儿图片',
+  reclaimableSpace: '可释放空间',
+  cleanupOrphans: '清理孤儿图片',
+  cleanupOrphansConfirm: '将清理 {count} 张未被历史记录引用的本地图片，预计释放 {size}。此操作不可恢复。',
+  cleanupComplete: '已清理 {count} 张图片，释放 {size}',
+  cleanupPartial: '{count} 个文件清理失败，其余文件已处理',
+  cleanupFailed: '清理失败，请稍后重试',
+  storageStatsFailed: '读取本地存储统计失败',
+
+  // HistorySidebar
+  closeSidebar: '关闭侧边栏',
+  searchHistory: '搜索历史...',
+  historyTab: '历史',
+  favorites: '收藏',
+  noHistory: '暂无历史记录',
+  noFavorites: '暂无收藏',
+  clearAll: '清空所有',
+  clearHistory: '清空历史记录',
+  clearHistoryConfirm: '确定要清空所有历史记录吗？此操作不可恢复。',
+  favorite: '收藏',
+  unfavorite: '取消收藏',
+  delete: '删除',
+
+  // Time
+  justNow: '刚刚',
+  minutesAgo: '{n} 分钟前',
+  hoursAgo: '{n} 小时前',
+  daysAgo: '{n} 天前',
+
+  // PromptPanel
+  promptTemplatesTitle: '提示词模板',
+  searchPrompts: '搜索提示词...',
+  recentUsed: '最近使用',
+  noMatchingPrompts: '没有找到匹配的提示词',
+  noRecentUsage: '暂无使用记录',
+
+  // Quick start categories
+  people: '人物',
+  landscape: '风景',
+  animals: '动物',
+  abstract: '抽象',
+
+  // Loading texts
+  aiThinking: 'AI 正在构思',
+  mixingColors: '正在调配色彩',
+  drawingDetails: '绘制细节中',
+  almostDone: '即将完成',
+
+  // Update prompt
+  updateAvailable: '有新版本可用',
+  update: '更新',
+
+  // Custom styles
+  createStyle: '创建风格',
+  editStyle: '编辑风格',
+  styleName: '风格名称',
+  styleNamePlaceholder: '例如：复古胶片',
+  styleDesc: '风格描述',
+  styleDescPlaceholder: '例如：怀旧的胶片摄影风格',
+  stylePromptSuffix: '提示词后缀',
+  styleSuffixPlaceholder: '例如：vintage film photography, grain texture, warm tones',
+  styleSuffixHint: '这些关键词会自动添加到提示词末尾',
+  save: '保存',
+}

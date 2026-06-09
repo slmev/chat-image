@@ -5,6 +5,8 @@ import { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX } from '../../platform/metada
 
 const metadata = new Map<string, unknown>()
 const deleteImageFile = vi.fn<(...args: [GeneratedImage]) => Promise<void>>()
+const readDir = vi.fn()
+const stat = vi.fn()
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => true,
@@ -26,6 +28,14 @@ vi.mock('../../platform/imageRepository', () => ({
   getImageRepository: () => ({
     deleteImageFile,
   }),
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  BaseDirectory: {
+    AppData: 'AppData',
+  },
+  readDir,
+  stat,
 }))
 
 function image(localPath: string): GeneratedImage {
@@ -52,6 +62,10 @@ describe('deleteUnreferencedLocalImages', () => {
   beforeEach(() => {
     metadata.clear()
     deleteImageFile.mockReset()
+    deleteImageFile.mockResolvedValue(undefined)
+    readDir.mockReset()
+    stat.mockReset()
+    readDir.mockResolvedValue([])
   })
 
   it('deletes local images that are no longer referenced', async () => {
@@ -112,6 +126,97 @@ describe('deleteUnreferencedLocalImages', () => {
       'Failed to delete unreferenced image file:',
       expect.any(Error),
     )
+    warn.mockRestore()
+  })
+
+  it('reports local image storage stats and excludes referenced images from orphans', async () => {
+    readDir.mockResolvedValue([
+      { name: 'referenced.png', isFile: true, isDirectory: false, isSymlink: false },
+      { name: 'orphan.png', isFile: true, isDirectory: false, isSymlink: false },
+      { name: 'nested', isFile: false, isDirectory: true, isSymlink: false },
+    ])
+    stat.mockImplementation(async (path: string) => ({
+      isFile: true,
+      isDirectory: false,
+      isSymlink: false,
+      size: path.includes('referenced') ? 100 : 250,
+    }))
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message([image('images/referenced.png')])])
+
+    const { getLocalImageStorageStats } = await import('../../platform/imageReferenceCleanup')
+
+    await expect(getLocalImageStorageStats()).resolves.toEqual({
+      totalCount: 2,
+      totalBytes: 350,
+      orphanCount: 1,
+      orphanBytes: 250,
+    })
+  })
+
+  it('cleans only orphaned local image files and returns cleanup totals', async () => {
+    readDir.mockResolvedValue([
+      { name: 'referenced.png', isFile: true, isDirectory: false, isSymlink: false },
+      { name: 'orphan.png', isFile: true, isDirectory: false, isSymlink: false },
+    ])
+    stat.mockImplementation(async (path: string) => ({
+      isFile: true,
+      isDirectory: false,
+      isSymlink: false,
+      size: path.includes('referenced') ? 100 : 250,
+    }))
+    metadata.set(HISTORY_LIST_KEY, [{
+      id: 'history-1',
+      title: 'history',
+      timestamp: 1,
+      messageCount: 1,
+      isFavorite: false,
+    }])
+    metadata.set(HISTORY_MESSAGES_PREFIX + 'history-1', [message([image('images/referenced.png')])])
+
+    const { cleanupOrphanedLocalImages } = await import('../../platform/imageReferenceCleanup')
+
+    await expect(cleanupOrphanedLocalImages()).resolves.toMatchObject({
+      totalCount: 1,
+      totalBytes: 100,
+      orphanCount: 0,
+      orphanBytes: 0,
+      deletedCount: 1,
+      deletedBytes: 250,
+      failedCount: 0,
+    })
+    expect(deleteImageFile).toHaveBeenCalledTimes(1)
+    expect(deleteImageFile).toHaveBeenCalledWith(expect.objectContaining({
+      localPath: 'images/orphan.png',
+    }))
+  })
+
+  it('keeps failed orphan deletions in cleanup result', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    readDir.mockResolvedValue([
+      { name: 'fail.png', isFile: true, isDirectory: false, isSymlink: false },
+      { name: 'success.png', isFile: true, isDirectory: false, isSymlink: false },
+    ])
+    stat.mockImplementation(async (path: string) => ({
+      isFile: true,
+      isDirectory: false,
+      isSymlink: false,
+      size: path.includes('fail') ? 100 : 250,
+    }))
+    deleteImageFile
+      .mockRejectedValueOnce(new Error('delete failed'))
+      .mockResolvedValue(undefined)
+
+    const { cleanupOrphanedLocalImages } = await import('../../platform/imageReferenceCleanup')
+
+    await expect(cleanupOrphanedLocalImages()).resolves.toMatchObject({
+      totalCount: 1,
+      totalBytes: 100,
+      orphanCount: 1,
+      orphanBytes: 100,
+      deletedCount: 1,
+      deletedBytes: 250,
+      failedCount: 1,
+    })
     warn.mockRestore()
   })
 })
