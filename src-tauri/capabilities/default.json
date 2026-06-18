@@ -7,6 +7,9 @@
     "dialog:default",
     "store:default",
     "opener:default",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "clipboard-manager:allow-write-image",
     {
       "identifier": "fs:scope",
       "allow": [
