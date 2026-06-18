@@ -7,6 +7,8 @@ const metadata = new Map<string, unknown>()
 const deleteImageFile = vi.fn<(...args: [GeneratedImage]) => Promise<void>>()
 const readDir = vi.fn()
 const stat = vi.fn()
+const appDataDir = vi.fn()
+const openPath = vi.fn()
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => true,
@@ -38,6 +40,14 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
   stat,
 }))
 
+vi.mock('@tauri-apps/api/path', () => ({
+  appDataDir,
+}))
+
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openPath,
+}))
+
 function image(localPath: string): GeneratedImage {
   return {
     id: localPath,
@@ -65,6 +75,10 @@ describe('deleteUnreferencedLocalImages', () => {
     deleteImageFile.mockResolvedValue(undefined)
     readDir.mockReset()
     stat.mockReset()
+    appDataDir.mockReset()
+    appDataDir.mockResolvedValue('/Users/me/Library/Application Support/chat-image')
+    openPath.mockReset()
+    openPath.mockResolvedValue(undefined)
     readDir.mockResolvedValue([])
   })
 
@@ -218,5 +232,21 @@ describe('deleteUnreferencedLocalImages', () => {
       failedCount: 1,
     })
     warn.mockRestore()
+  })
+
+  it('returns the Tauri app data directory', async () => {
+    const { getLocalDataDirectory } = await import('../../platform/imageReferenceCleanup')
+
+    await expect(getLocalDataDirectory()).resolves.toBe(
+      '/Users/me/Library/Application Support/chat-image',
+    )
+  })
+
+  it('opens the Tauri app data directory in the system file manager', async () => {
+    const { openLocalDataDirectory } = await import('../../platform/imageReferenceCleanup')
+
+    await openLocalDataDirectory()
+
+    expect(openPath).toHaveBeenCalledWith('/Users/me/Library/Application Support/chat-image')
   })
 })

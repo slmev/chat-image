@@ -98,15 +98,36 @@
             </div>
           </div>
 
-          <button
-            @click="showCleanupConfirm = true"
-            class="btn-ghost danger storage-cleanup"
-            :disabled="storageStats.orphanCount === 0 || isStorageLoading || isCleaningStorage"
-            type="button"
-          >
-            <Loader2 v-if="isCleaningStorage" :size="16" class="spin" />
-            <span>{{ t('cleanupOrphans') }}</span>
-          </button>
+          <div class="storage-path-row">
+            <div class="storage-path-content">
+              <span class="storage-label">{{ t('dataDirectory') }}</span>
+              <strong class="storage-path" :title="dataDirectory">
+                {{ dataDirectory || t('loading') }}
+              </strong>
+            </div>
+            <button
+              @click="handleOpenDataDirectory"
+              class="btn-secondary compact"
+              :disabled="!dataDirectory || isOpeningDataDirectory"
+              type="button"
+            >
+              <Loader2 v-if="isOpeningDataDirectory" :size="14" class="spin" />
+              <FolderOpen v-else :size="14" />
+              <span>{{ t('openDirectory') }}</span>
+            </button>
+          </div>
+
+          <div class="storage-actions">
+            <button
+              @click="showCleanupConfirm = true"
+              class="btn-ghost danger storage-cleanup"
+              :disabled="storageStats.orphanCount === 0 || isStorageLoading || isCleaningStorage"
+              type="button"
+            >
+              <Loader2 v-if="isCleaningStorage" :size="16" class="spin" />
+              <span>{{ t('cleanupOrphans') }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Test Result -->
@@ -165,7 +186,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Settings, X, Eye, EyeOff, Save, Zap, Loader2, CheckCircle, AlertCircle } from 'lucide-vue-next'
+import {
+  AlertCircle,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  FolderOpen,
+  Loader2,
+  Save,
+  Settings,
+  X,
+  Zap,
+} from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useConfig } from '../../composables/useConfig'
 import { useToast } from '../../composables/useToast'
@@ -175,7 +207,9 @@ import { DEFAULT_MODEL } from '../../utils/constants'
 import { isTauriRuntime } from '../../platform/runtime'
 import {
   cleanupOrphanedLocalImages,
+  getLocalDataDirectory,
   getLocalImageStorageStats,
+  openLocalDataDirectory,
   type LocalImageStorageStats,
 } from '../../platform/imageReferenceCleanup'
 
@@ -195,7 +229,9 @@ const showApiKey = ref(false)
 const isDesktop = isTauriRuntime()
 const isStorageLoading = ref(false)
 const isCleaningStorage = ref(false)
+const isOpeningDataDirectory = ref(false)
 const showCleanupConfirm = ref(false)
+const dataDirectory = ref('')
 const storageStats = ref<LocalImageStorageStats>({
   totalCount: 0,
   totalBytes: 0,
@@ -243,7 +279,12 @@ async function loadStorageStats() {
   if (!isDesktop) return
   isStorageLoading.value = true
   try {
-    storageStats.value = await getLocalImageStorageStats()
+    const [nextStats, nextDataDirectory] = await Promise.all([
+      getLocalImageStorageStats(),
+      getLocalDataDirectory(),
+    ])
+    storageStats.value = nextStats
+    dataDirectory.value = nextDataDirectory
   } catch (error) {
     console.error('Load local image storage stats failed:', error)
     showError(t('storageStatsFailed'))
@@ -278,6 +319,19 @@ async function handleCleanupOrphans() {
     showError(t('cleanupFailed'))
   } finally {
     isCleaningStorage.value = false
+  }
+}
+
+async function handleOpenDataDirectory() {
+  if (!isDesktop || !dataDirectory.value) return
+  isOpeningDataDirectory.value = true
+  try {
+    await openLocalDataDirectory()
+  } catch (error) {
+    console.error('Open local data directory failed:', error)
+    showError(t('openDataDirectoryFailed'))
+  } finally {
+    isOpeningDataDirectory.value = false
   }
 }
 
@@ -522,6 +576,38 @@ async function handleClear() {
   overflow-wrap: anywhere;
 }
 
+.storage-path-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+}
+
+.storage-path-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.storage-path {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
 .storage-cleanup {
   align-self: flex-start;
   display: inline-flex;
@@ -612,6 +698,15 @@ async function handleClear() {
   .storage-cleanup {
     width: 100%;
     justify-content: center;
+  }
+
+  .storage-path-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .storage-actions {
+    width: 100%;
   }
 }
 </style>

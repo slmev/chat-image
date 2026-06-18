@@ -160,6 +160,20 @@ export async function getLocalImageStorageStats(): Promise<LocalImageStorageStat
   }
 }
 
+export async function getLocalDataDirectory(): Promise<string> {
+  if (!isTauriRuntime()) return ''
+
+  const { appDataDir } = await import('@tauri-apps/api/path')
+  return appDataDir()
+}
+
+export async function openLocalDataDirectory(): Promise<void> {
+  if (!isTauriRuntime()) return
+
+  const { openPath } = await import('@tauri-apps/plugin-opener')
+  await openPath(await getLocalDataDirectory())
+}
+
 export async function cleanupOrphanedLocalImages(): Promise<OrphanImageCleanupResult> {
   if (!isTauriRuntime()) {
     return {
