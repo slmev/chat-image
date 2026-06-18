@@ -1,12 +1,14 @@
 import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import type { ChatExportData, ChatHistory, ChatMessage } from '../types'
+import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
 import { generateId } from '../utils/storage'
 import { stripBase64FromMessages } from '../utils/imagePersistence'
 import {
   HISTORY_LIST_KEY,
   HISTORY_MESSAGES_PREFIX,
   getMetadataValue,
+  initializeDesktopPersistence,
   removeMetadataValue,
   setMetadataValue,
 } from '../platform/metadataStore'
@@ -58,6 +60,16 @@ async function readHistoryMessages(historyId: string): Promise<ChatMessage[]> {
 
 function collectImages(messages: ChatMessage[]) {
   return messages.flatMap(message => message.images || [])
+}
+
+function collectLocalImagePaths(messages: ChatMessage[]): Set<string> {
+  return new Set(collectImages(messages)
+    .map(image => image.localPath)
+    .filter((localPath): localPath is string => Boolean(localPath)))
+}
+
+function cloneData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 // 保存历史对话消息
@@ -131,6 +143,106 @@ export function useHistory() {
     void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, []).then(list => {
       historyList.value = list
     })
+  }
+
+  async function ensureDesktopHistoryHydrated(): Promise<void> {
+    await initializeDesktopPersistence()
+    if (!chatStore.hasHydratedDesktopHistory) {
+      await chatStore.hydrateFromPersistence()
+    }
+    await chatStore.flushHistorySave()
+  }
+
+  async function readHistoryMessageMap(list: ChatHistory[]): Promise<Record<string, ChatMessage[]>> {
+    return Object.fromEntries(
+      await Promise.all(
+        list.map(async item => [
+          item.id,
+          await readHistoryMessages(item.id),
+        ] as const),
+      ),
+    )
+  }
+
+  function isZipHistoryFile(file: File): boolean {
+    return file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip'
+  }
+
+  async function restoreDesktopSnapshot(snapshot: {
+    currentMessages: ChatMessage[]
+    historyList: ChatHistory[]
+    historyMessages: Record<string, ChatMessage[]>
+    knownHistoryIds: Set<string>
+  }): Promise<void> {
+    await setHistoryList(snapshot.historyList)
+    await Promise.all(snapshot.historyList.map(item =>
+      setHistoryMessages(item.id, snapshot.historyMessages[item.id] || []),
+    ))
+    await Promise.all(Array.from(snapshot.knownHistoryIds)
+      .filter(historyId => !snapshot.historyMessages[historyId])
+      .map(historyId => deleteHistoryMessages(historyId)))
+    historyList.value = snapshot.historyList
+    await chatStore.importMessages(snapshot.currentMessages, 'replace')
+  }
+
+  async function commitDesktopZipImport(
+    data: DesktopHistoryImportData,
+    mode: 'replace' | 'merge',
+  ): Promise<string[]> {
+    const currentHistoryList = await getMetadataValue<ChatHistory[]>(
+      HISTORY_LIST_KEY,
+      historyList.value,
+    )
+    const currentHistoryMessages = await readHistoryMessageMap(currentHistoryList)
+    const snapshot = {
+      currentMessages: cloneData(chatStore.messages),
+      historyList: cloneData(currentHistoryList),
+      historyMessages: cloneData(currentHistoryMessages),
+      knownHistoryIds: new Set([
+        ...currentHistoryList.map(item => item.id),
+        ...data.historyList.map(item => item.id),
+      ]),
+    }
+
+    try {
+      if (mode === 'replace') {
+        await Promise.all(currentHistoryList.map(item => deleteHistoryMessages(item.id)))
+        await setHistoryList(data.historyList)
+        await Promise.all(data.historyList.map(item =>
+          setHistoryMessages(item.id, data.historyMessages[item.id] || []),
+        ))
+        historyList.value = data.historyList
+        await chatStore.importMessages(data.currentMessages, 'replace')
+        return []
+      }
+
+      const existingMessageIds = new Set(chatStore.messages.map(message => message.id))
+      const existingHistoryIds = new Set(currentHistoryList.map(item => item.id))
+      const uniqueCurrentMessages = data.currentMessages.filter(message => !existingMessageIds.has(message.id))
+      const newHistoryItems = data.historyList.filter(item => !existingHistoryIds.has(item.id))
+      const mergedHistoryList = [...currentHistoryList, ...newHistoryItems]
+      const usedImportedImagePaths = collectLocalImagePaths(uniqueCurrentMessages)
+      newHistoryItems.forEach(item => {
+        collectLocalImagePaths(data.historyMessages[item.id] || []).forEach(path => {
+          usedImportedImagePaths.add(path)
+        })
+      })
+
+      await setHistoryList(mergedHistoryList)
+      await Promise.all(newHistoryItems.map(item =>
+        setHistoryMessages(item.id, data.historyMessages[item.id] || []),
+      ))
+      historyList.value = mergedHistoryList
+      await chatStore.importMessages(data.currentMessages, 'merge')
+      return data.writtenImagePaths.filter(path => !usedImportedImagePaths.has(path))
+    } catch (error) {
+      try {
+        await restoreDesktopSnapshot(snapshot)
+      } catch (rollbackError) {
+        console.error('Desktop ZIP import rollback failed:', rollbackError)
+      }
+      throw error
+    }
   }
 
   // 过滤后的消息
@@ -253,7 +365,24 @@ export function useHistory() {
   }
 
   // 导出历史记录
-  function exportHistory(): void {
+  async function exportHistory(): Promise<{ canceled: boolean }> {
+    if (isTauriRuntime()) {
+      await ensureDesktopHistoryHydrated()
+      const desktopHistoryList = await getMetadataValue<ChatHistory[]>(
+        HISTORY_LIST_KEY,
+        historyList.value,
+      )
+      historyList.value = desktopHistoryList
+      const historyMessages = await readHistoryMessageMap(desktopHistoryList)
+
+      const { exportDesktopHistoryZip } = await import('../platform/desktopHistoryExport')
+      return exportDesktopHistoryZip({
+        currentMessages: chatStore.messages,
+        historyList: desktopHistoryList,
+        historyMessages,
+      })
+    }
+
     const exportData: ChatExportData = {
       version: 1,
       exportedAt: Date.now(),
@@ -271,11 +400,35 @@ export function useHistory() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+
+    return { canceled: false }
   }
 
   // 导入历史记录
   async function importHistory(file: File, mode: 'replace' | 'merge'): Promise<{ success: boolean; message: string }> {
     try {
+      if (isTauriRuntime() && isZipHistoryFile(file)) {
+        await ensureDesktopHistoryHydrated()
+        const { importDesktopHistoryZip, cleanupDesktopImportedImages } = await import('../platform/desktopHistoryImport')
+        const result = await importDesktopHistoryZip(file)
+        if (!result.success) {
+          return result
+        }
+
+        try {
+          const unusedImagePaths = await commitDesktopZipImport(result.data, mode)
+          if (unusedImagePaths.length > 0) {
+            await cleanupDesktopImportedImages(unusedImagePaths)
+          }
+        } catch (error) {
+          await cleanupDesktopImportedImages(result.data.writtenImagePaths)
+          console.error('Desktop ZIP import commit error:', error)
+          return { success: false, message: '导入失败，现有数据已保持不变' }
+        }
+
+        return { success: true, message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并' }
+      }
+
       const text = await file.text()
       const data = JSON.parse(text) as ChatExportData
 
