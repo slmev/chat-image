@@ -1,4 +1,5 @@
 import type { ApiConfig, ImageGenerationRequest, ImageGenerationResponse, ImageEditRequest } from '../types'
+import { runtimeFetch } from '../platform/httpClient'
 import { API_ERROR_MESSAGES } from '../utils/constants'
 
 export class ImageGenerationService {
@@ -52,7 +53,7 @@ export class ImageGenerationService {
     }
 
     try {
-      const response = await fetch(`${this.config.endpoint}/v1/images/generations`, {
+      const response = await runtimeFetch(`${this.config.endpoint}/v1/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,7 +106,7 @@ export class ImageGenerationService {
     }
 
     try {
-      const response = await fetch(`${this.config.endpoint}/v1/images/edits`, {
+      const response = await runtimeFetch(`${this.config.endpoint}/v1/images/edits`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`,

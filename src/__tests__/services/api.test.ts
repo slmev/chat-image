@@ -1,0 +1,129 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ImageGenerationService } from '../../services/api'
+
+const mockState = vi.hoisted(() => ({
+  runtimeFetch: vi.fn(),
+}))
+
+vi.mock('../../platform/httpClient', () => ({
+  runtimeFetch: mockState.runtimeFetch,
+}))
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+describe('ImageGenerationService', () => {
+  beforeEach(() => {
+    mockState.runtimeFetch.mockReset()
+  })
+
+  it('sends image generation requests through the runtime HTTP client', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
+      created: 1,
+      data: [{ b64_json: 'image-bytes' }],
+    }))
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const result = await service.generateImage('draw a desk', {
+      size: '1024x1024',
+      quality: 'hd',
+      n: 2,
+    })
+
+    expect(result.data[0].b64_json).toBe('image-bytes')
+    expect(mockState.runtimeFetch).toHaveBeenCalledWith(
+      'https://api.example.test/v1/images/generations',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer sk-test',
+        },
+        signal: expect.any(AbortSignal),
+      }),
+    )
+    const init = mockState.runtimeFetch.mock.calls[0][1] as RequestInit
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      model: 'gpt-image-2',
+      prompt: 'draw a desk',
+      n: 2,
+      size: '1024x1024',
+      quality: 'hd',
+      response_format: 'b64_json',
+    })
+  })
+
+  it('sends image edit requests as form data through the runtime HTTP client', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
+      created: 1,
+      data: [{ b64_json: 'edited-image' }],
+    }))
+    const image = new Blob(['image'], { type: 'image/png' })
+    const mask = new Blob(['mask'], { type: 'image/png' })
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    await service.editImage({
+      image,
+      mask,
+      prompt: 'replace background',
+      size: '1024x1024',
+    })
+
+    const init = mockState.runtimeFetch.mock.calls[0][1] as RequestInit
+    const body = init.body as FormData
+
+    expect(mockState.runtimeFetch).toHaveBeenCalledWith(
+      'https://api.example.test/v1/images/edits',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer sk-test',
+        },
+        signal: expect.any(AbortSignal),
+      }),
+    )
+    expect(body.get('image')).toBeInstanceOf(Blob)
+    expect(body.get('mask')).toBeInstanceOf(Blob)
+    expect(body.get('prompt')).toBe('replace background')
+    expect(body.get('model')).toBe('gpt-image-2')
+    expect(body.get('response_format')).toBe('b64_json')
+  })
+
+  it('maps abort errors to the existing cancellation message', async () => {
+    const abortError = new Error('aborted')
+    abortError.name = 'AbortError'
+    mockState.runtimeFetch.mockRejectedValueOnce(abortError)
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    await expect(service.generateImage('draw')).rejects.toThrow('请求已取消')
+  })
+
+  it('maps API status errors as before', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
+      error: { message: 'invalid key' },
+    }, 401))
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'bad-key',
+      model: 'gpt-image-2',
+    })
+
+    await expect(service.generateImage('draw')).rejects.toThrow('API Key 无效，请检查您的密钥')
+  })
+})

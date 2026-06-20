@@ -1,4 +1,5 @@
 import { useConfigStore } from '../stores/config'
+import { runtimeFetch } from '../platform/httpClient'
 import { DEFAULT_MODEL } from '../utils/constants'
 
 export function useConfig() {
@@ -22,7 +23,7 @@ export function useConfig() {
     }
 
     // 发送一个简单的测试请求（获取模型列表或类似）
-    return fetch(`${endpoint}/v1/models`, {
+    return runtimeFetch(`${endpoint}/v1/models`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
