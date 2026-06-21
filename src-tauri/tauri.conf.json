@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Chat Image",
-  "version": "0.0.0",
-  "identifier": "com.chatimage.app",
+  "productName": "AI 图片生成助手",
+  "version": "0.1.0",
+  "identifier": "com.chatimage.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build:desktop",

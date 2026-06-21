@@ -1,6 +1,6 @@
 [package]
 name = "chat-image"
-version = "0.0.0"
+version = "0.1.0"
 description = "AI image generation chat client"
 authors = ["chat-image"]
 edition = "2021"

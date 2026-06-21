@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="AI image chat assistant icon">
+  <defs>
+    <linearGradient id="plate" x1="170" x2="854" y1="128" y2="896" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="0.48" stop-color="#0891b2"/>
+      <stop offset="1" stop-color="#facc15"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="244" x2="756" y1="292" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#dff7fb"/>
+    </linearGradient>
+    <linearGradient id="frame" x1="320" x2="716" y1="386" y2="650" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#164e63"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#0f172a" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="232" fill="url(#plate)"/>
+  <circle cx="752" cy="246" r="80" fill="#fde68a" opacity="0.95"/>
+  <circle cx="250" cy="792" r="122" fill="#22d3ee" opacity="0.22"/>
+  <path d="M200 276c0-64 52-116 116-116h396c64 0 116 52 116 116v316c0 64-52 116-116 116H466L326 820c-22 18-56 2-56-26v-96c-42-18-70-59-70-106V276Z" fill="url(#bubble)" filter="url(#softShadow)"/>
+  <rect x="320" y="360" width="392" height="272" rx="48" fill="url(#frame)"/>
+  <path d="M358 578 454 482c17-17 44-17 61 0l58 58 34-34c16-16 42-16 58 0l47 47v31c0 27-21 48-48 48H368c-18 0-32-14-32-32 0-8 3-16 9-22Z" fill="#ecfeff"/>
+  <circle cx="634" cy="430" r="38" fill="#facc15"/>
+  <path d="M748 294c13 52 42 82 94 94-52 13-81 43-94 95-13-52-42-82-94-95 52-12 81-42 94-94Z" fill="#fef9c3"/>
+  <path d="M270 296c8 34 27 53 60 61-33 8-52 27-60 61-8-34-27-53-60-61 33-8 52-27 60-61Z" fill="#67e8f9"/>
+  <path d="M594 664c8 32 26 50 58 58-32 8-50 26-58 58-8-32-26-50-58-58 32-8 50-26 58-58Z" fill="#facc15"/>
+</svg>
