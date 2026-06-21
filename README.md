@@ -1,151 +1,190 @@
-# AI 图片生成应用
+# AI 图片生成助手
 
-一个基于 Vue 3 + TypeScript 的对话式图片生成应用，支持用户自定义 API 端点和密钥，使用 GPT-image-2 模型生成图片。
+基于 Vue 3、TypeScript 和 Tauri 2 的对话式图片生成应用。项目同时支持 Web 运行时和桌面运行时：Web 端保留浏览器体验，桌面端将配置、历史记录和生成图片保存在本机，并提供本地文件管理、zip 导入导出和存储清理能力。
 
 ## 功能特性
 
-### 核心功能
-- 🎨 **对话式生成**：通过对话界面描述需求，AI 自动生成图片
-- 🔧 **自定义配置**：用户可输入自定义 API 端点和密钥
-- 📱 **响应式设计**：支持桌面和移动设备
-- 🌓 **主题切换**：支持浅色、深色和跟随系统主题
-
-### 图片生成选项
-- **尺寸选择**：1024×1024、1792×1024、1024×1792
-- **质量选择**：标准、高清
-- **生成数量**：1-4 张图片
-- **风格模板**：动漫、写实、油画、水彩、素描、赛博朋克
-
-### 图片管理
-- 图片预览与放大查看
-- 图片下载功能
-- 对话历史保存
+- 对话式图片生成：输入描述后调用兼容 OpenAI 图片生成 API 的端点生成图片。
+- 自定义 API 配置：支持配置 API Endpoint、API Key 和模型名称。
+- 图片生成选项：支持尺寸、质量、数量和风格模板。
+- 对话历史：支持当前对话和历史列表管理。
+- 桌面本地保存：Tauri 端将生成图片写入应用数据目录下的 `images/`。
+- 桌面导入导出：Tauri 端使用 zip 包导出历史和图片，Web 端继续使用 JSON。
+- 本地图片操作：桌面端可打开图片、在文件管理器中显示、另存为、复制到剪贴板。
+- 存储清理：设置页可查看数据目录、图片数量、占用空间，并清理孤儿图片。
+- 主题切换：支持浅色、深色和跟随系统主题。
 
 ## 技术栈
 
-- **框架**: Vue 3 + TypeScript
-- **构建工具**: Vite
-- **UI 框架**: Tailwind CSS
-- **状态管理**: Pinia
-- **图标库**: Lucide Vue Next
+- 前端框架：Vue 3 + TypeScript
+- 构建工具：Vite
+- 状态管理：Pinia
+- 桌面框架：Tauri 2
+- 元数据存储：Web 使用 localStorage，桌面使用 Tauri Store
+- 图片文件存储：桌面使用 Tauri AppData 下的 `images/`
+- 文件能力：Tauri fs、dialog、opener、clipboard-manager 插件
+- 网络能力：Web 使用浏览器 `fetch`，桌面使用 Tauri HTTP 插件
+- 测试：Vitest
 
 ## 快速开始
 
 ### 安装依赖
+
 ```bash
 npm install
 ```
 
-### 运行开发服务器
+### Web 开发
+
 ```bash
 npm run dev
 ```
 
-### 构建生产版本
+### 桌面开发
+
+```bash
+npm run tauri:dev
+```
+
+### Web 构建
+
 ```bash
 npm run build
 ```
 
-### 预览生产版本
+### 桌面前端构建
+
 ```bash
-npm run preview
+npm run build:desktop
+```
+
+### 桌面安装包构建
+
+```bash
+npm run tauri:build
+```
+
+### 测试
+
+```bash
+npm test
 ```
 
 ## 使用指南
 
-### 1. 配置 API
-首次使用需要配置 API 端点和密钥：
-- 点击右上角的设置按钮
-- 输入 API 端点地址（例如：`https://api.openai.com`）
-- 输入 API Key
-- 点击"测试连接"验证配置
-- 点击"保存配置"
+### 配置 API
 
-### 2. 生成图片
-- 在输入框中描述您想要的图片
-- 选择图片参数（尺寸、质量、数量）
-- 可选择风格模板快速应用预设风格
-- 点击"发送"按钮或按 Enter 键生成图片
+首次使用需要配置 API：
 
-### 3. 查看和管理图片
-- 生成的图片会在对话中显示
-- 点击图片可以放大查看
-- hover 图片可以下载
+- 打开右上角设置。
+- 输入 API 端点，例如 `https://api.openai.com`。
+- 输入 API Key。
+- 按需调整模型名称。
+- 点击“测试连接”验证配置，再保存。
 
-### 4. 其他功能
-- 点击右上角太阳/月亮图标切换主题
-- 点击垃圾桶图标清空对话历史
+Web 端配置保存在浏览器 localStorage。桌面端配置保存在 Tauri Store 文件中，不会上传到应用服务器。
+
+### 生成和管理图片
+
+- 在输入框中描述需要生成的图片。
+- 选择尺寸、质量、数量和风格模板。
+- 发送后生成结果会进入当前对话。
+- 点击图片可放大预览。
+- 桌面端本地图片在预览弹窗中支持打开、显示、另存为和复制。
+
+### 桌面本地存储
+
+桌面端会把图片保存到系统应用数据目录下的 `images/` 子目录。实际数据目录会显示在设置页的“本地存储”区域，也可以从设置页直接打开。
+
+桌面端保存的数据包括：
+
+- API 配置和用户偏好。
+- 当前对话和历史列表。
+- 生成图片文件。
+- 导入 zip 后写入本机的图片文件。
+
+删除消息、删除历史和清空历史会尝试清理不再被引用的本地图片。设置页还提供孤儿图片统计和手动清理入口，清理前会显示数量和预计释放空间。
+
+### 导入导出差异
+
+Web 端：
+
+- 导出为 JSON。
+- 适合浏览器内简单备份。
+- 不包含桌面端本地图片文件目录结构。
+
+桌面端：
+
+- 导出为 zip 包。
+- zip 内包含 `history.json` 和 `images/`。
+- 图片引用使用相对路径，便于迁移到另一台机器。
+- 导入支持 replace 和 merge 模式。
+- 导入失败时不会破坏当前数据。
 
 ## API 格式
 
-应用使用标准的 OpenAI 图片生成 API 格式：
+图片生成请求使用兼容 OpenAI 图片生成 API 的格式：
 
-```typescript
+```http
 POST {endpoint}/v1/images/generations
-Headers:
-  Authorization: Bearer {api_key}
-  Content-Type: application/json
+Authorization: Bearer {api_key}
+Content-Type: application/json
+```
 
-Body:
+```json
 {
   "model": "gpt-image-2",
   "prompt": "图片描述",
   "n": 1,
   "size": "1024x1024",
-  "quality": "standard"
+  "quality": "standard",
+  "response_format": "b64_json"
 }
 ```
 
-## 安全说明
+图片编辑使用 multipart form data 调用 `{endpoint}/v1/images/edits`。
 
-- API Key 仅存储在用户本地 localStorage，不会上传到任何服务器
-- 用户需自行保管 API Key 的安全性
-- 建议定期更换 API Key
+## 桌面发布信息
 
-## 注意事项
+- 应用名：`AI 图片生成助手`
+- Bundle identifier：`com.chatimage.desktop`
+- 当前版本：`0.1.0`
+- macOS 构建产物：`src-tauri/target/release/bundle/macos/AI 图片生成助手.app`
+- macOS DMG：`src-tauri/target/release/bundle/dmg/AI 图片生成助手_0.1.0_aarch64.dmg`
 
-### 跨域问题
-如果遇到跨域错误，请确保：
-- API 端点支持 CORS
-- 或使用代理服务器转发请求
+## 常见问题
 
-### 错误处理
-应用会处理以下常见错误：
-- 401: API Key 无效
-- 429: 请求过于频繁
-- 500: 服务器错误
-- 网络错误
+### Web 端跨域错误
+
+Web 端仍受浏览器 CORS 限制。如果 API 端点不允许浏览器跨域请求，需要使用支持 CORS 的端点或代理服务。
+
+桌面端使用 Tauri HTTP 插件发起请求，通常可以减少 CORS、代理和证书兼容问题。
+
+### 图片丢失或无法预览
+
+桌面端图片依赖本地 `images/` 文件。不要手动删除应用数据目录中的图片文件。若出现孤儿图片或空间占用异常，可在设置页刷新存储统计并执行清理。
+
+### 导入 zip 失败
+
+请确认 zip 包来自桌面端导出，并包含有效的 `history.json` 和 `images/` 文件。损坏或缺失图片的 zip 会被拒绝或给出错误提示。
 
 ## 项目结构
 
-```
+```text
 src/
-├── components/        # Vue 组件
-│   ├── Chat/         # 对话相关组件
-│   ├── Config/       # 配置相关组件
-│   ├── Style/        # 风格模板组件
-│   └── Layout/       # 布局组件
-├── composables/      # Vue Composition API
-├── stores/           # Pinia 状态管理
-├── services/         # API 服务
-├── types/            # TypeScript 类型定义
-├── utils/            # 工具函数
-├── App.vue           # 主应用组件
-└── main.ts           # 应用入口
+  components/     Vue 组件
+  composables/    组合式逻辑
+  platform/       Web/Tauri 平台能力封装
+  services/       API 服务
+  stores/         Pinia 状态
+  types/          TypeScript 类型
+  utils/          工具函数
+src-tauri/
+  capabilities/   Tauri 权限配置
+  icons/          桌面应用图标
+  src/            Tauri Rust 入口
 ```
-
-## 开发计划
-
-- [ ] 提示词优化建议功能
-- [ ] 自定义风格模板保存
-- [ ] 对话历史导出
-- [ ] 图片批量下载
-- [ ] 多语言支持
 
 ## 许可证
 
 MIT License
-
-## 作者
-
-Created with Claude Code
