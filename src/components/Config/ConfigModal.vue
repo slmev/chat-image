@@ -404,10 +404,15 @@ async function handleClear() {
 .modal-content {
   width: 100%;
   max-width: 480px;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   background: var(--color-bg-primary);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .modal-header {
@@ -416,6 +421,7 @@ async function handleClear() {
   justify-content: space-between;
   padding: 20px 24px;
   border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
 .modal-title-section {
@@ -446,6 +452,9 @@ async function handleClear() {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .form-group {
@@ -632,6 +641,7 @@ async function handleClear() {
   padding: 16px 24px;
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-secondary);
+  flex-shrink: 0;
 }
 
 .footer-spacer {
@@ -672,8 +682,8 @@ async function handleClear() {
   .modal-content {
     max-width: 100%;
     max-height: 95vh;
+    max-height: 95dvh;
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-    overflow-y: auto;
   }
 
   .modal-footer {
