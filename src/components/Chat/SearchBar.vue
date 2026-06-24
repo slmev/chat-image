@@ -64,9 +64,9 @@ function toggleFavorites() {
 .search-bar {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
+  background: color-mix(in srgb, var(--color-bg-primary) 94%, var(--color-bg-secondary));
 }
 
 .search-input-wrapper {
@@ -86,9 +86,9 @@ function toggleFavorites() {
 .search-input {
   width: 100%;
   padding: 10px 36px 10px 36px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
   color: var(--color-text-primary);
   font-size: 13px;
   outline: none;
@@ -98,7 +98,7 @@ function toggleFavorites() {
 .search-input:focus {
   background: var(--color-bg-primary);
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-light);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 75%, transparent);
 }
 
 .search-input::placeholder {
@@ -133,9 +133,9 @@ function toggleFavorites() {
   justify-content: center;
   width: 40px;
   height: 40px;
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: 999px;
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-base);
@@ -148,13 +148,13 @@ function toggleFavorites() {
 }
 
 .favorites-btn.active {
-  background: #fef3c7;
-  border-color: #f59e0b;
-  color: #f59e0b;
+  background: color-mix(in srgb, var(--color-primary-light) 72%, var(--color-bg-primary));
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
+  color: var(--color-primary);
 }
 
 :root.dark .favorites-btn.active {
-  background: #451a03;
-  border-color: #f59e0b;
+  background: color-mix(in srgb, var(--color-primary-light) 72%, var(--color-bg-primary));
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
 }
 </style>

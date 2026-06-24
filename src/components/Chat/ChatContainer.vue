@@ -18,15 +18,9 @@
     >
       <!-- Empty State -->
       <div v-if="chatStore.messages.length === 0" class="empty-state">
-        <div class="empty-illustration">
-          <div class="empty-icon-wrapper">
-            <ImageIcon :size="48" />
-          </div>
-          <div class="empty-decoration">
-            <Sparkles :size="20" class="sparkle-1" />
-            <Sparkles :size="16" class="sparkle-2" />
-            <Sparkles :size="24" class="sparkle-3" />
-          </div>
+        <div class="empty-eyebrow">
+          <ImageIcon :size="16" />
+          <span>Image conversation</span>
         </div>
         <h2 class="empty-title">{{ t('startCreating') }}</h2>
         <p class="empty-description">{{ t('startDescription') }}</p>
@@ -98,7 +92,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick, computed, watch, onUnmounted } from 'vue'
-import { ImageIcon, Sparkles, Search, Users, Mountain, Cat, Layers } from 'lucide-vue-next'
+import { ImageIcon, Search, Users, Mountain, Cat, Layers, Sparkles } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useChat } from '../../composables/useChat'
 import { useHistory } from '../../composables/useHistory'
@@ -260,12 +254,13 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--color-bg-primary);
 }
 
 .messages-area {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 24px 24px 12px;
 }
 
 /* Empty State */
@@ -275,78 +270,38 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 40px 20px;
+  padding: 56px 20px 72px;
   text-align: center;
 }
 
-.empty-illustration {
-  position: relative;
-  margin-bottom: 24px;
-}
-
-.empty-icon-wrapper {
-  width: 96px;
-  height: 96px;
-  display: flex;
+.empty-eyebrow {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: var(--color-primary-light);
-  border-radius: var(--radius-xl);
-  color: var(--color-primary);
-}
-
-.empty-decoration {
-  position: absolute;
-  inset: 0;
-}
-
-.sparkle-1 {
-  position: absolute;
-  top: -8px;
-  right: -8px;
-  color: var(--color-primary);
-  animation: sparkle 2s ease-in-out infinite;
-}
-
-.sparkle-2 {
-  position: absolute;
-  bottom: -4px;
-  left: -12px;
-  color: var(--color-secondary);
-  animation: sparkle 2s ease-in-out infinite 0.5s;
-}
-
-.sparkle-3 {
-  position: absolute;
-  top: 50%;
-  right: -20px;
-  color: var(--color-accent);
-  animation: sparkle 2s ease-in-out infinite 1s;
-}
-
-@keyframes sparkle {
-  0%, 100% {
-    opacity: 0.3;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 20px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .empty-title {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 600;
   color: var(--color-text-primary);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
+  max-width: 680px;
 }
 
 .empty-description {
   font-size: 15px;
   color: var(--color-text-secondary);
-  margin-bottom: 32px;
-  max-width: 400px;
+  margin-bottom: 28px;
+  max-width: 540px;
+  line-height: 1.6;
 }
 
 .empty-icon {
@@ -357,9 +312,9 @@ onMounted(() => {
 /* Quick Start Grid */
 .quick-start-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  max-width: 480px;
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: 10px;
+  max-width: 520px;
   width: 100%;
 }
 
@@ -367,28 +322,30 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
-  background: var(--color-bg-primary);
+  padding: 14px 16px;
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 16px;
   cursor: pointer;
   transition: all var(--transition-base);
+  text-align: left;
 }
 
 .quick-start-card:hover {
-  border-color: var(--color-primary);
+  background: var(--color-bg-primary);
+  border-color: var(--color-border-hover);
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
 }
 
 .quick-start-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg-tertiary);
-  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   color: var(--color-primary);
 }
 
@@ -396,6 +353,7 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 500;
   color: var(--color-text-primary);
+  line-height: 1.4;
 }
 
 /* Loading Indicator */
@@ -405,9 +363,9 @@ onMounted(() => {
   justify-content: center;
   gap: 16px;
   padding: 16px;
-  background: var(--color-bg-primary);
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border-radius: 18px;
   margin-top: 16px;
 }
 
@@ -473,17 +431,16 @@ onMounted(() => {
 
 /* Responsive */
 @media (max-width: 640px) {
+  .messages-area {
+    padding: 18px 16px 10px;
+  }
+
   .quick-start-grid {
     grid-template-columns: 1fr;
   }
 
-  .empty-icon-wrapper {
-    width: 72px;
-    height: 72px;
-  }
-
   .empty-title {
-    font-size: 20px;
+    font-size: 24px;
   }
 }
 </style>

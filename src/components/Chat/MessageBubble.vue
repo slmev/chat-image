@@ -291,7 +291,7 @@ async function handleEditResult(response: ImageGenerationResponse) {
 
 <style scoped>
 .message-wrapper {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   animation: messageIn 0.3s ease-out;
 }
 
@@ -322,22 +322,22 @@ async function handleEditResult(response: ImageGenerationResponse) {
 .user-message {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  max-width: 80%;
+  gap: 10px;
+  max-width: min(82%, 760px);
 }
 
 .user-bubble {
   position: relative;
   padding: 12px 16px;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  background: color-mix(in srgb, var(--color-primary-light) 72%, var(--color-bg-primary));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 18px;
 }
 
 .user-text {
   font-size: 14px;
   line-height: 1.6;
-  color: white;
+  color: var(--color-text-primary);
   white-space: pre-wrap;
 }
 
@@ -360,17 +360,16 @@ async function handleEditResult(response: ImageGenerationResponse) {
 .assistant-message {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  max-width: 85%;
+  gap: 14px;
+  max-width: min(88%, 920px);
 }
 
 .assistant-bubble {
   position: relative;
-  padding: 12px 16px;
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
-  box-shadow: var(--shadow-sm);
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .assistant-text {
@@ -423,9 +422,9 @@ async function handleEditResult(response: ImageGenerationResponse) {
 /* Image Grid */
 .image-grid {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  max-width: 600px;
+  max-width: 760px;
 }
 
 .grid-cols-1 {
@@ -440,6 +439,7 @@ async function handleEditResult(response: ImageGenerationResponse) {
 .message-actions {
   opacity: 0;
   transition: opacity var(--transition-base);
+  padding-left: 2px;
 }
 
 .message-wrapper:hover .message-actions {

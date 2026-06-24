@@ -303,19 +303,19 @@ async function confirmClearAll() {
   top: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: var(--color-bg-primary);
+  background: color-mix(in srgb, var(--color-bg-secondary) 92%, var(--color-bg-primary));
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   z-index: 40;
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-md);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -326,7 +326,7 @@ async function confirmClearAll() {
 }
 
 .sidebar-search {
-  padding: 12px 16px;
+  padding: 12px 14px;
 }
 
 .search-input-wrapper {
@@ -345,9 +345,9 @@ async function confirmClearAll() {
 .search-input {
   width: 100%;
   padding: 10px 12px 10px 38px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
@@ -366,7 +366,7 @@ async function confirmClearAll() {
 
 .sidebar-tabs {
   display: flex;
-  padding: 0 12px;
+  padding: 0 10px;
   gap: 4px;
 }
 
@@ -393,8 +393,9 @@ async function confirmClearAll() {
 }
 
 .tab-btn.active {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .tab-count {
@@ -406,14 +407,14 @@ async function confirmClearAll() {
 }
 
 .tab-btn.active .tab-count {
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
+  background: color-mix(in srgb, var(--color-primary-light) 72%, var(--color-bg-primary));
+  color: var(--color-primary);
 }
 
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 10px 8px;
 }
 
 .empty-state {
@@ -437,7 +438,7 @@ async function confirmClearAll() {
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .history-item {
@@ -446,17 +447,20 @@ async function confirmClearAll() {
   justify-content: space-between;
   padding: 10px 12px;
   background: transparent;
-  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  border-radius: 14px;
   cursor: pointer;
   transition: all var(--transition-base);
 }
 
 .history-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-primary);
+  border-color: var(--color-border);
 }
 
 .history-item.active {
-  background: var(--color-primary-light);
+  background: var(--color-bg-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
 }
 
 .history-item-content {
@@ -474,8 +478,9 @@ async function confirmClearAll() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg-tertiary);
-  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   color: var(--color-text-secondary);
 }
 
@@ -554,7 +559,7 @@ async function confirmClearAll() {
 }
 
 .sidebar-footer {
-  padding: 12px 16px;
+  padding: 12px 14px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -572,7 +577,7 @@ async function confirmClearAll() {
 .sidebar-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.35);
   z-index: 35;
 }
 

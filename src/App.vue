@@ -108,6 +108,7 @@ function toggleGallery() {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  background: var(--gradient-bg);
 }
 
 .main-content {
@@ -121,6 +122,7 @@ function toggleGallery() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 /* Modal Transition */

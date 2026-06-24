@@ -375,20 +375,24 @@ function handleSend() {
 <style scoped>
 .input-container {
   position: relative;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-primary);
+  padding: 0 20px 20px;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--color-bg-primary) 96%, var(--color-bg-secondary)) 14%);
 }
 
 .prompt-panel-wrapper {
   position: absolute;
   bottom: 100%;
-  left: 16px;
-  right: 16px;
+  left: 20px;
+  right: 20px;
   margin-bottom: 8px;
 }
 
 .input-main {
-  padding: 12px 16px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, var(--color-bg-secondary));
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-lg);
 }
 
 .input-row {
@@ -405,9 +409,9 @@ function handleSend() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-base);
@@ -433,6 +437,7 @@ function handleSend() {
 /* Textarea */
 .textarea-wrapper {
   flex: 1;
+  min-width: 0;
 }
 
 .chat-textarea {
@@ -440,9 +445,9 @@ function handleSend() {
   min-height: 44px;
   max-height: 120px;
   padding: 10px 14px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  border-radius: 0;
   font-size: 14px;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -456,9 +461,7 @@ function handleSend() {
 }
 
 .chat-textarea:focus {
-  background: var(--color-bg-primary);
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-light);
+  box-shadow: none;
 }
 
 .chat-textarea:disabled {
@@ -476,7 +479,7 @@ function handleSend() {
   justify-content: center;
   background: var(--gradient-primary);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   color: white;
   cursor: pointer;
   transition: all var(--transition-base);
@@ -484,13 +487,8 @@ function handleSend() {
 }
 
 .send-btn:hover:not(:disabled) {
-  opacity: 0.9;
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-
-.send-btn:active:not(:disabled) {
-  transform: translateY(0);
+    box-shadow: var(--shadow-md);
+  background: var(--color-primary-hover);
 }
 
 .send-btn:disabled {
@@ -504,8 +502,8 @@ function handleSend() {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--color-border);
 }
 
@@ -520,6 +518,7 @@ function handleSend() {
   font-weight: 500;
   color: var(--color-text-tertiary);
   white-space: nowrap;
+  min-width: 28px;
 }
 
 .option-chips,
@@ -532,7 +531,7 @@ function handleSend() {
 .option-chip,
 .style-chip {
   padding: 5px 10px;
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   font-size: 12px;
@@ -577,7 +576,7 @@ function handleSend() {
 .count-selector {
   display: flex;
   align-items: center;
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
   overflow: hidden;
@@ -628,6 +627,15 @@ function handleSend() {
 
 /* Responsive */
 @media (max-width: 640px) {
+  .input-container {
+    padding: 0 12px 12px;
+  }
+
+  .prompt-panel-wrapper {
+    left: 12px;
+    right: 12px;
+  }
+
   .options-bar {
     gap: 8px;
   }
@@ -640,10 +648,6 @@ function handleSend() {
 }
 
 @media (max-width: 480px) {
-  .input-main {
-    padding: 10px 12px;
-  }
-
   .options-bar {
     gap: 6px;
   }

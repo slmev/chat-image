@@ -2,7 +2,6 @@
   <header class="header" role="banner">
     <a href="#main-content" class="skip-link">{{ t('skipToContent') }}</a>
     <div class="header-content">
-      <!-- Left: Logo & Title -->
       <div class="header-left">
         <button
           @click="$emit('toggle-sidebar')"
@@ -14,22 +13,17 @@
         </button>
 
         <div class="logo-section">
-          <div class="logo-icon" aria-hidden="true">
-            <Sparkles :size="20" />
-          </div>
           <h1 class="logo-text">
-            <span class="text-gradient">AI</span>
-            <span>{{ t('imageGen') }}</span>
+            <span class="logo-text-primary">{{ t('imageGen') }}</span>
+            <span class="logo-text-secondary">Workspace</span>
           </h1>
         </div>
       </div>
 
-      <!-- Right: Actions -->
       <nav class="header-right" :aria-label="t('mainNav')">
-        <!-- New Chat -->
         <button
           @click="handleNewChat"
-          class="btn-ghost"
+          class="btn-secondary header-action"
           :aria-label="t('newChat')"
           :title="t('newChat')"
         >
@@ -37,7 +31,6 @@
           <span class="btn-label">{{ t('newChat') }}</span>
         </button>
 
-        <!-- Gallery -->
         <button
           @click="$emit('toggle-gallery')"
           class="btn-icon"
@@ -47,7 +40,6 @@
           <ImageIcon :size="20" />
         </button>
 
-        <!-- Config -->
         <button
           @click="$emit('toggle-config')"
           class="btn-icon"
@@ -57,13 +49,8 @@
           <Settings :size="20" />
         </button>
 
-        <!-- Theme Toggle -->
         <ThemeToggle />
-
-        <!-- Export/Import -->
         <ExportImportPanel />
-
-        <!-- Clear History -->
         <button
           v-if="chatStore.messageCount > 0"
           @click="handleClearChat"
@@ -91,7 +78,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Menu, Sparkles, Plus, Settings, Trash2, ImageIcon } from 'lucide-vue-next'
+import { Menu, Plus, Settings, Trash2, ImageIcon } from 'lucide-vue-next'
 import ThemeToggle from './ThemeToggle.vue'
 import ExportImportPanel from '../Chat/ExportImportPanel.vue'
 import ConfirmModal from '../Common/ConfirmModal.vue'
@@ -153,12 +140,13 @@ async function confirmClearChat() {
 
 .header {
   height: var(--header-height);
-  background: var(--color-bg-primary);
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: 0;
   z-index: 30;
   flex-shrink: 0;
+  backdrop-filter: blur(14px);
 }
 
 .header-content {
@@ -166,7 +154,7 @@ async function confirmClearChat() {
   align-items: center;
   justify-content: space-between;
   height: 100%;
-  padding: 0 12px;
+  padding: 0 16px;
   max-width: 100%;
 }
 
@@ -180,40 +168,37 @@ async function confirmClearChat() {
 .logo-section {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.logo-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-md);
-  color: white;
-  flex-shrink: 0;
 }
 
 .logo-text {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--color-text-primary);
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
+}
+
+.logo-text-primary {
+  letter-spacing: 0;
+}
+
+.logo-text-secondary {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.btn-label {
-  display: none;
+.header-action {
+  padding-inline: 14px;
 }
 
 .btn-icon.danger:hover {
@@ -226,31 +211,16 @@ async function confirmClearChat() {
 }
 
 @media (min-width: 640px) {
-  .header-content {
-    padding: 0 16px;
-  }
-
   .header-left {
     gap: 12px;
   }
 
   .header-right {
-    gap: 4px;
-  }
-}
-
-@media (min-width: 768px) {
-  .btn-label {
-    display: inline;
+    gap: 8px;
   }
 
   .logo-text {
-    font-size: 18px;
-  }
-
-  .logo-icon {
-    width: 36px;
-    height: 36px;
+    font-size: 16px;
   }
 }
 </style>
