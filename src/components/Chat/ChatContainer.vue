@@ -62,22 +62,30 @@
 
       <!-- Loading State -->
       <Transition name="slide-up">
-        <div v-if="chatStore.isLoading" class="loading-indicator" role="status" :aria-label="t('generating')">
-          <div class="loading-content">
-            <div class="loading-spinner">
-              <div class="spinner-ring"></div>
+        <div
+          v-if="chatStore.isLoading"
+          class="loading-indicator"
+          role="status"
+          :aria-label="t('generating')"
+        >
+          <div class="loading-pill">
+            <div class="loading-content">
+              <div class="loading-spinner">
+                <div class="spinner-ring"></div>
+              </div>
+              <div class="loading-text-container">
+                <span class="loading-text">{{ loadingText }}</span>
+                <span class="loading-dots">{{ loadingDots }}</span>
+              </div>
             </div>
-            <div class="loading-text-container">
-              <span class="loading-text">{{ loadingText }}</span>
-              <span class="loading-dots">{{ loadingDots }}</span>
-            </div>
+            <button
+              @click="handleCancel"
+              class="cancel-pill"
+              type="button"
+            >
+              {{ t('cancel') }}
+            </button>
           </div>
-          <button
-            @click="handleCancel"
-            class="btn-secondary cancel-btn"
-          >
-            {{ t('cancel') }}
-          </button>
         </div>
       </Transition>
     </div>
@@ -359,32 +367,41 @@ onMounted(() => {
 /* Loading Indicator */
 .loading-indicator {
   display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.loading-pill {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 16px;
-  background: var(--color-bg-secondary);
+  gap: 10px;
+  width: auto;
+  max-width: min(100%, 360px);
+  padding: 10px 10px 10px 12px;
+  background: color-mix(in srgb, var(--color-bg-secondary) 92%, var(--color-bg-primary));
   border: 1px solid var(--color-border);
-  border-radius: 18px;
-  margin-top: 16px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
 }
 
 .loading-content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
 .loading-spinner {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   position: relative;
+  flex-shrink: 0;
 }
 
 .spinner-ring {
   width: 100%;
   height: 100%;
-  border: 2.5px solid var(--color-border);
+  border: 2px solid color-mix(in srgb, var(--color-border) 88%, transparent);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -399,22 +416,44 @@ onMounted(() => {
 .loading-text-container {
   display: flex;
   align-items: baseline;
+  min-width: 0;
 }
 
 .loading-text {
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  white-space: nowrap;
 }
 
 .loading-dots {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  min-width: 20px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  min-width: 16px;
 }
 
-.cancel-btn {
-  padding: 8px 16px;
-  font-size: 13px;
+.cancel-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 52px;
+  height: 32px;
+  padding: 0 12px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.cancel-pill:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-hover);
 }
 
 /* Transitions */
@@ -433,6 +472,10 @@ onMounted(() => {
 @media (max-width: 640px) {
   .messages-area {
     padding: 18px 16px 10px;
+  }
+
+  .loading-pill {
+    max-width: 100%;
   }
 
   .quick-start-grid {
