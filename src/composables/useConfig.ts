@@ -1,19 +1,20 @@
 import { useConfigStore } from '../stores/config'
 import { runtimeFetch } from '../platform/httpClient'
 import { DEFAULT_MODEL } from '../utils/constants'
+import type { ApiConfig } from '../types'
 
 export function useConfig() {
   const configStore = useConfigStore()
 
-  function testApiConnection(): Promise<{ success: boolean; message: string }> {
-    if (!configStore.apiConfig) {
+  function testApiConnection(config: ApiConfig | null = configStore.apiConfig): Promise<{ success: boolean; message: string }> {
+    if (!config) {
       return Promise.resolve({
         success: false,
         message: '请先配置 API 端点和密钥',
       })
     }
 
-    const { endpoint, apiKey } = configStore.apiConfig
+    const { endpoint, apiKey } = config
 
     if (!endpoint.trim() || !apiKey.trim()) {
       return Promise.resolve({

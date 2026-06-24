@@ -4,6 +4,7 @@ import { STORAGE_KEYS } from '../../utils/constants'
 
 const setMetadataValue = vi.fn<(...args: [string, unknown]) => Promise<void>>()
 const deleteUnreferencedLocalImages = vi.fn<(...args: [unknown[]]) => Promise<void>>()
+const resolveDisplayUrl = vi.fn(async (image: unknown) => image)
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => true,
@@ -18,6 +19,12 @@ vi.mock('../../platform/imageReferenceCleanup', () => ({
   deleteUnreferencedLocalImages,
 }))
 
+vi.mock('../../platform/imageRepository', () => ({
+  getImageRepository: () => ({
+    resolveDisplayUrl,
+  }),
+}))
+
 describe('chat store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -25,6 +32,7 @@ describe('chat store', () => {
     setMetadataValue.mockResolvedValue(undefined)
     deleteUnreferencedLocalImages.mockReset()
     deleteUnreferencedLocalImages.mockResolvedValue(undefined)
+    resolveDisplayUrl.mockClear()
     localStorage.clear()
   })
 
@@ -94,6 +102,44 @@ describe('chat store', () => {
 
     expect(deleteUnreferencedLocalImages).toHaveBeenCalledWith([
       expect.objectContaining({ localPath: 'images/image-1.png' }),
+    ])
+  })
+
+  it('passes replaced current chat images to local image cleanup during replace import', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+
+    store.addMessage({
+      type: 'assistant',
+      content: 'old generated',
+      status: 'success',
+      images: [{
+        id: 'old-image',
+        url: '',
+        localPath: 'images/old-image.png',
+        timestamp: 1,
+      }],
+    })
+    await store.flushHistorySave()
+    deleteUnreferencedLocalImages.mockClear()
+
+    await store.importMessages([{
+      id: 'new-message',
+      type: 'assistant',
+      content: 'new generated',
+      timestamp: 2,
+      status: 'success',
+      images: [{
+        id: 'new-image',
+        url: '',
+        localPath: 'images/new-image.png',
+        timestamp: 2,
+      }],
+    }], 'replace')
+
+    expect(deleteUnreferencedLocalImages).toHaveBeenCalledWith([
+      expect.objectContaining({ localPath: 'images/old-image.png' }),
     ])
   })
 })

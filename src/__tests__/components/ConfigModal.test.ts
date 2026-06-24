@@ -7,6 +7,9 @@ const mockState = vi.hoisted(() => ({
   success: vi.fn(),
   warning: vi.fn(),
   showError: vi.fn(),
+  saveConfig: vi.fn(),
+  clearConfig: vi.fn(),
+  testApiConnection: vi.fn(),
   getLocalImageStorageStats: vi.fn(),
   getLocalDataDirectory: vi.fn(),
   openLocalDataDirectory: vi.fn(),
@@ -25,10 +28,10 @@ vi.mock('../../composables/useConfig', () => ({
   useConfig: () => ({
     configStore: {
       isConfigured: false,
-      saveConfig: vi.fn(),
-      clearConfig: vi.fn(),
+      saveConfig: mockState.saveConfig,
+      clearConfig: mockState.clearConfig,
     },
-    testApiConnection: vi.fn(),
+    testApiConnection: mockState.testApiConnection,
     initializeConfig: () => ({
       endpoint: 'https://api.example.test',
       apiKey: 'key',
@@ -71,6 +74,12 @@ describe('ConfigModal desktop storage controls', () => {
     mockState.success.mockReset()
     mockState.warning.mockReset()
     mockState.showError.mockReset()
+    mockState.saveConfig.mockReset()
+    mockState.saveConfig.mockResolvedValue(undefined)
+    mockState.clearConfig.mockReset()
+    mockState.clearConfig.mockResolvedValue(undefined)
+    mockState.testApiConnection.mockReset()
+    mockState.testApiConnection.mockResolvedValue({ success: true, message: 'API 连接成功' })
     mockState.getLocalImageStorageStats.mockReset()
     mockState.getLocalImageStorageStats.mockResolvedValue({
       totalCount: 2,
@@ -142,5 +151,19 @@ describe('ConfigModal desktop storage controls', () => {
     expect(mockState.getLocalImageStorageStats).toHaveBeenCalledTimes(2)
     expect(mockState.getLocalDataDirectory).toHaveBeenCalledTimes(2)
     expect(document.body.textContent).toContain('/app-data/updated')
+  })
+
+  it('tests connection with local form values without saving config', async () => {
+    mount(ConfigModal, { attachTo: document.body })
+    await vi.dynamicImportSettled()
+
+    await triggerButtonByText('testConnection')
+
+    expect(mockState.saveConfig).not.toHaveBeenCalled()
+    expect(mockState.testApiConnection).toHaveBeenCalledWith({
+      endpoint: 'https://api.example.test',
+      apiKey: 'key',
+      model: 'gpt-image-2',
+    })
   })
 })

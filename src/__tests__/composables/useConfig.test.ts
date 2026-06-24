@@ -56,6 +56,25 @@ describe('useConfig', () => {
     })
   })
 
+  it('can test an unsaved config directly', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({ data: [] }))
+
+    const { testApiConnection } = useConfig()
+    const result = await testApiConnection({
+      endpoint: 'https://api.unsaved.test',
+      apiKey: 'sk-unsaved',
+      model: 'gpt-image-2',
+    })
+
+    expect(result).toEqual({ success: true, message: 'API 连接成功' })
+    expect(mockState.runtimeFetch).toHaveBeenCalledWith('https://api.unsaved.test/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer sk-unsaved',
+      },
+    })
+  })
+
   it('keeps existing connection error messages', async () => {
     mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
       error: { message: 'model endpoint unavailable' },

@@ -24,6 +24,11 @@ interface ZipBuildResult {
   missingImageCount: number
 }
 
+interface PreparedExportImage {
+  image: GeneratedImage
+  zipPath?: string
+}
+
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   return stripBase64FromMessages(messages).map(message => ({
     ...message,
@@ -64,7 +69,7 @@ function collectLocalImages(messages: ChatMessage[], imagesByPath: Map<string, G
 
 function rewriteImagePaths(
   messages: ChatMessage[],
-  imagePathMap: Map<string, string>,
+  preparedImages: Map<string, PreparedExportImage>,
 ): ChatMessage[] {
   return messages.map(message => {
     if (!message.images) return message
@@ -74,11 +79,19 @@ function rewriteImagePaths(
       images: message.images.map(image => {
         if (!image.localPath) return image
 
-        const localPath = imagePathMap.get(image.localPath) || image.localPath
+        const preparedImage = preparedImages.get(image.localPath)
+        if (!preparedImage?.zipPath) {
+          return {
+            ...image,
+            url: image.originalUrl || image.url,
+            localPath: undefined,
+          }
+        }
+
         return {
           ...image,
-          url: localPath,
-          localPath,
+          url: preparedImage.zipPath,
+          localPath: preparedImage.zipPath,
         }
       }),
     }
@@ -87,28 +100,22 @@ function rewriteImagePaths(
 
 async function addImagesToZip(
   zip: JSZip,
-  imagesByPath: Map<string, GeneratedImage>,
-  imagePathMap: Map<string, string>,
-): Promise<{ imageCount: number; missingImageCount: number }> {
+  preparedImages: Map<string, PreparedExportImage>,
+): Promise<void> {
   const repository = getImageRepository()
-  let imageCount = 0
-  let missingImageCount = 0
 
-  for (const [localPath, image] of imagesByPath) {
-    const zipPath = imagePathMap.get(localPath)
+  for (const preparedImage of preparedImages.values()) {
+    const { image, zipPath } = preparedImage
     if (!zipPath) continue
 
     try {
       const blob = await repository.readImageBlob(image)
       zip.file(zipPath, new Uint8Array(await blob.arrayBuffer()))
-      imageCount += 1
     } catch (error) {
-      missingImageCount += 1
+      preparedImage.zipPath = undefined
       console.warn('Failed to include local image in history export:', error)
     }
   }
-
-  return { imageCount, missingImageCount }
 }
 
 export async function buildDesktopHistoryExportZip(
@@ -125,27 +132,32 @@ export async function buildDesktopHistoryExportZip(
   )
 
   const imagesByPath = new Map<string, GeneratedImage>()
-  const imagePathMap = new Map<string, string>()
+  const preparedImages = new Map<string, PreparedExportImage>()
   const usedZipPaths = new Set<string>()
 
   collectLocalImages(currentMessages, imagesByPath)
   Object.values(historyMessages).forEach(messages => collectLocalImages(messages, imagesByPath))
 
-  imagesByPath.forEach((_image, localPath) => {
-    imagePathMap.set(localPath, uniqueZipImagePath(localPath, usedZipPaths))
+  imagesByPath.forEach((image, localPath) => {
+    preparedImages.set(localPath, {
+      image,
+      zipPath: uniqueZipImagePath(localPath, usedZipPaths),
+    })
   })
 
-  const imageStats = await addImagesToZip(zip, imagesByPath, imagePathMap)
+  await addImagesToZip(zip, preparedImages)
+  const imageCount = Array.from(preparedImages.values()).filter(item => item.zipPath).length
+  const missingImageCount = preparedImages.size - imageCount
   const data: DesktopHistoryExportData = {
     version: 2,
     exportedAt: input.exportedAt ?? Date.now(),
     kind: 'desktop-zip',
-    currentMessages: rewriteImagePaths(currentMessages, imagePathMap),
+    currentMessages: rewriteImagePaths(currentMessages, preparedImages),
     historyList,
     historyMessages: Object.fromEntries(
       Object.entries(historyMessages).map(([historyId, messages]) => [
         historyId,
-        rewriteImagePaths(messages, imagePathMap),
+        rewriteImagePaths(messages, preparedImages),
       ]),
     ),
   }
@@ -154,7 +166,8 @@ export async function buildDesktopHistoryExportZip(
 
   return {
     bytes: await zip.generateAsync({ type: 'uint8array' }),
-    ...imageStats,
+    imageCount,
+    missingImageCount,
   }
 }
 

@@ -75,14 +75,17 @@ export const useChatStore = defineStore('chat', () => {
       : reviveStoredImageUrls(normalizedMessages)
 
     if (mode === 'replace') {
+      const removedImages = messages.value.flatMap(message => message.images || [])
       messages.value = migratedMessages
+      await saveHistory()
+      await deleteUnreferencedLocalImages(removedImages)
     } else {
       // Merge: add only messages with new IDs
       const existingIds = new Set(messages.value.map(m => m.id))
       const uniqueNew = migratedMessages.filter(m => !existingIds.has(m.id))
       messages.value.push(...uniqueNew)
+      await saveHistory()
     }
-    await saveHistory()
   }
 
   async function updateMessage(

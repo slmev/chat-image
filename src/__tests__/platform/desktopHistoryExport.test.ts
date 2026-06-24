@@ -163,7 +163,8 @@ describe('desktop history ZIP export', () => {
 
     expect(result.imageCount).toBe(0)
     expect(result.missingImageCount).toBe(1)
-    expect(data.currentMessages[0].images?.[0].localPath).toBe('images/missing.png')
+    expect(data.currentMessages[0].images?.[0].localPath).toBeUndefined()
+    expect(data.currentMessages[0].images?.[0].url).toBe('blob:image-missing')
     expect(zip.file('images/missing.png')).toBeNull()
     warn.mockRestore()
   })

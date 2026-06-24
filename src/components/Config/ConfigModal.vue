@@ -357,18 +357,14 @@ async function handleTest() {
   testResult.value = null
 
   try {
-    await configStore.saveConfig(localConfig.value)
+    const result = await testApiConnection(localConfig.value)
+    testResult.value = result
   } catch (error) {
-    console.error('Save config failed:', error)
+    console.error('API connection test failed:', error)
     testResult.value = { success: false, message: t('unknownError') }
+  } finally {
     isTesting.value = false
-    return
   }
-
-  const result = await testApiConnection()
-  testResult.value = result
-
-  isTesting.value = false
 }
 
 async function handleClear() {
