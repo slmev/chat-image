@@ -123,6 +123,8 @@ export default {
   clearHistoryConfirm: '确定要清空所有历史记录吗？此操作不可恢复。',
   favorite: '收藏',
   unfavorite: '取消收藏',
+  renameHistory: '重命名',
+  renameHistoryTitle: '对话标题',
   delete: '删除',
   deleteMessage: '删除消息',
   deleteMessageConfirm: '确定要删除这条消息吗？此操作不可恢复。',

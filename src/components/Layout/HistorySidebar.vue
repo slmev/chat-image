@@ -67,11 +67,31 @@
                   <MessageSquare :size="16" />
                 </div>
                 <div class="history-item-info">
-                  <p class="history-item-title">{{ item.title }}</p>
+                  <input
+                    v-if="editingHistoryId === item.id"
+                    v-model="editingTitle"
+                    type="text"
+                    class="history-rename-input"
+                    :aria-label="t('renameHistoryTitle')"
+                    autofocus
+                    @click.stop
+                    @keydown.enter.prevent="commitRename(item.id)"
+                    @keydown.esc.prevent="cancelRename"
+                    @blur="commitRename(item.id)"
+                  />
+                  <p v-else class="history-item-title">{{ item.title }}</p>
                   <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
                 </div>
               </div>
               <div class="history-item-actions">
+                <button
+                  class="action-btn"
+                  :aria-label="t('renameHistory')"
+                  :title="t('renameHistory')"
+                  @click.stop="startRename(item)"
+                >
+                  <Pencil :size="14" />
+                </button>
                 <button
                   @click.stop="toggleFavorite(item.id)"
                   :class="['action-btn', { 'is-favorite': item.isFavorite }]"
@@ -111,11 +131,31 @@
                   <Star :size="16" fill="currentColor" />
                 </div>
                 <div class="history-item-info">
-                  <p class="history-item-title">{{ item.title }}</p>
+                  <input
+                    v-if="editingHistoryId === item.id"
+                    v-model="editingTitle"
+                    type="text"
+                    class="history-rename-input"
+                    :aria-label="t('renameHistoryTitle')"
+                    autofocus
+                    @click.stop
+                    @keydown.enter.prevent="commitRename(item.id)"
+                    @keydown.esc.prevent="cancelRename"
+                    @blur="commitRename(item.id)"
+                  />
+                  <p v-else class="history-item-title">{{ item.title }}</p>
                   <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
                 </div>
               </div>
               <div class="history-item-actions">
+                <button
+                  class="action-btn"
+                  :aria-label="t('renameHistory')"
+                  :title="t('renameHistory')"
+                  @click.stop="startRename(item)"
+                >
+                  <Pencil :size="14" />
+                </button>
                 <button
                   @click.stop="toggleFavorite(item.id)"
                   class="action-btn is-favorite"
@@ -178,6 +218,7 @@ import {
   Star,
   StarOff,
   MessageSquare,
+  Pencil,
   Trash2,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
@@ -198,13 +239,22 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { historyList, searchHistory, deleteHistoryItem, clearHistory, toggleHistoryFavorite } = useHistory()
+const {
+  historyList,
+  searchHistory,
+  deleteHistoryItem,
+  clearHistory,
+  toggleHistoryFavorite,
+  renameHistoryItem,
+} = useHistory()
 const { clearChat, loadChat } = useChat()
 
 const searchQuery = ref('')
 const activeTab = ref<'history' | 'favorites'>('history')
 const currentChatId = ref<string | null>(null)
 const showClearConfirm = ref(false)
+const editingHistoryId = ref<string | null>(null)
+const editingTitle = ref('')
 
 const tabs = computed(() => [
   {
@@ -266,6 +316,30 @@ async function toggleFavorite(id: string) {
     await toggleHistoryFavorite(id)
   } catch (error) {
     console.error('Toggle history favorite failed:', error)
+  }
+}
+
+function startRename(item: ChatHistory) {
+  editingHistoryId.value = item.id
+  editingTitle.value = item.title
+}
+
+function cancelRename() {
+  editingHistoryId.value = null
+  editingTitle.value = ''
+}
+
+async function commitRename(id: string) {
+  if (editingHistoryId.value !== id) return
+
+  const nextTitle = editingTitle.value.trim()
+  cancelRename()
+  if (!nextTitle) return
+
+  try {
+    await renameHistoryItem(id, nextTitle)
+  } catch (error) {
+    console.error('Rename history failed:', error)
   }
 }
 
@@ -458,6 +532,11 @@ async function confirmClearAll() {
   border-color: var(--color-border);
 }
 
+.history-item:focus-within {
+  background: var(--color-bg-primary);
+  border-color: var(--color-border);
+}
+
 .history-item.active {
   background: var(--color-bg-primary);
   border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
@@ -508,6 +587,21 @@ async function confirmClearAll() {
   text-overflow: ellipsis;
 }
 
+.history-rename-input {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 3px 7px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 7px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
 .history-item-time {
   font-size: 11px;
   color: var(--color-text-tertiary);
@@ -522,6 +616,10 @@ async function confirmClearAll() {
 }
 
 .history-item:hover .history-item-actions {
+  opacity: 1;
+}
+
+.history-item:focus-within .history-item-actions {
   opacity: 1;
 }
 

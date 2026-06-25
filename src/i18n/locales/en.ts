@@ -123,6 +123,8 @@ export default {
   clearHistoryConfirm: 'Are you sure you want to clear all history? This action cannot be undone.',
   favorite: 'Favorite',
   unfavorite: 'Unfavorite',
+  renameHistory: 'Rename',
+  renameHistoryTitle: 'Conversation title',
   delete: 'Delete',
   deleteMessage: 'Delete Message',
   deleteMessageConfirm: 'Delete this message? This action cannot be undone.',

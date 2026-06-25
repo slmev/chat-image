@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useChat } from '../../composables/useChat'
 import { useHistory } from '../../composables/useHistory'
 import { useConfigStore } from '../../stores/config'
+import { useChatStore } from '../../stores/chat'
 import type { ChatHistory, ChatMessage, GeneratedImage, GenerationOptions } from '../../types'
 
 const HISTORY_LIST_KEY = 'chat-image-history-list'
@@ -164,5 +165,34 @@ describe('history duplicate prevention', () => {
     ])
     expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + olderDuplicate.id)).toBeNull()
     expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id)).not.toBeNull()
+  })
+
+  it('renames a saved history item and persists the title', async () => {
+    const savedHistory = history('history-1', { title: 'Original title' })
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+
+    const { historyList, renameHistoryItem } = useHistory()
+    await flushPromises()
+    await renameHistoryItem(savedHistory.id, '  Renamed title  ')
+
+    expect(historyList.value[0].title).toBe('Renamed title')
+    expect(readHistoryList()[0].title).toBe('Renamed title')
+  })
+
+  it('keeps a renamed title when saving the same history again', async () => {
+    const savedHistory = history('history-1', { title: 'Renamed title' })
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    await useChatStore().importMessages([
+      {
+        ...message('user-message'),
+        type: 'user',
+        content: 'first generated prompt',
+      },
+      message('assistant-message'),
+    ], 'replace')
+
+    await useHistory().saveCurrentChat(savedHistory.id)
+
+    expect(readHistoryList()[0].title).toBe('Renamed title')
   })
 })

@@ -436,10 +436,10 @@ export function useHistory() {
     if (chatStore.messages.length === 0) return null
 
     const firstUserMessage = chatStore.messages.find(m => m.type === 'user')
-    const title = firstUserMessage?.content.slice(0, 50) || t('newChat')
     const existingHistory = existingHistoryId
       ? historyList.value.find(item => item.id === existingHistoryId)
       : undefined
+    const title = existingHistory?.title || firstUserMessage?.content.slice(0, 50) || t('newChat')
     const historyId = existingHistory?.id || generateId()
 
     const history: ChatHistory = {
@@ -513,6 +513,23 @@ export function useHistory() {
         item.isFavorite = previousValue
         throw error
       }
+    }
+  }
+
+  async function renameHistoryItem(id: string, title: string): Promise<void> {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return
+
+    const item = historyList.value.find(h => h.id === id)
+    if (!item || item.title === trimmedTitle) return
+
+    const previousTitle = item.title
+    item.title = trimmedTitle
+    try {
+      await setHistoryList(historyList.value)
+    } catch (error) {
+      item.title = previousTitle
+      throw error
     }
   }
 
@@ -650,6 +667,7 @@ export function useHistory() {
     deleteHistoryItem,
     clearHistory,
     toggleHistoryFavorite,
+    renameHistoryItem,
     deleteMessage,
     toggleFavorite,
     exportHistory,
