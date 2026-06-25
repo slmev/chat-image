@@ -27,6 +27,13 @@ export const useChatStore = defineStore('chat', () => {
     return JSON.parse(JSON.stringify(rawMessages)) as ChatMessage[]
   }
 
+  function collectMessageImagesForCleanup(chatMessages: ChatMessage[]): GeneratedImage[] {
+    return chatMessages.flatMap(message => [
+      ...(message.attachments || []),
+      ...(message.images || []),
+    ])
+  }
+
   // Computed
   const messageCount = computed(() => messages.value.length)
   const lastMessage = computed(() => messages.value[messages.value.length - 1] || null)
@@ -49,7 +56,7 @@ export const useChatStore = defineStore('chat', () => {
   async function deleteMessage(messageId: string): Promise<void> {
     const index = messages.value.findIndex((msg) => msg.id === messageId)
     if (index !== -1) {
-      const removedImages = messages.value[index].images || []
+      const removedImages = collectMessageImagesForCleanup([messages.value[index]])
       messages.value.splice(index, 1)
       await saveHistory()
       await deleteUnreferencedLocalImages(removedImages)
@@ -75,7 +82,7 @@ export const useChatStore = defineStore('chat', () => {
       : reviveStoredImageUrls(normalizedMessages)
 
     if (mode === 'replace') {
-      const removedImages = messages.value.flatMap(message => message.images || [])
+      const removedImages = collectMessageImagesForCleanup(messages.value)
       messages.value = migratedMessages
       await saveHistory()
       await deleteUnreferencedLocalImages(removedImages)
@@ -118,7 +125,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function clearMessages(): Promise<void> {
     await flushHistorySave()
-    const removedImages = messages.value.flatMap(message => message.images || [])
+    const removedImages = collectMessageImagesForCleanup(messages.value)
     messages.value = []
     clearChatHistory()
     if (isTauriRuntime()) {

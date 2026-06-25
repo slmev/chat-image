@@ -1,6 +1,7 @@
 import { useConfigStore } from '../stores/config'
 import { createImageGenerationService } from '../services/api'
-import type { GenerationOptions, GeneratedImage } from '../types'
+import type { ChatAttachment, GenerationOptions, GeneratedImage } from '../types'
+import { getImageRepository } from '../platform/imageRepository'
 import { persistGeneratedImagesFromResponse } from '../utils/images'
 import i18n from '../i18n'
 
@@ -13,7 +14,8 @@ export function useImageGeneration() {
 
   async function generateImage(
     prompt: string,
-    options: GenerationOptions
+    options: GenerationOptions,
+    attachments: ChatAttachment[] = [],
   ): Promise<GeneratedImage[]> {
     if (!configStore.apiConfig) {
       throw new Error(t('configureApiFirst'))
@@ -28,11 +30,23 @@ export function useImageGeneration() {
       : prompt
 
     try {
-      const response = await currentService.generateImage(finalPrompt, {
-        size: options.size,
-        quality: options.quality,
-        n: options.n,
-      })
+      const repository = getImageRepository()
+      const response = attachments.length > 0
+        ? await currentService.editImage({
+            image: await Promise.all(
+              attachments.map(attachment => repository.readImageBlob(attachment)),
+            ),
+            prompt: finalPrompt,
+            size: options.size,
+            quality: options.quality,
+            n: options.n,
+            response_format: 'b64_json',
+          })
+        : await currentService.generateImage(finalPrompt, {
+            size: options.size,
+            quality: options.quality,
+            n: options.n,
+          })
 
       const images: GeneratedImage[] = await persistGeneratedImagesFromResponse(response, {
         sourcePrompt: finalPrompt,

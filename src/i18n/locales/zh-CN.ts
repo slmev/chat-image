@@ -26,6 +26,12 @@ export default {
 
   // ChatInput
   promptTemplates: '提示词模板',
+  attachImages: '添加参考图',
+  selectedAttachments: '已选择的参考图',
+  removeAttachment: '移除参考图',
+  attachmentInvalidType: '不支持 {name}，请选择 PNG、JPEG 或 WebP 图片',
+  attachmentTooLarge: '{name} 超过 10MB',
+  attachmentLimit: '最多添加 {count} 张参考图',
   inputPlaceholder: '输入图片描述，例如：一只可爱的猫咪在花园里玩耍',
   imageDescription: '图片描述',
   send: '发送',

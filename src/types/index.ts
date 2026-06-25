@@ -48,6 +48,7 @@ export interface ChatMessage {
   type: MessageType
   content: string
   timestamp: number
+  attachments?: ChatAttachment[]
   images?: GeneratedImage[]
   generationSize?: GenerationOptions['size']
   status: 'pending' | 'success' | 'error'
@@ -66,6 +67,10 @@ export interface GeneratedImage {
   timestamp: number
   sourcePrompt?: string
   sourceMessageId?: string
+}
+
+export interface ChatAttachment extends GeneratedImage {
+  name: string
 }
 
 export interface GalleryImageItem {
@@ -129,10 +134,13 @@ export interface ChatHistory {
 
 // 图片编辑类型
 export interface ImageEditRequest {
-  image: File | Blob
+  image: File | Blob | Array<File | Blob>
   mask?: File | Blob
   prompt: string
   size?: '1024x1024' | '1792x1024' | '1024x1792'
+  quality?: 'standard' | 'hd'
+  n?: number
+  response_format?: 'b64_json'
 }
 
 export interface VariationOptions {

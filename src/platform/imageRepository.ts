@@ -7,6 +7,7 @@ export interface SaveGeneratedImageInput {
   id: string
   url?: string
   b64Json?: string
+  mimeType?: string
   timestamp: number
   sourcePrompt?: string
   sourceMessageId?: string

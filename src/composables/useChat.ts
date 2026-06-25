@@ -2,7 +2,8 @@ import { useChatStore } from '../stores/chat'
 import { useImageGeneration } from '../composables/useImageGeneration'
 import { useConfigStore } from '../stores/config'
 import { useHistory } from '../composables/useHistory'
-import type { GenerationOptions } from '../types'
+import type { ChatAttachment, GenerationOptions } from '../types'
+import { persistChatAttachments } from '../utils/images'
 import i18n from '../i18n'
 
 // 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
@@ -17,7 +18,8 @@ export function useChat() {
 
   async function sendMessage(
     content: string,
-    options: GenerationOptions
+    options: GenerationOptions,
+    files: File[] = [],
   ): Promise<void> {
     if (!configStore.isConfigured) {
       throw new Error(t('configureApiFirst'))
@@ -27,10 +29,15 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
+    const attachments = files.length > 0
+      ? await persistChatAttachments(files, { sourcePrompt: content })
+      : []
+
     // 添加用户消息
     chatStore.addMessage({
       type: 'user',
       content,
+      attachments: attachments.length > 0 ? attachments : undefined,
       status: 'success',
     })
 
@@ -46,7 +53,7 @@ export function useChat() {
 
     try {
       // 生成图片
-      const images = await generateImage(content, options)
+      const images = await generateImage(content, options, attachments)
 
       // 更新助手消息
       await chatStore.addImagesToMessage(assistantMessage.id, images)
@@ -65,7 +72,8 @@ export function useChat() {
   async function retryMessage(
     messageId: string,
     content: string,
-    options: GenerationOptions
+    options: GenerationOptions,
+    attachments: ChatAttachment[] = [],
   ): Promise<void> {
     if (!configStore.isConfigured) {
       throw new Error(t('configureApiFirst'))
@@ -85,7 +93,7 @@ export function useChat() {
     chatStore.setLoading(true)
 
     try {
-      const images = await generateImage(content, options)
+      const images = await generateImage(content, options, attachments)
       await chatStore.addImagesToMessage(messageId, images)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')

@@ -98,7 +98,43 @@ describe('ImageGenerationService', () => {
     expect(body.get('mask')).toBeInstanceOf(Blob)
     expect(body.get('prompt')).toBe('replace background')
     expect(body.get('model')).toBe('gpt-image-2')
+    expect(body.get('n')).toBe('1')
+    expect(body.get('size')).toBe('1024x1024')
     expect(body.get('response_format')).toBe('b64_json')
+  })
+
+  it('sends multiple image edit inputs as repeated form data fields', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
+      created: 1,
+      data: [{ b64_json: 'edited-image' }],
+    }))
+    const firstImage = new Blob(['first'], { type: 'image/png' })
+    const secondImage = new Blob(['second'], { type: 'image/webp' })
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    await service.editImage({
+      image: [firstImage, secondImage],
+      prompt: 'use both references',
+      size: '1792x1024',
+      quality: 'hd',
+      n: 3,
+    })
+
+    const init = mockState.runtimeFetch.mock.calls[0][1] as RequestInit
+    const body = init.body as FormData
+
+    const images = body.getAll('image')
+    expect(images).toHaveLength(2)
+    expect(images[0]).toBeInstanceOf(Blob)
+    expect(images[1]).toBeInstanceOf(Blob)
+    expect(body.get('prompt')).toBe('use both references')
+    expect(body.get('size')).toBe('1792x1024')
+    expect(body.get('quality')).toBe('hd')
+    expect(body.get('n')).toBe('3')
   })
 
   it('maps abort errors to the existing cancellation message', async () => {

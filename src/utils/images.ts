@@ -1,4 +1,4 @@
-import type { GeneratedImage, ImageGenerationResponse } from '../types'
+import type { ChatAttachment, GeneratedImage, ImageGenerationResponse } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
 import { createBlobUrlFromBase64 } from './imagePersistence'
 import { generateId } from './storage'
@@ -82,5 +82,44 @@ export async function persistGeneratedImagesFromResponse(
       sourcePrompt: options.sourcePrompt,
       sourceMessageId: options.sourceMessageId,
     })
+  }))
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize))
+  }
+
+  return btoa(binary)
+}
+
+export async function persistChatAttachments(
+  files: File[],
+  options: {
+    sourcePrompt?: string
+  } = {},
+): Promise<ChatAttachment[]> {
+  const repository = getImageRepository()
+
+  return Promise.all(files.map(async (file, index) => {
+    const mimeType = file.type || 'image/png'
+    const savedImage = await repository.saveGeneratedImage({
+      id: `attachment-${generateId()}`,
+      b64Json: await blobToBase64(file),
+      mimeType,
+      timestamp: Date.now() + index,
+      sourcePrompt: options.sourcePrompt,
+    })
+
+    return {
+      ...savedImage,
+      name: file.name,
+      mimeType,
+      byteSize: file.size || savedImage.byteSize,
+    }
   }))
 }

@@ -39,6 +39,11 @@ const EMPTY_STATS: LocalImageStorageStats = {
 function collectLocalPaths(messages: ChatMessage[]): Set<string> {
   const paths = new Set<string>()
   for (const message of messages) {
+    for (const attachment of message.attachments || []) {
+      if (attachment.localPath) {
+        paths.add(attachment.localPath)
+      }
+    }
     for (const image of message.images || []) {
       if (image.localPath) {
         paths.add(image.localPath)

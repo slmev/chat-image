@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
+import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
 
 const mkdir = vi.fn()
 const writeFile = vi.fn()
@@ -31,13 +31,25 @@ function image(id: string, localPath: string): GeneratedImage {
   }
 }
 
-function message(id: string, images: GeneratedImage[] = []): ChatMessage {
+function attachment(id: string, localPath: string): ChatAttachment {
+  return {
+    ...image(id, localPath),
+    name: `${id}.png`,
+  }
+}
+
+function message(
+  id: string,
+  images: GeneratedImage[] = [],
+  attachments: ChatAttachment[] = [],
+): ChatMessage {
   return {
     id,
     type: 'assistant',
     content: 'generated',
     timestamp: 1,
     status: 'success',
+    attachments,
     images,
   }
 }
@@ -123,6 +135,34 @@ describe('desktop history ZIP import', () => {
       'images/import-1000-1-history.png',
     ])
     expect(writeFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('imports attachment image files and preserves attachment metadata', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+
+    const result = await importDesktopHistoryZip(await zipFile(exportData({
+      currentMessages: [
+        message('current-message', [], [
+          attachment('reference-image', 'images/reference.webp'),
+        ]),
+      ],
+    }), {
+      'images/reference.webp': 'reference-bytes',
+    }), { now: 1000 })
+
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error(result.message)
+
+    expect(result.data.currentMessages[0].attachments?.[0]).toMatchObject({
+      id: 'reference-image',
+      name: 'reference-image.png',
+      url: 'images/import-1000-0-reference.webp',
+      localPath: 'images/import-1000-0-reference.webp',
+      byteSize: 15,
+    })
+    expect(result.data.writtenImagePaths).toEqual([
+      'images/import-1000-0-reference.webp',
+    ])
   })
 
   it('fails without writing when history.json is missing', async () => {

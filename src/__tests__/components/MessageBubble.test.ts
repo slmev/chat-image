@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import MessageBubble from '../../components/Chat/MessageBubble.vue'
-import type { ChatMessage, GeneratedImage } from '../../types'
+import { useChatStore } from '../../stores/chat'
+import type { ChatAttachment, ChatMessage, GeneratedImage } from '../../types'
 
 const mockState = vi.hoisted(() => ({
   retryMessage: vi.fn(),
@@ -43,6 +44,16 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   return {
     id: 'image-1',
     url: 'blob:image-1',
+    timestamp: 1,
+    ...overrides,
+  }
+}
+
+function attachment(overrides: Partial<ChatAttachment> = {}): ChatAttachment {
+  return {
+    id: 'attachment-1',
+    name: 'reference.png',
+    url: 'blob:reference',
     timestamp: 1,
     ...overrides,
   }
@@ -128,5 +139,55 @@ describe('MessageBubble generation display', () => {
     expect(wrapper.text()).not.toContain('图片已生成')
     expect(wrapper.find('.assistant-bubble').exists()).toBe(false)
     expect(wrapper.find('.image-preview-stub').exists()).toBe(true)
+  })
+
+  it('renders user message attachments below the message bubble', () => {
+    const wrapper = mountBubble(message({
+      type: 'user',
+      content: 'use these references',
+      status: 'success',
+      attachments: [
+        attachment({ id: 'attachment-1', name: 'first.png', url: 'blob:first' }),
+        attachment({ id: 'attachment-2', name: 'second.webp', url: 'blob:second' }),
+      ],
+    }))
+
+    const thumbnails = wrapper.findAll('.user-attachment-image')
+    expect(thumbnails).toHaveLength(2)
+    expect(thumbnails[0].attributes('src')).toBe('blob:first')
+    expect(thumbnails[0].attributes('alt')).toBe('first.png')
+  })
+
+  it('retries failed assistant messages with the previous user attachments', async () => {
+    const reference = attachment()
+    mockState.retryMessage.mockResolvedValueOnce(undefined)
+    const chatStore = useChatStore()
+    const userMessage = chatStore.addMessage({
+      type: 'user',
+      content: 'redesign this room',
+      status: 'success',
+      attachments: [reference],
+    })
+    const assistantMessage = chatStore.addMessage({
+      type: 'assistant',
+      content: '生成失败',
+      status: 'error',
+      error: '生成失败',
+    })
+
+    const wrapper = mountBubble(assistantMessage)
+    await wrapper.find('.retry-btn').trigger('click')
+
+    expect(userMessage.attachments).toEqual([reference])
+    expect(mockState.retryMessage).toHaveBeenCalledWith(
+      assistantMessage.id,
+      'redesign this room',
+      {
+        size: '1024x1024',
+        quality: 'standard',
+        n: 1,
+      },
+      [reference],
+    )
   })
 })

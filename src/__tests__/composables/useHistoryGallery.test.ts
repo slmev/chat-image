@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useHistory } from '../../composables/useHistory'
 import { useChatStore } from '../../stores/chat'
-import type { ChatHistory, ChatMessage, GeneratedImage } from '../../types'
+import type { ChatAttachment, ChatHistory, ChatMessage, GeneratedImage } from '../../types'
 
 const HISTORY_LIST_KEY = 'chat-image-history-list'
 const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
@@ -31,6 +31,16 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
     url: 'blob:image-1',
     timestamp: 1,
     sourcePrompt: 'a quiet lake',
+    ...overrides,
+  }
+}
+
+function attachment(overrides: Partial<ChatAttachment> = {}): ChatAttachment {
+  return {
+    id: 'attachment-1',
+    name: 'reference.png',
+    url: 'blob:reference',
+    timestamp: 1,
     ...overrides,
   }
 }
@@ -78,6 +88,14 @@ describe('useHistory gallery images', () => {
     })
 
     await useChatStore().importMessages([
+      {
+        id: 'user-reference-message',
+        type: 'user',
+        content: 'use this reference',
+        timestamp: 1,
+        status: 'success',
+        attachments: [attachment({ id: 'reference-only' })],
+      },
       message('current-message', [sharedImage], { isFavorite: true }),
     ], 'replace')
 

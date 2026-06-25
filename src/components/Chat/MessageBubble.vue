@@ -2,11 +2,30 @@
   <div :class="messageClasses" class="message-wrapper">
     <!-- User Message -->
     <div v-if="message.type === 'user'" class="user-message">
-      <div class="user-bubble">
-        <p v-if="highlightedContent" class="user-text"><template v-for="(part, i) in highlightedContent" :key="i">{{ part }}</template></p>
-        <p v-else class="user-text">{{ message.content }}</p>
-        <div v-if="message.isFavorite" class="favorite-badge">
-          <Star :size="12" fill="currentColor" />
+      <div class="user-content">
+        <div class="user-bubble">
+          <p v-if="highlightedContent" class="user-text"><template v-for="(part, i) in highlightedContent" :key="i">{{ part }}</template></p>
+          <p v-else class="user-text">{{ message.content }}</p>
+          <div v-if="message.isFavorite" class="favorite-badge">
+            <Star :size="12" fill="currentColor" />
+          </div>
+        </div>
+        <div
+          v-if="hasAttachments"
+          class="user-attachments"
+          :class="`attachment-cols-${Math.min(message.attachments?.length || 0, 2)}`"
+        >
+          <div
+            v-for="attachment in message.attachments || []"
+            :key="attachment.id"
+            class="user-attachment"
+          >
+            <img
+              :src="attachment.url"
+              :alt="attachment.name"
+              class="user-attachment-image"
+            />
+          </div>
         </div>
       </div>
       <MessageActions
@@ -136,7 +155,7 @@
 import { ref, computed } from 'vue'
 import { Star, AlertCircle, RefreshCw, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
-import type { ChatMessage, GeneratedImage, ImageGenerationResponse } from '../../types'
+import type { ChatAttachment, ChatMessage, GeneratedImage, ImageGenerationResponse } from '../../types'
 import { highlightText } from '../../utils/highlight'
 import ImagePreview from './ImagePreview.vue'
 import MessageActions from './MessageActions.vue'
@@ -187,6 +206,7 @@ const highlightedContent = computed(() => {
 })
 
 const hasImages = computed(() => !!props.message.images && props.message.images.length > 0)
+const hasAttachments = computed(() => !!props.message.attachments && props.message.attachments.length > 0)
 
 const placeholderAspectRatio = computed(() => {
   switch (props.message.generationSize) {
@@ -225,11 +245,13 @@ async function handleRetry() {
     const messages = chatStore.messages
     const currentIndex = messages.findIndex(m => m.id === props.message.id)
     let userPrompt = ''
+    let attachments: ChatAttachment[] = []
 
     // 向前查找最近的用户消息
     for (let i = currentIndex - 1; i >= 0; i--) {
       if (messages[i].type === 'user') {
         userPrompt = messages[i].content
+        attachments = messages[i].attachments || []
         break
       }
     }
@@ -239,11 +261,16 @@ async function handleRetry() {
       return
     }
 
-    await retryMessage(props.message.id, userPrompt, {
-      size: '1024x1024',
-      quality: 'standard',
-      n: 1,
-    })
+    await retryMessage(
+      props.message.id,
+      userPrompt,
+      {
+        size: '1024x1024',
+        quality: 'standard',
+        n: 1,
+      },
+      attachments,
+    )
   } catch (err) {
     showError(t('retryFailed', {
       message: err instanceof Error ? err.message : t('unknownError'),
@@ -367,6 +394,14 @@ async function handleEditResult(response: ImageGenerationResponse) {
   max-width: min(82%, 760px);
 }
 
+.user-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 .user-bubble {
   position: relative;
   padding: 12px 16px;
@@ -395,6 +430,37 @@ async function handleEditResult(response: ImageGenerationResponse) {
   border-radius: 50%;
   color: white;
   box-shadow: var(--shadow-sm);
+}
+
+.user-attachments {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.attachment-cols-1 {
+  grid-template-columns: 1fr;
+}
+
+.attachment-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.user-attachment {
+  width: 112px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.user-attachment-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 /* Assistant Message */
@@ -611,6 +677,10 @@ async function handleEditResult(response: ImageGenerationResponse) {
 
   .image-grid {
     max-width: 100%;
+  }
+
+  .user-attachment {
+    width: 92px;
   }
 
   .grid-cols-2 {

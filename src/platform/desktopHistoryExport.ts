@@ -32,6 +32,7 @@ interface PreparedExportImage {
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   return stripBase64FromMessages(messages).map(message => ({
     ...message,
+    attachments: message.attachments?.map(attachment => ({ ...attachment })),
     images: message.images?.map(image => ({ ...image })),
   }))
 }
@@ -59,6 +60,11 @@ function uniqueZipImagePath(localPath: string, usedPaths: Set<string>): string {
 
 function collectLocalImages(messages: ChatMessage[], imagesByPath: Map<string, GeneratedImage>): void {
   messages.forEach(message => {
+    message.attachments?.forEach(attachment => {
+      if (attachment.localPath && !imagesByPath.has(attachment.localPath)) {
+        imagesByPath.set(attachment.localPath, attachment)
+      }
+    })
     message.images?.forEach(image => {
       if (image.localPath && !imagesByPath.has(image.localPath)) {
         imagesByPath.set(image.localPath, image)
@@ -67,33 +73,41 @@ function collectLocalImages(messages: ChatMessage[], imagesByPath: Map<string, G
   })
 }
 
+function rewriteImageList<T extends GeneratedImage>(
+  images: T[] | undefined,
+  preparedImages: Map<string, PreparedExportImage>,
+): T[] | undefined {
+  return images?.map(image => {
+    if (!image.localPath) return image
+
+    const preparedImage = preparedImages.get(image.localPath)
+    if (!preparedImage?.zipPath) {
+      return {
+        ...image,
+        url: image.originalUrl || image.url,
+        localPath: undefined,
+      }
+    }
+
+    return {
+      ...image,
+      url: preparedImage.zipPath,
+      localPath: preparedImage.zipPath,
+    }
+  })
+}
+
 function rewriteImagePaths(
   messages: ChatMessage[],
   preparedImages: Map<string, PreparedExportImage>,
 ): ChatMessage[] {
   return messages.map(message => {
-    if (!message.images) return message
+    if (!message.images && !message.attachments) return message
 
     return {
       ...message,
-      images: message.images.map(image => {
-        if (!image.localPath) return image
-
-        const preparedImage = preparedImages.get(image.localPath)
-        if (!preparedImage?.zipPath) {
-          return {
-            ...image,
-            url: image.originalUrl || image.url,
-            localPath: undefined,
-          }
-        }
-
-        return {
-          ...image,
-          url: preparedImage.zipPath,
-          localPath: preparedImage.zipPath,
-        }
-      }),
+      attachments: rewriteImageList(message.attachments, preparedImages),
+      images: rewriteImageList(message.images, preparedImages),
     }
   })
 }

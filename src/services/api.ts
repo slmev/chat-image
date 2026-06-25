@@ -93,16 +93,22 @@ export class ImageGenerationService {
     this.abortController = new AbortController()
 
     const formData = new FormData()
-    formData.append('image', request.image)
+    const images = Array.isArray(request.image) ? request.image : [request.image]
+    images.forEach(image => {
+      formData.append('image', image)
+    })
     if (request.mask) {
       formData.append('mask', request.mask)
     }
     formData.append('prompt', request.prompt)
     formData.append('model', this.config.model)
-    formData.append('n', '1')
-    formData.append('response_format', 'b64_json')
+    formData.append('n', String(request.n ?? 1))
+    formData.append('response_format', request.response_format ?? 'b64_json')
     if (request.size) {
       formData.append('size', request.size)
+    }
+    if (request.quality) {
+      formData.append('quality', request.quality)
     }
 
     try {

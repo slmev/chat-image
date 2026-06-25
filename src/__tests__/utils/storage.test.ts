@@ -125,6 +125,14 @@ describe('storage utils', () => {
         content: '图片已生成',
         timestamp: Date.now(),
         status: 'success',
+        attachments: [{
+          id: 'attachment-1',
+          name: 'reference.webp',
+          url: 'https://example.com/reference.webp',
+          base64: btoa('webp'),
+          mimeType: 'image/webp',
+          timestamp: Date.now(),
+        }],
         images: [{
           id: 'image-1',
           url: 'https://example.com/image.png',
@@ -137,11 +145,16 @@ describe('storage utils', () => {
       setChatHistory(messages)
 
       const restored = getChatHistory()
+      expect(restored[0].attachments?.[0]).toMatchObject({
+        url: 'blob:restored-image',
+        base64: btoa('webp'),
+        name: 'reference.webp',
+      })
       expect(restored[0].images?.[0]).toMatchObject({
         url: 'blob:restored-image',
         base64: btoa('png'),
       })
-      expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+      expect(createObjectURL).toHaveBeenCalledTimes(2)
     })
   })
 })

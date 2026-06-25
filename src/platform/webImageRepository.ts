@@ -14,15 +14,16 @@ function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
 
 export const webImageRepository: ImageRepository = {
   async saveGeneratedImage(input: SaveGeneratedImageInput): Promise<GeneratedImage> {
-    const url = input.b64Json ? createBlobUrlFromBase64(input.b64Json) : input.url || ''
+    const mimeType = input.mimeType || 'image/png'
+    const url = input.b64Json ? createBlobUrlFromBase64(input.b64Json, mimeType) : input.url || ''
 
     return {
       id: input.id,
       url,
       base64: input.b64Json,
       originalUrl: input.url,
-      mimeType: 'image/png',
-      byteSize: input.b64Json ? base64ToBlob(input.b64Json).size : undefined,
+      mimeType,
+      byteSize: input.b64Json ? base64ToBlob(input.b64Json, mimeType).size : undefined,
       timestamp: input.timestamp,
       sourcePrompt: input.sourcePrompt,
       sourceMessageId: input.sourceMessageId,
@@ -33,7 +34,7 @@ export const webImageRepository: ImageRepository = {
     if (image.base64) {
       return {
         ...image,
-        url: createBlobUrlFromBase64(image.base64),
+        url: createBlobUrlFromBase64(image.base64, image.mimeType),
       }
     }
     return image

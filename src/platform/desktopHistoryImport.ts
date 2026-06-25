@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import type { ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../types'
+import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../types'
 import { isTauriRuntime } from './runtime'
 
 const ZIP_HISTORY_FILE = 'history.json'
@@ -29,6 +29,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map(message => ({
     ...message,
+    attachments: message.attachments?.map(attachment => ({
+      ...attachment,
+      base64: undefined,
+    })),
     images: message.images?.map(image => ({
       ...image,
       base64: undefined,
@@ -56,6 +60,18 @@ function validateImage(value: unknown): GeneratedImage {
   return value as unknown as GeneratedImage
 }
 
+function validateAttachment(value: unknown): ChatAttachment {
+  const image = validateImage(value)
+  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length > 255) {
+    throw new DesktopHistoryImportError('history.json 格式不正确')
+  }
+
+  return {
+    ...image,
+    name: value.name,
+  }
+}
+
 function validateMessage(value: unknown): ChatMessage {
   if (!isRecord(value)) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
@@ -77,6 +93,10 @@ function validateMessage(value: unknown): ChatMessage {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
+  if (value.attachments !== undefined && !Array.isArray(value.attachments)) {
+    throw new DesktopHistoryImportError('history.json 格式不正确')
+  }
+
   if (value.error !== undefined && typeof value.error !== 'string') {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
@@ -85,9 +105,11 @@ function validateMessage(value: unknown): ChatMessage {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
+  const attachments = value.attachments?.map(validateAttachment)
   const images = value.images?.map(validateImage)
   return {
     ...value,
+    attachments,
     images,
     isFavorite: value.isFavorite ?? false,
   } as ChatMessage
@@ -182,6 +204,11 @@ function assertSafeZipImagePath(path: string): void {
 
 function collectImagePaths(messages: ChatMessage[], paths: Set<string>): void {
   messages.forEach(message => {
+    message.attachments?.forEach(attachment => {
+      if (!attachment.localPath) return
+      assertSafeZipImagePath(attachment.localPath)
+      paths.add(attachment.localPath)
+    })
     message.images?.forEach(image => {
       if (!image.localPath) return
       assertSafeZipImagePath(image.localPath)
@@ -253,29 +280,37 @@ export async function cleanupDesktopImportedImages(paths: string[]): Promise<voi
   }))
 }
 
+function rewriteImageList<T extends GeneratedImage>(
+  images: T[] | undefined,
+  pathMap: Map<string, { localPath: string; byteSize: number }>,
+): T[] | undefined {
+  return images?.map(image => {
+    if (!image.localPath) return image
+
+    const imported = pathMap.get(image.localPath)
+    if (!imported) return image
+
+    return {
+      ...image,
+      url: imported.localPath,
+      localPath: imported.localPath,
+      byteSize: imported.byteSize,
+      base64: undefined,
+    }
+  })
+}
+
 function rewriteMessages(
   messages: ChatMessage[],
   pathMap: Map<string, { localPath: string; byteSize: number }>,
 ): ChatMessage[] {
   return cloneMessages(messages).map(message => {
-    if (!message.images) return message
+    if (!message.images && !message.attachments) return message
 
     return {
       ...message,
-      images: message.images.map(image => {
-        if (!image.localPath) return image
-
-        const imported = pathMap.get(image.localPath)
-        if (!imported) return image
-
-        return {
-          ...image,
-          url: imported.localPath,
-          localPath: imported.localPath,
-          byteSize: imported.byteSize,
-          base64: undefined,
-        }
-      }),
+      attachments: rewriteImageList(message.attachments, pathMap),
+      images: rewriteImageList(message.images, pathMap),
     }
   })
 }

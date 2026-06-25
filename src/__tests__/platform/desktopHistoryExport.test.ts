@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
+import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
 
 const readImageBlob = vi.fn<(...args: [GeneratedImage]) => Promise<Blob>>()
 const save = vi.fn()
@@ -35,13 +35,25 @@ function image(id: string, localPath: string): GeneratedImage {
   }
 }
 
-function message(id: string, images: GeneratedImage[] = []): ChatMessage {
+function attachment(id: string, localPath: string): ChatAttachment {
+  return {
+    ...image(id, localPath),
+    name: `${id}.png`,
+  }
+}
+
+function message(
+  id: string,
+  images: GeneratedImage[] = [],
+  attachments: ChatAttachment[] = [],
+): ChatMessage {
   return {
     id,
     type: 'assistant',
     content: 'generated',
     timestamp: 1,
     status: 'success',
+    attachments,
     images,
   }
 }
@@ -72,9 +84,10 @@ describe('desktop history ZIP export', () => {
   it('exports current chat with history.json and images', async () => {
     const { buildDesktopHistoryExportZip } = await import('../../platform/desktopHistoryExport')
     const currentImage = image('image-1', 'images/current.png')
+    const reference = attachment('attachment-1', 'images/reference.webp')
 
     const result = await buildDesktopHistoryExportZip({
-      currentMessages: [message('message-1', [currentImage])],
+      currentMessages: [message('message-1', [currentImage], [reference])],
       historyList: [],
       historyMessages: {},
       exportedAt: 123,
@@ -93,10 +106,19 @@ describe('desktop history ZIP export', () => {
       url: 'images/current.png',
       localPath: 'images/current.png',
     })
+    expect(data.currentMessages[0].attachments?.[0]).toMatchObject({
+      id: 'attachment-1',
+      name: 'attachment-1.png',
+      url: 'images/reference.webp',
+      localPath: 'images/reference.webp',
+    })
     expect(data.currentMessages[0].images?.[0]).not.toHaveProperty('base64')
+    expect(data.currentMessages[0].attachments?.[0]).not.toHaveProperty('base64')
     expect(zip.file('images/current.png')).toBeTruthy()
+    expect(zip.file('images/reference.webp')).toBeTruthy()
     await expect(zip.file('images/current.png')?.async('string')).resolves.toBe('bytes:images/current.png')
-    expect(result.imageCount).toBe(1)
+    await expect(zip.file('images/reference.webp')?.async('string')).resolves.toBe('bytes:images/reference.webp')
+    expect(result.imageCount).toBe(2)
     expect(result.missingImageCount).toBe(0)
   })
 

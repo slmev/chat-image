@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatHistory, ChatMessage, GeneratedImage } from '../../types'
+import type { ChatAttachment, ChatHistory, ChatMessage, GeneratedImage } from '../../types'
 import { STORAGE_KEYS } from '../../utils/constants'
 import { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX } from '../../platform/metadataStore'
 
@@ -57,13 +57,21 @@ function image(localPath: string): GeneratedImage {
   }
 }
 
-function message(images: GeneratedImage[]): ChatMessage {
+function attachment(localPath: string): ChatAttachment {
+  return {
+    ...image(localPath),
+    name: localPath.split('/').pop() || 'reference.png',
+  }
+}
+
+function message(images: GeneratedImage[], attachments: ChatAttachment[] = []): ChatMessage {
   return {
     id: 'message-' + images.map(item => item.localPath).join('-'),
     type: 'assistant',
     content: 'generated',
     timestamp: 1,
     status: 'success',
+    attachments,
     images,
   }
 }
@@ -114,6 +122,17 @@ describe('deleteUnreferencedLocalImages', () => {
     }
     metadata.set(HISTORY_LIST_KEY, [history])
     metadata.set(HISTORY_MESSAGES_PREFIX + history.id, [message([referenced])])
+
+    const { deleteUnreferencedLocalImages } = await import('../../platform/imageReferenceCleanup')
+
+    await deleteUnreferencedLocalImages([referenced])
+
+    expect(deleteImageFile).not.toHaveBeenCalled()
+  })
+
+  it('keeps local attachment images still referenced by current chat history', async () => {
+    const referenced = attachment('images/reference.webp')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message([], [referenced])])
 
     const { deleteUnreferencedLocalImages } = await import('../../platform/imageReferenceCleanup')
 

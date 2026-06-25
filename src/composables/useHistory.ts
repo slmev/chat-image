@@ -60,7 +60,10 @@ async function readHistoryMessages(historyId: string): Promise<ChatMessage[]> {
 }
 
 function collectImages(messages: ChatMessage[]) {
-  return messages.flatMap(message => message.images || [])
+  return messages.flatMap(message => [
+    ...(message.attachments || []),
+    ...(message.images || []),
+  ])
 }
 
 function galleryImageDedupeKey(image: GeneratedImage): string {

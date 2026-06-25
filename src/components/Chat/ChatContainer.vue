@@ -134,9 +134,9 @@ function promptTemplateTitle(template: PromptTemplate): string {
   return t(key)
 }
 
-async function handleSend(content: string, options: GenerationOptions) {
+async function handleSend(content: string, options: GenerationOptions, attachments: File[] = []) {
   try {
-    await sendMessage(content, options)
+    await sendMessage(content, options, attachments)
     await nextTick()
     scrollToBottom()
   } catch (error) {

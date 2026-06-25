@@ -33,12 +33,13 @@ function fallbackGeneratedImage(input: SaveGeneratedImageInput): GeneratedImage 
   if (input.b64Json) {
     try {
       const bytes = base64ToBytes(input.b64Json)
+      const mimeType = input.mimeType || 'image/png'
       return {
         id: input.id,
-        url: URL.createObjectURL(bytesToBlob(bytes, 'image/png')),
+        url: URL.createObjectURL(bytesToBlob(bytes, mimeType)),
         base64: input.b64Json,
         originalUrl: input.url,
-        mimeType: 'image/png',
+        mimeType,
         byteSize: bytes.byteLength,
         timestamp: input.timestamp,
         sourcePrompt: input.sourcePrompt,
@@ -91,7 +92,7 @@ export const tauriImageRepository: ImageRepository = {
   async saveGeneratedImage(input: SaveGeneratedImageInput): Promise<GeneratedImage> {
     try {
       const downloaded = input.b64Json
-        ? { bytes: base64ToBytes(input.b64Json), mimeType: 'image/png' }
+        ? { bytes: base64ToBytes(input.b64Json), mimeType: input.mimeType || 'image/png' }
         : input.url && isExternalImageUrl(input.url)
           ? await downloadExternalImage(input.url)
           : null
@@ -142,6 +143,7 @@ export const tauriImageRepository: ImageRepository = {
         id: image.id,
         b64Json: image.base64,
         url: image.originalUrl,
+        mimeType: image.mimeType,
         timestamp: image.timestamp,
         sourcePrompt: image.sourcePrompt,
         sourceMessageId: image.sourceMessageId,

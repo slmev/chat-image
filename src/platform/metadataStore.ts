@@ -74,28 +74,47 @@ function readLocalStorageValue<T>(key: string, defaultValue: T): T {
 async function localizeMessages(messages: ChatMessage[]): Promise<ChatMessage[]> {
   const repository = getImageRepository()
   const withLocalImages = await Promise.all(messages.map(async msg => {
-    if (!msg.images) {
+    if (!msg.images && !msg.attachments) {
       return {
         ...msg,
         isFavorite: msg.isFavorite ?? false,
       }
     }
 
-    const images = await Promise.all(msg.images.map(image => {
+    const attachments = msg.attachments
+      ? await Promise.all(msg.attachments.map(async attachment => ({
+          ...(attachment.localPath
+            ? await repository.resolveDisplayUrl(attachment)
+            : await repository.saveGeneratedImage({
+                id: attachment.id,
+                b64Json: attachment.base64,
+                url: attachment.originalUrl || attachment.url,
+                mimeType: attachment.mimeType,
+                timestamp: attachment.timestamp,
+                sourcePrompt: attachment.sourcePrompt,
+                sourceMessageId: attachment.sourceMessageId,
+              })),
+          name: attachment.name,
+        })))
+      : undefined
+
+    const images = msg.images ? await Promise.all(msg.images.map(image => {
       if (image.localPath) return repository.resolveDisplayUrl(image)
       return repository.saveGeneratedImage({
         id: image.id,
         b64Json: image.base64,
         url: image.originalUrl || image.url,
+        mimeType: image.mimeType,
         timestamp: image.timestamp,
         sourcePrompt: image.sourcePrompt,
         sourceMessageId: image.sourceMessageId,
       })
-    }))
+    })) : undefined
 
     return {
       ...msg,
       isFavorite: msg.isFavorite ?? false,
+      attachments,
       images,
     }
   }))

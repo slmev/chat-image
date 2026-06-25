@@ -26,6 +26,12 @@ export default {
 
   // ChatInput
   promptTemplates: 'Prompt templates',
+  attachImages: 'Attach reference images',
+  selectedAttachments: 'Selected reference images',
+  removeAttachment: 'Remove reference image',
+  attachmentInvalidType: '{name} is not supported. Choose a PNG, JPEG, or WebP image.',
+  attachmentTooLarge: '{name} is larger than 10MB.',
+  attachmentLimit: 'Attach up to {count} reference images.',
   inputPlaceholder: 'Describe an image, e.g.: a cute cat playing in the garden',
   imageDescription: 'Image description',
   send: 'Send',

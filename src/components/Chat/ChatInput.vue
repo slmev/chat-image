@@ -11,7 +11,54 @@
     </Transition>
 
     <!-- Main Input Area -->
-    <div class="input-main">
+    <div
+      class="input-main"
+      :class="{ dragging: isDragging }"
+      @dragover.prevent="handleDragOver"
+      @dragleave="handleDragLeave"
+      @drop.prevent="handleDrop"
+    >
+      <input
+        ref="fileInputRef"
+        type="file"
+        class="attachment-input"
+        :accept="ATTACHMENT_ACCEPT"
+        multiple
+        :aria-label="t('attachImages')"
+        @change="handleAttachmentSelect"
+      />
+
+      <div
+        v-if="selectedAttachments.length > 0"
+        class="attachment-rail"
+        :aria-label="t('selectedAttachments')"
+      >
+        <div
+          v-for="attachment in selectedAttachments"
+          :key="attachment.id"
+          class="attachment-thumb"
+        >
+          <img
+            :src="attachment.url"
+            :alt="attachment.file.name"
+            class="attachment-preview"
+          />
+          <span class="attachment-name" :title="attachment.file.name">
+            {{ attachment.file.name }}
+          </span>
+          <button
+            type="button"
+            class="attachment-remove"
+            :aria-label="t('removeAttachment')"
+            :title="t('removeAttachment')"
+            :disabled="disabled"
+            @click="removeAttachment(attachment.id)"
+          >
+            <X :size="12" />
+          </button>
+        </div>
+      </div>
+
       <div class="input-row">
         <!-- Prompt Button -->
         <button
@@ -23,6 +70,18 @@
           :disabled="disabled"
         >
           <Sparkles :size="20" />
+        </button>
+
+        <!-- Attachment Button -->
+        <button
+          type="button"
+          @click="openAttachmentPicker"
+          class="attachment-btn"
+          :aria-label="t('attachImages')"
+          :title="t('attachImages')"
+          :disabled="disabled || selectedAttachments.length >= MAX_ATTACHMENT_COUNT"
+        >
+          <Paperclip :size="20" />
         </button>
 
         <!-- Textarea -->
@@ -171,8 +230,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted } from 'vue'
-import { Sparkles, Send, Minus, Plus } from 'lucide-vue-next'
+import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { Sparkles, Send, Minus, Plus, Paperclip, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { IMAGE_SIZES, IMAGE_QUALITIES, STYLE_TEMPLATES, STORAGE_KEYS } from '../../utils/constants'
 import { getGenerationOptions, setGenerationOptions } from '../../utils/storage'
@@ -181,6 +240,7 @@ import { isTauriRuntime } from '../../platform/runtime'
 import { getEnhancementSuggestions } from '../../utils/promptEnhancers'
 import { PROMPT_TEMPLATES } from '../../utils/promptTemplates'
 import { useCustomStyles } from '../../composables/useCustomStyles'
+import { useToast } from '../../composables/useToast'
 import PromptPanel from '../Prompt/PromptPanel.vue'
 import PromptSuggest from '../Prompt/PromptSuggest.vue'
 import CustomStyleDialog from '../Style/CustomStyleDialog.vue'
@@ -194,13 +254,15 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'send', content: string, options: GenerationOptions): void
+  (e: 'send', content: string, options: GenerationOptions, attachments: File[]): void
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const { error: showError } = useToast()
 
 const textareaRef = ref<HTMLTextAreaElement>()
+const fileInputRef = ref<HTMLInputElement>()
 const inputContent = ref('')
 const selectedOptions = ref<Omit<GenerationOptions, 'style'>>({
   size: '1024x1024',
@@ -211,6 +273,20 @@ const selectedStyleId = ref<string>('')
 const showPromptPanel = ref(false)
 const showStyleDialog = ref(false)
 const editingStyle = ref<StyleTemplate | null>(null)
+const isDragging = ref(false)
+
+const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp'
+const MAX_ATTACHMENT_COUNT = 4
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+const ACCEPTED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+
+interface SelectedAttachment {
+  id: string
+  file: File
+  url: string
+}
+
+const selectedAttachments = ref<SelectedAttachment[]>([])
 
 // 合并内置和自定义风格
 const allStyles = computed(() => [...STYLE_TEMPLATES, ...customStyles.value])
@@ -375,6 +451,84 @@ function handlePromptSelect(prompt: string) {
   showPromptPanel.value = false
 }
 
+function openAttachmentPicker() {
+  if (props.disabled || selectedAttachments.value.length >= MAX_ATTACHMENT_COUNT) return
+  fileInputRef.value?.click()
+}
+
+function createAttachmentId(file: File): string {
+  return `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function addAttachmentFiles(files: File[]): void {
+  if (props.disabled) return
+
+  for (const file of files) {
+    if (selectedAttachments.value.length >= MAX_ATTACHMENT_COUNT) {
+      showError(t('attachmentLimit', { count: MAX_ATTACHMENT_COUNT }))
+      break
+    }
+
+    if (!ACCEPTED_ATTACHMENT_TYPES.has(file.type)) {
+      showError(t('attachmentInvalidType', { name: file.name }))
+      continue
+    }
+
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      showError(t('attachmentTooLarge', { name: file.name }))
+      continue
+    }
+
+    selectedAttachments.value.push({
+      id: createAttachmentId(file),
+      file,
+      url: URL.createObjectURL(file),
+    })
+  }
+}
+
+function handleAttachmentSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  addAttachmentFiles(Array.from(input.files || []))
+  input.value = ''
+}
+
+function removeAttachment(id: string) {
+  const index = selectedAttachments.value.findIndex(attachment => attachment.id === id)
+  if (index === -1) return
+
+  URL.revokeObjectURL(selectedAttachments.value[index].url)
+  selectedAttachments.value.splice(index, 1)
+}
+
+function clearAttachments() {
+  selectedAttachments.value.forEach(attachment => {
+    URL.revokeObjectURL(attachment.url)
+  })
+  selectedAttachments.value = []
+}
+
+function handleDragOver(event: DragEvent) {
+  if (props.disabled) return
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy'
+  }
+  isDragging.value = true
+}
+
+function handleDragLeave(event: DragEvent) {
+  const currentTarget = event.currentTarget as Node
+  const relatedTarget = event.relatedTarget as Node | null
+  if (relatedTarget && currentTarget.contains(relatedTarget)) return
+  isDragging.value = false
+}
+
+function handleDrop(event: DragEvent) {
+  if (props.disabled) return
+  isDragging.value = false
+  addAttachmentFiles(Array.from(event.dataTransfer?.files || []))
+}
+
 function incrementCount() {
   if (selectedOptions.value.n < 4) {
     selectedOptions.value.n++
@@ -394,9 +548,11 @@ function handleSend() {
     ...selectedOptions.value,
     style: selectedStyle.value,
   }
+  const files = selectedAttachments.value.map(attachment => attachment.file)
 
-  emit('send', inputContent.value.trim(), fullOptions)
+  emit('send', inputContent.value.trim(), fullOptions, files)
   inputContent.value = ''
+  clearAttachments()
   showSuggestions.value = false
 
   // Reset textarea height
@@ -406,6 +562,10 @@ function handleSend() {
     }
   })
 }
+
+onBeforeUnmount(() => {
+  clearAttachments()
+})
 </script>
 
 <style scoped>
@@ -429,6 +589,78 @@ function handleSend() {
   border: 1px solid var(--color-border);
   border-radius: 24px;
   box-shadow: var(--shadow-lg);
+  transition: border-color var(--transition-base), background var(--transition-base);
+}
+
+.input-main.dragging {
+  background: color-mix(in srgb, var(--color-primary-light) 18%, var(--color-bg-primary));
+  border-color: color-mix(in srgb, var(--color-primary) 54%, var(--color-border));
+}
+
+.attachment-input {
+  display: none;
+}
+
+.attachment-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.attachment-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.attachment-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 6px 5px;
+  overflow: hidden;
+  color: white;
+  font-size: 10px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.68));
+}
+
+.attachment-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-bg-primary) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.attachment-remove:hover:not(:disabled) {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .input-row {
@@ -437,8 +669,9 @@ function handleSend() {
   gap: 10px;
 }
 
-/* Prompt Button */
-.prompt-btn {
+/* Input Action Buttons */
+.prompt-btn,
+.attachment-btn {
   flex-shrink: 0;
   width: 44px;
   height: 44px;
@@ -453,7 +686,8 @@ function handleSend() {
   transition: all var(--transition-base);
 }
 
-.prompt-btn:hover:not(:disabled) {
+.prompt-btn:hover:not(:disabled),
+.attachment-btn:hover:not(:disabled) {
   background: var(--color-bg-hover);
   border-color: var(--color-border-hover);
   color: var(--color-primary);
@@ -465,7 +699,8 @@ function handleSend() {
   color: white;
 }
 
-.prompt-btn:disabled {
+.prompt-btn:disabled,
+.attachment-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
