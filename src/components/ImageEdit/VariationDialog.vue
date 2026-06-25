@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { X, Loader2, Shuffle } from 'lucide-vue-next'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { X, Loader2, Shuffle, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { useImageEdit } from '../../composables/useImageEdit'
 import { IMAGE_SIZES, IMAGE_QUALITIES, STYLE_TEMPLATES } from '../../utils/constants'
 import type { GeneratedImage, StyleTemplate, ImageGenerationResponse } from '../../types'
+import type { CSSProperties } from 'vue'
 
 interface Props {
   image: GeneratedImage
@@ -18,11 +20,38 @@ const emit = defineEmits<{
 }>()
 
 const { isLoading, error, createVariation } = useImageEdit()
+const { t } = useI18n()
 
 const prompt = ref(props.image.sourcePrompt || '')
+const imageRef = ref<HTMLImageElement>()
+const viewportRef = ref<HTMLDivElement>()
+const naturalSize = ref({ width: 0, height: 0 })
+const fitScale = ref(1)
+const zoomLevel = ref(1)
+
+const MIN_ZOOM = 1
+const MAX_ZOOM = 4
+const ZOOM_STEP = 0.25
+
+const displayScale = computed(() => fitScale.value * zoomLevel.value)
+const zoomPercent = computed(() => Math.round(zoomLevel.value * 100))
+const stageStyle = computed<CSSProperties>(() => ({
+  width: `${naturalSize.value.width * displayScale.value}px`,
+  height: `${naturalSize.value.height * displayScale.value}px`,
+}))
 
 watch(() => props.image, (newImage) => {
   prompt.value = newImage.sourcePrompt || ''
+  if (props.isOpen) {
+    setupImage()
+  }
+})
+
+watch(() => props.isOpen, (newVal) => {
+  if (newVal) {
+    prompt.value = props.image.sourcePrompt || ''
+    setupImage()
+  }
 })
 
 function handleKeydown(event: KeyboardEvent) {
@@ -33,11 +62,69 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
+  window.addEventListener('resize', updateFitScale)
+  if (props.isOpen) {
+    setupImage()
+  }
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('resize', updateFitScale)
 })
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+}
+
+function zoomIn() {
+  zoomLevel.value = clampZoom(zoomLevel.value + ZOOM_STEP)
+}
+
+function zoomOut() {
+  zoomLevel.value = clampZoom(zoomLevel.value - ZOOM_STEP)
+}
+
+function fitToView() {
+  zoomLevel.value = MIN_ZOOM
+}
+
+function updateFitScale() {
+  const viewport = viewportRef.value
+  const { width, height } = naturalSize.value
+  if (!viewport || width <= 0 || height <= 0) return
+
+  const rect = viewport.getBoundingClientRect()
+  const viewportWidth = rect.width || viewport.clientWidth
+  const viewportHeight = rect.height || viewport.clientHeight
+  if (viewportWidth <= 0 || viewportHeight <= 0) return
+
+  fitScale.value = Math.min(viewportWidth / width, viewportHeight / height)
+}
+
+async function setupImage() {
+  await nextTick()
+
+  const img = imageRef.value
+  if (!img) return
+
+  if (!img.complete || img.naturalWidth === 0) {
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve()
+      img.onerror = () => resolve()
+      if (img.complete && img.naturalWidth > 0) resolve()
+    })
+  }
+
+  naturalSize.value = {
+    width: img.naturalWidth || 1024,
+    height: img.naturalHeight || 1024,
+  }
+  zoomLevel.value = MIN_ZOOM
+
+  await nextTick()
+  updateFitScale()
+}
 
 const selectedSize = ref<'1024x1024' | '1792x1024' | '1024x1792'>('1024x1024')
 const selectedQuality = ref<'standard' | 'hd'>('standard')
@@ -70,6 +157,42 @@ async function handleSubmit() {
 function handleClose() {
   emit('close')
 }
+
+function imageSizeLabel(value: string): string {
+  switch (value) {
+    case '1024x1024':
+      return t('imageSizeSquare')
+    case '1792x1024':
+      return t('imageSizeLandscape')
+    case '1024x1792':
+      return t('imageSizePortrait')
+    default:
+      return value
+  }
+}
+
+function imageQualityLabel(value: string): string {
+  return value === 'hd' ? t('qualityHd') : t('qualityStandard')
+}
+
+function styleLabel(style: StyleTemplate): string {
+  switch (style.id) {
+    case 'anime':
+      return t('styleAnime')
+    case 'realistic':
+      return t('styleRealistic')
+    case 'oil-painting':
+      return t('styleOilPainting')
+    case 'watercolor':
+      return t('styleWatercolor')
+    case 'sketch':
+      return t('styleSketch')
+    case 'cyberpunk':
+      return t('styleCyberpunk')
+    default:
+      return style.name
+  }
+}
 </script>
 
 <template>
@@ -79,8 +202,8 @@ function handleClose() {
         <div class="dialog-content scale-in">
           <!-- Header -->
           <div class="dialog-header">
-            <h2 class="dialog-title">创建图片变体</h2>
-            <button @click="handleClose" class="btn-icon">
+            <h2 class="dialog-title">{{ t('createImageVariation') }}</h2>
+            <button class="btn-icon" @click="handleClose">
               <X :size="20" />
             </button>
           </div>
@@ -88,24 +211,61 @@ function handleClose() {
           <!-- Body -->
           <div class="dialog-body">
             <!-- Original Image -->
-            <div class="original-image">
-              <img
-                :src="image.url"
-                alt="Original image"
-                class="preview-img"
-              />
+            <div ref="viewportRef" class="original-image">
+              <div class="image-stage" :style="stageStyle">
+                <img
+                  ref="imageRef"
+                  :src="image.url"
+                  :alt="t('originalImage')"
+                  class="preview-img"
+                  @load="setupImage"
+                />
+              </div>
               <div class="image-badge">
                 <Shuffle :size="14" />
-                <span>原图</span>
+                <span>{{ t('originalImage') }}</span>
               </div>
+            </div>
+
+            <!-- Zoom controls -->
+            <div class="zoom-controls">
+              <button
+                class="zoom-btn"
+                :disabled="zoomLevel <= MIN_ZOOM"
+                :title="t('zoomOut')"
+                :aria-label="t('zoomOut')"
+                @click="zoomOut"
+              >
+                <ZoomOut :size="16" />
+              </button>
+              <button
+                class="zoom-fit-btn"
+                :title="t('fitToView')"
+                @click="fitToView"
+              >
+                <Maximize2 :size="15" />
+                <span>{{ t('fitToView') }}</span>
+              </button>
+              <span class="zoom-value" :aria-label="t('zoomLevel')">
+                {{ zoomPercent }}%
+              </span>
+              <button
+                class="zoom-btn"
+                :disabled="zoomLevel >= MAX_ZOOM"
+                :title="t('zoomIn')"
+                :aria-label="t('zoomIn')"
+                @click="zoomIn"
+              >
+                <ZoomIn :size="16" />
+              </button>
             </div>
 
             <!-- Prompt -->
             <div class="form-group">
-              <label class="form-label">提示词</label>
+              <label class="form-label">{{ t('prompt') }}</label>
               <textarea
                 v-model="prompt"
-                placeholder="输入或修改提示词来生成变体"
+                :placeholder="t('variationPromptPlaceholder')"
                 rows="3"
                 class="input-field"
               />
@@ -114,35 +274,35 @@ function handleClose() {
             <!-- Options -->
             <div class="options-grid">
               <div class="form-group">
-                <label class="form-label">风格</label>
+                <label class="form-label">{{ t('style') }}</label>
                 <select v-model="selectedStyleId" class="select-field">
-                  <option value="">保持原风格</option>
+                  <option value="">{{ t('keepOriginalStyle') }}</option>
                   <option v-for="style in STYLE_TEMPLATES" :key="style.id" :value="style.id">
-                    {{ style.name }}
+                    {{ styleLabel(style) }}
                   </option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label class="form-label">尺寸</label>
+                <label class="form-label">{{ t('size') }}</label>
                 <select v-model="selectedSize" class="select-field">
                   <option v-for="size in IMAGE_SIZES" :key="size.value" :value="size.value">
-                    {{ size.label }}
+                    {{ imageSizeLabel(size.value) }}
                   </option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label class="form-label">质量</label>
+                <label class="form-label">{{ t('quality') }}</label>
                 <select v-model="selectedQuality" class="select-field">
                   <option v-for="quality in IMAGE_QUALITIES" :key="quality.value" :value="quality.value">
-                    {{ quality.label }}
+                    {{ imageQualityLabel(quality.value) }}
                   </option>
                 </select>
               </div>
 
               <div class="form-group">
-                <label class="form-label">数量</label>
+                <label class="form-label">{{ t('count') }}</label>
                 <input
                   v-model.number="selectedCount"
                   type="number"
@@ -161,17 +321,17 @@ function handleClose() {
 
           <!-- Footer -->
           <div class="dialog-footer">
-            <button @click="handleClose" class="btn-secondary">
-              取消
+            <button class="btn-secondary" @click="handleClose">
+              {{ t('cancel') }}
             </button>
             <button
-              @click="handleSubmit"
               :disabled="!prompt.trim() || isLoading"
               class="btn-primary"
+              @click="handleSubmit"
             >
               <Loader2 v-if="isLoading" :size="16" class="spin" />
               <Shuffle v-else :size="16" />
-              <span>{{ isLoading ? '生成中...' : '生成变体' }}</span>
+              <span>{{ isLoading ? t('generatingDots') : t('generateVariation') }}</span>
             </button>
           </div>
         </div>
@@ -229,16 +389,26 @@ function handleClose() {
 
 .original-image {
   position: relative;
+  height: clamp(220px, 42vh, 420px);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.image-stage {
+  position: relative;
+  flex: none;
+  margin: 0 auto;
+  min-width: 1px;
+  min-height: 1px;
 }
 
 .preview-img {
   display: block;
   width: 100%;
-  max-height: 300px;
-  object-fit: contain;
+  height: 100%;
+  user-select: none;
 }
 
 .image-badge {
@@ -255,6 +425,59 @@ function handleClose() {
   font-size: 12px;
   font-weight: 500;
   backdrop-filter: blur(8px);
+  width: fit-content;
+  z-index: 1;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -8px;
+}
+
+.zoom-btn,
+.zoom-fit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.zoom-btn {
+  width: 32px;
+}
+
+.zoom-fit-btn {
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.zoom-btn:hover:not(:disabled),
+.zoom-fit-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zoom-value {
+  min-width: 48px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  text-align: center;
 }
 
 .form-group {
