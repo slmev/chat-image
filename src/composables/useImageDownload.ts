@@ -3,19 +3,21 @@ import type { GeneratedImage } from '../types'
 import { useToast } from './useToast'
 import { isExternalImageUrl } from '../utils/images'
 import { getImageRepository } from '../platform/imageRepository'
+import i18n from '../i18n'
 
 export function useImageDownload() {
   const isDownloading = ref(false)
   const { success, error: showError } = useToast()
+  const t = i18n.global.t
 
   // 下载单张图片
   async function downloadSingleImage(image: GeneratedImage): Promise<void> {
     try {
       await getImageRepository().exportImage(image)
-      success(isExternalImageUrl(image.url) ? '已打开图片链接' : '图片已保存')
+      success(isExternalImageUrl(image.url) ? t('openedImageLink') : t('imageSaved'))
     } catch (err) {
       console.error('Download failed:', err)
-      showError('下载失败')
+      showError(t('downloadFailed'))
     }
   }
 
@@ -67,10 +69,10 @@ export function useImageDownload() {
       document.body.removeChild(link)
       URL.revokeObjectURL(blobUrl)
 
-      success(`已处理 ${images.length} 张图片`)
+      success(t('processedImages', { count: images.length }))
     } catch (err) {
       console.error('Batch download failed:', err)
-      showError('批量下载失败')
+      showError(t('batchDownloadFailed'))
     } finally {
       isDownloading.value = false
     }

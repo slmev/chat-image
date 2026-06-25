@@ -4,7 +4,7 @@
     <div class="image-wrapper" @click="openPreview">
       <img
         :src="imageUrl"
-        alt="生成的图片"
+        :alt="t('generatedImageAlt')"
         class="image"
         loading="lazy"
       />
@@ -13,35 +13,35 @@
           <button
             @click.stop="$emit('createVariation', displayImage)"
             class="overlay-btn"
-            title="创建变体"
+            :title="t('createVariation')"
           >
             <Shuffle :size="16" />
           </button>
           <button
             @click.stop="$emit('editImage', displayImage)"
             class="overlay-btn"
-            title="编辑图片"
+            :title="t('editImage')"
           >
             <Edit :size="16" />
           </button>
           <button
             @click.stop="downloadImage"
             class="overlay-btn"
-            title="下载图片"
+            :title="t('downloadImage')"
           >
             <Download :size="16" />
           </button>
           <button
             @click.stop="shareImage"
             class="overlay-btn"
-            title="分享图片"
+            :title="t('shareImage')"
           >
             <Share2 :size="16" />
           </button>
           <button
             @click.stop="openPreview"
             class="overlay-btn"
-            title="放大查看"
+            :title="t('expandImage')"
           >
             <Expand :size="16" />
           </button>
@@ -60,7 +60,7 @@
           <div class="preview-container" @click.stop>
             <img
               :src="imageUrl"
-              alt="生成的图片"
+              :alt="t('generatedImageAlt')"
               class="preview-image"
             />
 
@@ -68,21 +68,21 @@
             <div v-if="displayImage.sourcePrompt" class="metadata-panel">
               <div class="metadata-header">
                 <Info :size="16" />
-                <span>图片信息</span>
+                <span>{{ t('imageInfo') }}</span>
               </div>
               <div class="metadata-content">
                 <div class="metadata-item">
-                  <span class="metadata-label">提示词:</span>
+                  <span class="metadata-label">{{ t('promptLabel') }}:</span>
                   <span class="metadata-value">{{ displayImage.sourcePrompt }}</span>
                 </div>
                 <div class="metadata-item">
-                  <span class="metadata-label">生成时间:</span>
+                  <span class="metadata-label">{{ t('generatedAt') }}:</span>
                   <span class="metadata-value">{{ formatTime(displayImage.timestamp) }}</span>
                 </div>
               </div>
               <button @click.stop="copyPrompt" class="copy-btn">
                 <Copy :size="14" />
-                <span>复制提示词</span>
+                <span>{{ t('copyPrompt') }}</span>
               </button>
             </div>
 
@@ -90,67 +90,67 @@
               <button
                 @click.stop="$emit('createVariation', displayImage)"
                 class="preview-btn"
-                title="创建变体"
+                :title="t('createVariation')"
               >
                 <Shuffle :size="18" />
-                <span>变体</span>
+                <span>{{ t('variation') }}</span>
               </button>
               <button
                 @click.stop="$emit('editImage', displayImage)"
                 class="preview-btn"
-                title="编辑图片"
+                :title="t('editImage')"
               >
                 <Edit :size="18" />
-                <span>编辑</span>
+                <span>{{ t('edit') }}</span>
               </button>
               <button
                 @click.stop="downloadImage"
                 class="preview-btn"
-                title="下载图片"
+                :title="t('downloadImage')"
               >
                 <Download :size="18" />
-                <span>下载</span>
+                <span>{{ t('download') }}</span>
               </button>
               <button
                 @click.stop="shareImage"
                 class="preview-btn"
-                title="分享"
+                :title="t('share')"
               >
                 <Share2 :size="18" />
-                <span>分享</span>
+                <span>{{ t('share') }}</span>
               </button>
               <template v-if="localActionsAvailable">
                 <button
                   @click.stop="openImageFile"
                   class="preview-btn"
-                  title="打开本地图片"
+                  :title="t('openLocalImage')"
                 >
                   <ExternalLink :size="18" />
-                  <span>打开</span>
+                  <span>{{ t('open') }}</span>
                 </button>
                 <button
                   @click.stop="revealImageFile"
                   class="preview-btn"
-                  title="在文件管理器中显示"
+                  :title="t('revealLocalImage')"
                 >
                   <FolderSearch :size="18" />
-                  <span>显示</span>
+                  <span>{{ t('reveal') }}</span>
                 </button>
                 <button
                   @click.stop="downloadImage"
                   class="preview-btn"
-                  title="另存为"
+                  :title="t('saveAs')"
                 >
                   <Save :size="18" />
-                  <span>另存为</span>
+                  <span>{{ t('saveAs') }}</span>
                 </button>
                 <button
                   @click.stop="copyImageFile"
                   class="preview-btn"
-                  title="复制图片到剪贴板"
+                  :title="t('copyImageToClipboard')"
                 >
                   <ClipboardCopy :size="18" />
-                  <span>复制</span>
+                  <span>{{ t('copy') }}</span>
                 </button>
               </template>
             </div>
@@ -183,6 +183,7 @@ import {
   Shuffle,
   X,
 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
 import type { GeneratedImage } from '../../types'
@@ -210,6 +211,7 @@ defineEmits<{
 
 const { success, error: showError } = useToast()
 const { downloadSingleImage } = useImageDownload()
+const { t, locale } = useI18n()
 const showPreview = ref(false)
 const displayImage = ref<GeneratedImage>(props.image)
 const resolveFailed = ref(false)
@@ -319,7 +321,7 @@ onUnmounted(() => {
 })
 
 function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('zh-CN', {
+  return new Date(timestamp).toLocaleString(locale.value, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -332,9 +334,9 @@ async function copyPrompt() {
   if (displayImage.value.sourcePrompt) {
     try {
       await navigator.clipboard.writeText(displayImage.value.sourcePrompt)
-      success('提示词已复制')
+      success(t('promptCopied'))
     } catch {
-      showError('复制失败')
+      showError(t('copyFailed'))
     }
   }
 }
@@ -346,36 +348,43 @@ async function downloadImage() {
 async function openImageFile() {
   try {
     await openLocalImage(displayImage.value)
-    success('已打开本地图片')
+    success(t('openedLocalImage'))
   } catch (err) {
     console.error('Open local image failed:', err)
-    showError(localImageErrorMessage(err, '打开本地图片失败'))
+    showError(localImageErrorMessage(err, t('openLocalImageFailed')))
   }
 }
 
 async function revealImageFile() {
   try {
     await revealLocalImage(displayImage.value)
-    success('已在文件管理器中显示')
+    success(t('revealedLocalImage'))
   } catch (err) {
     console.error('Reveal local image failed:', err)
-    showError(localImageErrorMessage(err, '显示本地图片失败'))
+    showError(localImageErrorMessage(err, t('revealLocalImageFailed')))
   }
 }
 
 async function copyImageFile() {
   try {
     await copyLocalImageToClipboard(displayImage.value)
-    success('图片已复制到剪贴板')
+    success(t('imageCopiedToClipboard'))
   } catch (err) {
     console.error('Copy local image failed:', err)
-    showError(localImageErrorMessage(err, '复制图片失败'))
+    showError(localImageErrorMessage(err, t('copyImageFailed')))
   }
 }
 
 function localImageErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof LocalImageActionError) {
-    return error.message
+    const matches: Record<string, string> = {
+      missing_local_path: 'missingLocalFile',
+      not_available: 'imageClipboardUnavailable',
+      read_failed: 'readLocalImageFailed',
+      copy_not_supported: 'copyImageNotSupported',
+      write_failed: 'writeClipboardFailed',
+    }
+    return matches[error.code] ? t(matches[error.code]) : error.message
   }
   return fallback
 }
@@ -384,7 +393,7 @@ async function shareImage() {
   try {
     const url = imageUrl.value
     if (!url) {
-      showError('图片链接无效')
+      showError(t('invalidImageLink'))
       return
     }
 
@@ -392,23 +401,23 @@ async function shareImage() {
       const blob = await getImageRepository().readImageBlob(displayImage.value)
       const file = new File([blob], 'ai-image.png', { type: blob.type || 'image/png' })
       await navigator.share({
-        title: 'AI 生成的图片',
-        text: displayImage.value.sourcePrompt || '查看这张 AI 生成的图片',
+        title: t('generatedImageShareTitle'),
+        text: displayImage.value.sourcePrompt || t('generatedImageShareText'),
         files: [file],
       })
     } else if (navigator.share && isExternalImageUrl(url)) {
       await navigator.share({
-        title: 'AI 生成的图片',
-        text: displayImage.value.sourcePrompt || '查看这张 AI 生成的图片',
+        title: t('generatedImageShareTitle'),
+        text: displayImage.value.sourcePrompt || t('generatedImageShareText'),
         url,
       })
     } else {
       await navigator.clipboard.writeText(url)
-      success('图片链接已复制到剪贴板')
+      success(t('imageLinkCopied'))
     }
   } catch (err) {
     if ((err as Error).name !== 'AbortError') {
-      showError('分享失败')
+      showError(t('shareFailed'))
     }
   }
 }

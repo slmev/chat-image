@@ -38,7 +38,7 @@
         </button>
 
         <button
-          @click="$emit('toggle-gallery')"
+          @click="openGallery"
           class="btn-icon"
           :aria-label="t('gallery')"
           :title="t('gallery')"
@@ -99,7 +99,6 @@ const router = useRouter()
 const emit = defineEmits<{
   'toggle-config': []
   'toggle-sidebar': []
-  'toggle-gallery': []
 }>()
 
 const { chatStore, clearChat, startNewChat } = useChat()
@@ -112,6 +111,10 @@ async function handleNewChat() {
   } catch (error) {
     console.error('Start new chat failed:', error)
   }
+}
+
+async function openGallery() {
+  await router.push({ name: 'gallery' })
 }
 
 function handleClearChat() {

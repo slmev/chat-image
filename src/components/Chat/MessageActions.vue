@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Trash2, Star, RefreshCw, Download } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   messageId: string
@@ -11,6 +12,7 @@ const props = withDefaults(defineProps<Props>(), {
   isFavorite: false,
   hasImages: false,
 })
+const { t } = useI18n()
 
 const emit = defineEmits<{
   delete: [messageId: string]
@@ -41,7 +43,7 @@ function handleDownloadAll() {
     <button
       @click.stop="handleToggleFavorite"
       :class="['action-btn', { 'is-favorite': isFavorite }]"
-      :title="isFavorite ? '取消收藏' : '收藏'"
+      :title="isFavorite ? t('unfavorite') : t('favorite')"
     >
       <Star :size="14" :fill="isFavorite ? 'currentColor' : 'none'" />
     </button>
@@ -50,7 +52,7 @@ function handleDownloadAll() {
       v-if="hasImages"
       @click.stop="handleCreateVariation"
       class="action-btn"
-      title="创建变体"
+      :title="t('createVariation')"
     >
       <RefreshCw :size="14" />
     </button>
@@ -59,7 +61,7 @@ function handleDownloadAll() {
       v-if="hasImages"
       @click.stop="handleDownloadAll"
       class="action-btn"
-      title="下载全部"
+      :title="t('downloadAll')"
     >
       <Download :size="14" />
     </button>
@@ -67,7 +69,7 @@ function handleDownloadAll() {
     <button
       @click.stop="handleDelete"
       class="action-btn danger"
-      title="删除"
+      :title="t('delete')"
     >
       <Trash2 :size="14" />
     </button>

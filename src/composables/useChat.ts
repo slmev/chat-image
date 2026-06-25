@@ -3,26 +3,28 @@ import { useImageGeneration } from '../composables/useImageGeneration'
 import { useConfigStore } from '../stores/config'
 import { useHistory } from '../composables/useHistory'
 import type { GenerationOptions } from '../types'
+import i18n from '../i18n'
+
+// 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
+let currentHistoryId: string | null = null
 
 export function useChat() {
   const chatStore = useChatStore()
   const configStore = useConfigStore()
   const { generateImage, cancelGeneration } = useImageGeneration()
   const { saveCurrentChat, loadHistoryChat } = useHistory()
-
-  // 当前加载的历史记录 ID
-  let currentHistoryId: string | null = null
+  const t = i18n.global.t
 
   async function sendMessage(
     content: string,
     options: GenerationOptions
   ): Promise<void> {
     if (!configStore.isConfigured) {
-      throw new Error('请先配置 API')
+      throw new Error(t('configureApiFirst'))
     }
 
     if (!content.trim()) {
-      throw new Error('请输入图片描述')
+      throw new Error(t('enterImageDescription'))
     }
 
     // 添加用户消息
@@ -35,7 +37,7 @@ export function useChat() {
     // 添加助手消息（pending 状态）
     const assistantMessage = chatStore.addMessage({
       type: 'assistant',
-      content: '正在生成图片...',
+      content: t('generationInProgress'),
       generationSize: options.size,
       status: 'pending',
     })
@@ -50,10 +52,10 @@ export function useChat() {
       await chatStore.addImagesToMessage(assistantMessage.id, images)
 
       // 自动保存到历史记录
-      currentHistoryId = await saveCurrentChat()
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
     } catch (error) {
       // 设置错误状态
-      const errorMessage = error instanceof Error ? error.message : '生成失败'
+      const errorMessage = error instanceof Error ? error.message : t('generationFailed')
       await chatStore.setMessageError(assistantMessage.id, errorMessage)
     } finally {
       chatStore.setLoading(false)
@@ -66,15 +68,15 @@ export function useChat() {
     options: GenerationOptions
   ): Promise<void> {
     if (!configStore.isConfigured) {
-      throw new Error('请先配置 API')
+      throw new Error(t('configureApiFirst'))
     }
 
     if (!content.trim()) {
-      throw new Error('请输入图片描述')
+      throw new Error(t('enterImageDescription'))
     }
 
     await chatStore.updateMessage(messageId, {
-      content: '正在生成图片...',
+      content: t('generationInProgress'),
       generationSize: options.size,
       status: 'pending',
       error: undefined,
@@ -86,7 +88,7 @@ export function useChat() {
       const images = await generateImage(content, options)
       await chatStore.addImagesToMessage(messageId, images)
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '生成失败'
+      const errorMessage = error instanceof Error ? error.message : t('generationFailed')
       await chatStore.setMessageError(messageId, errorMessage)
     } finally {
       chatStore.setLoading(false)
@@ -102,7 +104,7 @@ export function useChat() {
       msg => msg.type === 'assistant' && msg.status === 'pending'
     )
     if (lastPendingMessage) {
-      await chatStore.setMessageError(lastPendingMessage.id, '已取消')
+      await chatStore.setMessageError(lastPendingMessage.id, t('canceled'))
     }
   }
 
@@ -115,7 +117,7 @@ export function useChat() {
   async function startNewChat(): Promise<void> {
     // 保存当前对话
     if (chatStore.messages.length > 0) {
-      await saveCurrentChat()
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
     }
     // 清空当前消息
     await chatStore.clearMessages()

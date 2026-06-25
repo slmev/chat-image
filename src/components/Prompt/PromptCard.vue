@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { PromptTemplate } from '../../types'
 
 interface Props {
@@ -6,6 +7,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   select: [template: PromptTemplate]
@@ -13,6 +15,13 @@ const emit = defineEmits<{
 
 function handleClick() {
   emit('select', props.template)
+}
+
+function promptTemplateTitle(template: PromptTemplate): string {
+  const [category, index] = template.id.split('-')
+  if (!category || !index) return template.title
+  const key = `promptTemplate${category[0].toUpperCase()}${category.slice(1)}${index}`
+  return t(key)
 }
 </script>
 
@@ -22,7 +31,7 @@ function handleClick() {
     class="prompt-card"
     :title="template.prompt"
   >
-    <span class="card-title">{{ template.title }}</span>
+    <span class="card-title">{{ promptTemplateTitle(template) }}</span>
     <p class="card-preview">{{ template.prompt }}</p>
   </button>
 </template>

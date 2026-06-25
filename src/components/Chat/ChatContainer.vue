@@ -20,7 +20,7 @@
       <div v-if="chatStore.messages.length === 0" class="empty-state">
         <div class="empty-eyebrow">
           <ImageIcon :size="16" />
-          <span>Image conversation</span>
+          <span>{{ t('imageConversation') }}</span>
         </div>
         <h2 class="empty-title">{{ t('startCreating') }}</h2>
         <p class="empty-description">{{ t('startDescription') }}</p>
@@ -36,7 +36,7 @@
             <div class="quick-start-icon">
               <component :is="getTemplateIcon(template.category)" :size="20" />
             </div>
-            <span class="quick-start-text">{{ template.title }}</span>
+            <span class="quick-start-text">{{ promptTemplateTitle(template) }}</span>
           </button>
         </div>
       </div>
@@ -82,7 +82,7 @@ import { useKeyboardShortcuts } from '../../composables/useKeyboardShortcuts'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
-import type { GenerationOptions } from '../../types'
+import type { GenerationOptions, PromptTemplate } from '../../types'
 
 const { t } = useI18n()
 const { chatStore, sendMessage, cancelCurrentGeneration, startNewChat } = useChat()
@@ -125,6 +125,13 @@ function getTemplateIcon(category: string) {
     abstract: Layers,
   }
   return icons[category] || Sparkles
+}
+
+function promptTemplateTitle(template: PromptTemplate): string {
+  const [category, index] = template.id.split('-')
+  if (!category || !index) return template.title
+  const key = `promptTemplate${category[0].toUpperCase()}${category.slice(1)}${index}`
+  return t(key)
 }
 
 async function handleSend(content: string, options: GenerationOptions) {

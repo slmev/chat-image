@@ -12,7 +12,6 @@ import { isTauriRuntime } from './platform/runtime'
 // 懒加载重型组件
 const HistorySidebar = defineAsyncComponent(() => import('./components/Layout/HistorySidebar.vue'))
 const ConfigModal = defineAsyncComponent(() => import('./components/Config/ConfigModal.vue'))
-const GalleryView = defineAsyncComponent(() => import('./components/Gallery/GalleryView.vue'))
 
 const configStore = useConfigStore()
 const chatStore = useChatStore()
@@ -21,14 +20,12 @@ const router = useRouter()
 const showConfigGuide = ref(false)
 const dismissedConfigGuide = ref(false)
 const showSidebar = ref(false)
-const showGallery = ref(false)
 const isChatRoute = computed(() => route.name === 'chat')
-const isSettingsRoute = computed(() => route.name === 'settings')
 
 function syncConfigGuide() {
   showConfigGuide.value = !dismissedConfigGuide.value &&
     !configStore.isConfigured &&
-    !isSettingsRoute.value
+    isChatRoute.value
 }
 
 watch(
@@ -60,7 +57,10 @@ function closeConfigGuide() {
 async function toggleSidebar() {
   if (!isChatRoute.value) {
     await router.push({ name: 'chat' })
+    showSidebar.value = true
+    return
   }
+
   showSidebar.value = !showSidebar.value
 }
 
@@ -68,9 +68,6 @@ function closeSidebar() {
   showSidebar.value = false
 }
 
-function toggleGallery() {
-  showGallery.value = !showGallery.value
-}
 </script>
 
 <template>
@@ -79,7 +76,6 @@ function toggleGallery() {
     <Header
       @toggle-config="toggleConfig"
       @toggle-sidebar="toggleSidebar"
-      @toggle-gallery="toggleGallery"
     />
 
     <!-- Main Content -->
@@ -107,15 +103,6 @@ function toggleGallery() {
           @close="closeConfigGuide"
         />
       </Transition>
-    </Suspense>
-
-    <!-- Gallery View -->
-    <Suspense>
-      <GalleryView
-        v-if="showGallery"
-        :is-open="showGallery"
-        @close="toggleGallery"
-      />
     </Suspense>
 
     <!-- Toast Notification -->

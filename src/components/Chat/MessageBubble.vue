@@ -32,8 +32,8 @@
         <button
           type="button"
           class="placeholder-cancel-btn"
-          aria-label="取消生成"
-          title="取消生成"
+          :aria-label="t('cancelGeneration')"
+          :title="t('cancelGeneration')"
           @click="emit('cancel')"
         >
           <X :size="16" />
@@ -44,7 +44,7 @@
         <div class="error-container">
           <p class="error-text">
             <AlertCircle :size="16" />
-            <span>{{ message.error || '生成失败' }}</span>
+            <span>{{ message.error || t('generationFailed') }}</span>
           </p>
           <button
             @click="handleRetry"
@@ -52,7 +52,7 @@
             :disabled="isRetrying"
           >
             <RefreshCw :size="14" :class="{ 'spin': isRetrying }" />
-            <span>{{ isRetrying ? '重试中...' : '重试' }}</span>
+            <span>{{ isRetrying ? t('retrying') : t('retry') }}</span>
           </button>
         </div>
 
@@ -121,9 +121,9 @@
       <!-- Delete Confirm -->
       <ConfirmModal
         :is-open="showDeleteConfirm"
-        title="删除消息"
-        message="确定要删除这条消息吗？此操作不可恢复。"
-        confirm-text="删除"
+        :title="t('deleteMessage')"
+        :message="t('deleteMessageConfirm')"
+        :confirm-text="t('delete')"
         type="danger"
         @confirm="confirmDelete"
         @cancel="showDeleteConfirm = false"
@@ -235,7 +235,7 @@ async function handleRetry() {
     }
 
     if (!userPrompt) {
-      showError('无法找到原始提示词')
+      showError(t('originalPromptMissing'))
       return
     }
 
@@ -245,7 +245,9 @@ async function handleRetry() {
       n: 1,
     })
   } catch (err) {
-    showError('重试失败：' + (err instanceof Error ? err.message : '未知错误'))
+    showError(t('retryFailed', {
+      message: err instanceof Error ? err.message : t('unknownError'),
+    }))
   } finally {
     isRetrying.value = false
   }
@@ -304,7 +306,7 @@ async function handleVariationResult(response: ImageGenerationResponse) {
 
   chatStore.addMessage({
     type: 'assistant',
-    content: '变体图片已生成',
+    content: t('variationGenerated'),
     status: 'success',
     images: newImages,
   })
@@ -320,7 +322,7 @@ async function handleEditResult(response: ImageGenerationResponse) {
 
   chatStore.addMessage({
     type: 'assistant',
-    content: '编辑后的图片已生成',
+    content: t('editedImageGenerated'),
     status: 'success',
     images: newImages,
   })

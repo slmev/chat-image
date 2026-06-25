@@ -1,6 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ConfirmModal from '../../components/Common/ConfirmModal.vue'
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => ({
+      confirm: '确认',
+      cancel: '取消',
+    }[key] ?? key),
+  }),
+}))
 
 describe('ConfirmModal', () => {
   it('does not render content when isOpen is false', () => {

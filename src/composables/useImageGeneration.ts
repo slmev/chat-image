@@ -2,19 +2,21 @@ import { useConfigStore } from '../stores/config'
 import { createImageGenerationService } from '../services/api'
 import type { GenerationOptions, GeneratedImage } from '../types'
 import { persistGeneratedImagesFromResponse } from '../utils/images'
+import i18n from '../i18n'
 
 // 保存当前服务的引用，以便可以取消请求
 let currentService: ReturnType<typeof createImageGenerationService> | null = null
 
 export function useImageGeneration() {
   const configStore = useConfigStore()
+  const t = i18n.global.t
 
   async function generateImage(
     prompt: string,
     options: GenerationOptions
   ): Promise<GeneratedImage[]> {
     if (!configStore.apiConfig) {
-      throw new Error('请先配置 API')
+      throw new Error(t('configureApiFirst'))
     }
 
     // 创建新的服务实例

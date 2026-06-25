@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Search, X, Star } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   searchQuery: string
@@ -7,6 +8,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:searchQuery': [value: string]
@@ -37,14 +39,14 @@ function toggleFavorites() {
         type="text"
         :value="searchQuery"
         @input="handleInput"
-        placeholder="搜索消息..."
+        :placeholder="t('searchMessages')"
         class="search-input"
       />
       <button
         v-if="searchQuery"
         @click="handleClear"
         class="clear-btn"
-        title="清除搜索"
+        :title="t('clearSearch')"
       >
         <X :size="14" />
       </button>
@@ -53,7 +55,7 @@ function toggleFavorites() {
     <button
       @click="toggleFavorites"
       :class="['favorites-btn', { active: showFavoritesOnly }]"
-      :title="showFavoritesOnly ? '显示全部' : '仅显示收藏'"
+      :title="showFavoritesOnly ? t('showAll') : t('showFavoritesOnly')"
     >
       <Star :size="16" :fill="showFavoritesOnly ? 'currentColor' : 'none'" />
     </button>

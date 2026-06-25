@@ -6,7 +6,7 @@
         <div class="compare-header">
           <h2 class="compare-title">
             <Scale :size="20" />
-            <span>图片对比</span>
+            <span>{{ t('imageCompare') }}</span>
           </h2>
           <button @click="$emit('close')" class="btn-icon">
             <X :size="20" />
@@ -18,8 +18,8 @@
           <div class="compare-view" ref="compareRef">
             <!-- Left Image -->
             <div class="compare-left">
-              <img :src="getImageUrl(leftImage)" alt="原图" class="compare-image" />
-              <div class="compare-label">原图</div>
+              <img :src="getImageUrl(leftImage)" :alt="t('originalImage')" class="compare-image" />
+              <div class="compare-label">{{ t('originalImage') }}</div>
             </div>
 
             <!-- Slider -->
@@ -37,20 +37,20 @@
 
             <!-- Right Image -->
             <div class="compare-right" :style="{ clipPath: `inset(0 0 0 ${sliderPosition}%)` }">
-              <img :src="getImageUrl(rightImage)" alt="变体" class="compare-image" />
-              <div class="compare-label">变体</div>
+              <img :src="getImageUrl(rightImage)" :alt="t('variationImage')" class="compare-image" />
+              <div class="compare-label">{{ t('variationImage') }}</div>
             </div>
           </div>
 
           <!-- Info -->
           <div class="compare-info">
             <div class="info-item">
-              <span class="info-label">左图提示词:</span>
-              <span class="info-value">{{ leftImage.sourcePrompt || '无' }}</span>
+              <span class="info-label">{{ t('leftPrompt') }}:</span>
+              <span class="info-value">{{ leftImage.sourcePrompt || t('none') }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">右图提示词:</span>
-              <span class="info-value">{{ rightImage.sourcePrompt || '无' }}</span>
+              <span class="info-label">{{ t('rightPrompt') }}:</span>
+              <span class="info-value">{{ rightImage.sourcePrompt || t('none') }}</span>
             </div>
           </div>
         </div>
@@ -62,6 +62,7 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from 'vue'
 import { X, Scale, ChevronsLeftRight } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import type { GeneratedImage } from '../../types'
 
 interface Props {
@@ -75,6 +76,7 @@ defineEmits<{
   close: []
 }>()
 
+const { t } = useI18n()
 const compareRef = ref<HTMLElement>()
 const sliderPosition = ref(50)
 const isDragging = ref(false)

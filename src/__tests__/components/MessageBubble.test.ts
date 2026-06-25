@@ -11,6 +11,11 @@ const mockState = vi.hoisted(() => ({
 }))
 
 vi.mock('vue-i18n', () => ({
+  createI18n: () => ({
+    global: {
+      t: (key: string) => key,
+    },
+  }),
   useI18n: () => ({
     t: (key: string) => key === 'generating' ? '正在生成图片' : key,
   }),

@@ -68,6 +68,19 @@ export interface GeneratedImage {
   sourceMessageId?: string
 }
 
+export interface GalleryImageItem {
+  id: string
+  image: GeneratedImage
+  sourceMessage: ChatMessage
+  sourceMessageId: string
+  sourceHistoryId?: string
+  sourceHistoryTitle?: string
+  sourceType: 'current' | 'history'
+  prompt: string
+  timestamp: number
+  isFavorite: boolean
+}
+
 // 风格模板类型
 export interface StyleTemplate {
   id: string

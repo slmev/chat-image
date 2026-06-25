@@ -75,7 +75,7 @@
               role="radio"
               :aria-checked="selectedOptions.size === size.value"
             >
-              {{ size.label }}
+              {{ imageSizeLabel(size.value) }}
             </button>
           </div>
         </div>
@@ -93,7 +93,7 @@
               role="radio"
               :aria-checked="selectedOptions.quality === quality.value"
             >
-              {{ quality.label }}
+              {{ imageQualityLabel(quality.value) }}
             </button>
           </div>
         </div>
@@ -144,7 +144,7 @@
               role="radio"
               :aria-checked="selectedStyleId === style.id"
             >
-              {{ style.name }}
+              {{ styleLabel(style) }}
             </button>
             <button
               @click="openCreateStyle"
@@ -214,6 +214,42 @@ const editingStyle = ref<StyleTemplate | null>(null)
 
 // 合并内置和自定义风格
 const allStyles = computed(() => [...STYLE_TEMPLATES, ...customStyles.value])
+
+function imageSizeLabel(value: string): string {
+  switch (value) {
+    case '1024x1024':
+      return t('imageSizeSquare')
+    case '1792x1024':
+      return t('imageSizeLandscape')
+    case '1024x1792':
+      return t('imageSizePortrait')
+    default:
+      return value
+  }
+}
+
+function imageQualityLabel(value: string): string {
+  return value === 'hd' ? t('qualityHd') : t('qualityStandard')
+}
+
+function styleLabel(style: StyleTemplate): string {
+  switch (style.id) {
+    case 'anime':
+      return t('styleAnime')
+    case 'realistic':
+      return t('styleRealistic')
+    case 'oil-painting':
+      return t('styleOilPainting')
+    case 'watercolor':
+      return t('styleWatercolor')
+    case 'sketch':
+      return t('styleSketch')
+    case 'cyberpunk':
+      return t('styleCyberpunk')
+    default:
+      return style.name
+  }
+}
 
 // IME state
 const isComposing = ref(false)

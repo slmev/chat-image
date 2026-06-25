@@ -186,7 +186,7 @@ import { useChat } from '../../composables/useChat'
 import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ChatHistory } from '../../types'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface Props {
   isOpen: boolean
@@ -199,7 +199,7 @@ const emit = defineEmits<{
 }>()
 
 const { historyList, searchHistory, deleteHistoryItem, clearHistory, toggleHistoryFavorite } = useHistory()
-const { startNewChat, loadChat } = useChat()
+const { clearChat, loadChat } = useChat()
 
 const searchQuery = ref('')
 const activeTab = ref<'history' | 'favorites'>('history')
@@ -244,12 +244,12 @@ function formatTime(timestamp: number): string {
   const now = new Date()
   const diff = now.getTime() - date.getTime()
 
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
+  if (diff < 60000) return t('justNow')
+  if (diff < 3600000) return t('minutesAgo', { n: Math.floor(diff / 60000) })
+  if (diff < 86400000) return t('hoursAgo', { n: Math.floor(diff / 3600000) })
+  if (diff < 604800000) return t('daysAgo', { n: Math.floor(diff / 86400000) })
 
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString(locale.value, {
     month: 'short',
     day: 'numeric',
   })
@@ -288,7 +288,7 @@ async function confirmClearAll() {
   try {
     await clearHistory()
     currentChatId.value = null
-    await startNewChat()
+    await clearChat()
     showClearConfirm.value = false
   } catch (error) {
     console.error('Clear history failed:', error)

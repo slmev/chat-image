@@ -53,6 +53,10 @@ function clearSearch() {
   searchQuery.value = ''
   activeCategory.value = 'people'
 }
+
+function categoryLabel(category: PromptCategory): string {
+  return t(category)
+}
 </script>
 
 <template>
@@ -96,7 +100,7 @@ function clearSearch() {
         @click="activeCategory = cat.id"
         :class="['tab-btn', { active: activeCategory === cat.id && !searchQuery }]"
       >
-        <span>{{ cat.name }}</span>
+        <span>{{ categoryLabel(cat.id) }}</span>
       </button>
     </div>
 

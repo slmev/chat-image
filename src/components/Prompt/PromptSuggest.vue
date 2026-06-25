@@ -7,7 +7,7 @@
         :key="group.category"
         class="enhancer-group"
       >
-        <span class="group-label">{{ group.label }}</span>
+        <span class="group-label">{{ enhancerLabel(group.category, group.label) }}</span>
         <div class="group-chips">
           <button
             v-for="keyword in group.suggestions"
@@ -30,7 +30,7 @@
         @click="$emit('use-template', tmpl.prompt)"
         class="template-item"
       >
-        <span class="template-title">{{ tmpl.title }}</span>
+        <span class="template-title">{{ promptTemplateTitle(tmpl) }}</span>
         <span class="template-preview">{{ tmpl.prompt.slice(0, 60) }}...</span>
       </button>
     </div>
@@ -55,6 +55,25 @@ defineEmits<{
   add: [keyword: string]
   'use-template': [prompt: string]
 }>()
+
+function enhancerLabel(category: string, fallback: string): string {
+  const keys: Record<string, string> = {
+    lighting: 'enhancerLighting',
+    style: 'enhancerStyle',
+    quality: 'enhancerQuality',
+    mood: 'enhancerMood',
+    composition: 'enhancerComposition',
+    color: 'enhancerColor',
+  }
+  return keys[category] ? t(keys[category]) : fallback
+}
+
+function promptTemplateTitle(template: PromptTemplate): string {
+  const [category, index] = template.id.split('-')
+  if (!category || !index) return template.title
+  const key = `promptTemplate${category[0].toUpperCase()}${category.slice(1)}${index}`
+  return t(key)
+}
 </script>
 
 <style scoped>

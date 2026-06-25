@@ -53,8 +53,7 @@ vi.mock('../../components/Gallery/GalleryView.vue', () => ({
   __esModule: true,
   default: {
     name: 'GalleryViewStub',
-    props: ['isOpen'],
-    template: '<div class="gallery-view-stub">gallery</div>',
+    template: '<section id="main-content" class="gallery-view-stub">gallery</section>',
   },
 }))
 
@@ -146,8 +145,36 @@ describe('App routing and setup guide', () => {
     expect(wrapper.find('.config-guide-stub').exists()).toBe(false)
   })
 
+  it('opens the gallery page from the header gallery action', async () => {
+    const wrapper = await mountApp('/')
+
+    await wrapper.get('button[aria-label="图片画廊"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('gallery')
+    expect(wrapper.find('.gallery-view-stub').exists()).toBe(true)
+  })
+
+  it('renders the gallery page directly without the setup guide', async () => {
+    const wrapper = await mountApp('/gallery')
+
+    expect(router.currentRoute.value.name).toBe('gallery')
+    expect(wrapper.find('.gallery-view-stub').exists()).toBe(true)
+    expect(wrapper.find('.config-guide-stub').exists()).toBe(false)
+  })
+
   it('returns to chat and opens history from settings', async () => {
     const wrapper = await mountApp('/settings')
+
+    await wrapper.get('button[aria-label="历史记录"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.name).toBe('chat')
+    expect(wrapper.find('.history-sidebar-stub').exists()).toBe(true)
+  })
+
+  it('returns to chat and opens history from gallery', async () => {
+    const wrapper = await mountApp('/gallery')
 
     await wrapper.get('button[aria-label="历史记录"]').trigger('click')
     await flushPromises()

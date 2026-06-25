@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Brush, Eraser, Undo2, Trash2 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   brushSize: number
@@ -7,6 +8,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const { t } = useI18n()
 
 const emit = defineEmits<{
   'update:brushSize': [value: number]
@@ -30,14 +32,14 @@ function handleBrushSizeChange(event: Event) {
     <button
       @click="toggleEraser"
       :class="['tool-btn', { active: !isEraser }]"
-      title="画笔"
+      :title="t('brush')"
     >
       <Brush :size="16" />
     </button>
     <button
       @click="toggleEraser"
       :class="['tool-btn', { active: isEraser }]"
-      title="橡皮擦"
+      :title="t('eraser')"
     >
       <Eraser :size="16" />
     </button>
@@ -45,7 +47,7 @@ function handleBrushSizeChange(event: Event) {
     <div class="divider"></div>
 
     <div class="brush-size-control">
-      <label class="size-label">大小:</label>
+      <label class="size-label">{{ t('brushSize') }}:</label>
       <input
         type="range"
         :value="brushSize"
@@ -59,10 +61,10 @@ function handleBrushSizeChange(event: Event) {
 
     <div class="divider"></div>
 
-    <button @click="$emit('undo')" class="tool-btn" title="撤销">
+    <button @click="$emit('undo')" class="tool-btn" :title="t('undo')">
       <Undo2 :size="16" />
     </button>
-    <button @click="$emit('clear')" class="tool-btn danger" title="清除遮罩">
+    <button @click="$emit('clear')" class="tool-btn danger" :title="t('clearMask')">
       <Trash2 :size="16" />
     </button>
   </div>

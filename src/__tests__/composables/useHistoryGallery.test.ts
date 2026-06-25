@@ -1,0 +1,121 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useHistory } from '../../composables/useHistory'
+import { useChatStore } from '../../stores/chat'
+import type { ChatHistory, ChatMessage, GeneratedImage } from '../../types'
+
+const HISTORY_LIST_KEY = 'chat-image-history-list'
+const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
+
+vi.mock('../../platform/runtime', () => ({
+  isTauriRuntime: () => false,
+}))
+
+vi.mock('../../platform/metadataStore', () => ({
+  HISTORY_LIST_KEY: 'chat-image-history-list',
+  HISTORY_MESSAGES_PREFIX: 'chat-image-history-messages-',
+  getDesktopChatHistory: vi.fn(async () => []),
+  getMetadataValue: vi.fn(),
+  initializeDesktopPersistence: vi.fn(),
+  removeMetadataValue: vi.fn(),
+  setMetadataValue: vi.fn(),
+}))
+
+vi.mock('../../platform/imageReferenceCleanup', () => ({
+  deleteUnreferencedLocalImages: vi.fn(),
+}))
+
+function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
+  return {
+    id: 'image-1',
+    url: 'blob:image-1',
+    timestamp: 1,
+    sourcePrompt: 'a quiet lake',
+    ...overrides,
+  }
+}
+
+function message(id: string, images: GeneratedImage[], overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id,
+    type: 'assistant',
+    content: id,
+    timestamp: 1,
+    status: 'success',
+    images,
+    ...overrides,
+  }
+}
+
+function history(id: string, overrides: Partial<ChatHistory> = {}): ChatHistory {
+  return {
+    id,
+    title: id,
+    timestamp: 1,
+    messageCount: 1,
+    isFavorite: false,
+    ...overrides,
+  }
+}
+
+describe('useHistory gallery images', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.clear()
+  })
+
+  it('aggregates current and saved history images while deduping shared images', async () => {
+    const sharedImage = image({
+      id: 'shared-image',
+      url: 'blob:shared-current',
+      timestamp: 100,
+      sourcePrompt: 'current prompt',
+    })
+    const savedHistory = history('history-1', {
+      title: 'Saved session',
+      timestamp: 200,
+      isFavorite: true,
+    })
+
+    await useChatStore().importMessages([
+      message('current-message', [sharedImage], { isFavorite: true }),
+    ], 'replace')
+
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify([
+      message('duplicate-history-message', [
+        image({
+          id: 'shared-image',
+          url: 'blob:shared-history',
+          timestamp: 90,
+          sourcePrompt: 'duplicate prompt',
+        }),
+      ]),
+      message('unique-history-message', [
+        image({
+          id: 'history-image',
+          url: 'blob:history-image',
+          timestamp: 80,
+          sourcePrompt: 'saved prompt',
+        }),
+      ]),
+    ]))
+
+    const items = await useHistory().loadGalleryImages()
+
+    expect(items).toHaveLength(2)
+    expect(items.map(item => item.image.id)).toEqual(['shared-image', 'history-image'])
+    expect(items[0]).toMatchObject({
+      sourceType: 'current',
+      prompt: 'current prompt',
+      isFavorite: true,
+    })
+    expect(items[1]).toMatchObject({
+      sourceType: 'history',
+      sourceHistoryId: 'history-1',
+      sourceHistoryTitle: 'Saved session',
+      prompt: 'saved prompt',
+      isFavorite: true,
+    })
+  })
+})

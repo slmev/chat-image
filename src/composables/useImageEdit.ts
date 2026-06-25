@@ -4,11 +4,13 @@ import { ImageGenerationService } from '../services/api'
 import type { GeneratedImage, ImageEditRequest, VariationOptions, ImageGenerationResponse } from '../types'
 import { isExternalImageUrl } from '../utils/images'
 import { getImageRepository } from '../platform/imageRepository'
+import i18n from '../i18n'
 
 export function useImageEdit() {
   const configStore = useConfigStore()
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const t = i18n.global.t
 
   let currentService: ImageGenerationService | null = null
 
@@ -16,7 +18,7 @@ export function useImageEdit() {
     if (!currentService) {
       const config = configStore.apiConfig
       if (!config) {
-        throw new Error('请先配置 API')
+        throw new Error(t('configureApiFirst'))
       }
       currentService = new ImageGenerationService(config)
     } else {
@@ -33,7 +35,7 @@ export function useImageEdit() {
       return await getImageRepository().readImageBlob(image)
     } catch (err) {
       if (isExternalImageUrl(image.url)) {
-        throw new Error('该图片链接不允许前端读取，请使用 base64 返回或重新生成')
+        throw new Error(t('imageReadNotAllowed'))
       }
       throw err
     }
@@ -69,7 +71,7 @@ export function useImageEdit() {
 
       return response
     } catch (err) {
-      const message = err instanceof Error ? err.message : '创建变体失败'
+      const message = err instanceof Error ? err.message : t('createVariationFailed')
       error.value = message
       throw err
     } finally {
@@ -103,7 +105,7 @@ export function useImageEdit() {
       const response = await service.editImage(request)
       return response
     } catch (err) {
-      const message = err instanceof Error ? err.message : '编辑图片失败'
+      const message = err instanceof Error ? err.message : t('editImageFailed')
       error.value = message
       throw err
     } finally {

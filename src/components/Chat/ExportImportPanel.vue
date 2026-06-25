@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { Download, Upload, FileJson, Check, AlertCircle, X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { isTauriRuntime } from '../../platform/runtime'
 
 const { exportHistory, importHistory } = useHistory()
+const { t } = useI18n()
 
 const isDesktopRuntime = isTauriRuntime()
 const isOpen = ref(false)
@@ -36,7 +38,7 @@ async function handleExport() {
 
     exportStatus.value = {
       type: 'success',
-      message: '导出完成',
+      message: t('exportComplete'),
     }
     setTimeout(() => {
       isOpen.value = false
@@ -46,7 +48,7 @@ async function handleExport() {
     console.error('Export error:', error)
     exportStatus.value = {
       type: 'error',
-      message: '导出失败，请稍后重试',
+      message: t('exportFailed'),
     }
   } finally {
     isExporting.value = false
@@ -55,6 +57,33 @@ async function handleExport() {
 
 function triggerFileInput() {
   fileInput.value?.click()
+}
+
+function localizedImportMessage(message: string): string {
+  const exactMatches: Record<string, string> = {
+    '导入失败，现有数据已保持不变': 'importFailedRollback',
+    '历史记录已替换': 'historyReplaced',
+    '历史记录已合并': 'historyMerged',
+    '无效的文件格式': 'invalidFileFormat',
+    '消息数量超过限制（最多 1000 条）': 'tooManyMessages',
+    '文件数据格式不正确': 'invalidFileData',
+    '导入失败，请检查文件格式': 'importFailedCheckFormat',
+    '桌面 ZIP 导入仅支持桌面端': 'desktopZipImportOnly',
+    'ZIP 包损坏，无法读取': 'corruptZipFile',
+    'ZIP 包缺少 history.json': 'missingHistoryJson',
+    'history.json 格式不正确': 'invalidHistoryJson',
+    '导入 ZIP 包失败，请检查文件内容': 'importZipFailed',
+  }
+  if (exactMatches[message]) {
+    return t(exactMatches[message])
+  }
+
+  const missingImagePrefix = 'ZIP 包缺少图片文件：'
+  if (message.startsWith(missingImagePrefix)) {
+    return t('missingZipImage', { path: message.slice(missingImagePrefix.length) })
+  }
+
+  return message
 }
 
 async function handleImport(event: Event) {
@@ -70,7 +99,7 @@ async function handleImport(event: Event) {
     const result = await importHistory(file, importMode.value)
     importStatus.value = {
       type: result.success ? 'success' : 'error',
-      message: result.message,
+      message: localizedImportMessage(result.message),
     }
 
     if (result.success) {
@@ -82,7 +111,7 @@ async function handleImport(event: Event) {
   } catch (error) {
     importStatus.value = {
       type: 'error',
-      message: '导入失败',
+      message: t('importFailed'),
     }
   } finally {
     isImporting.value = false
@@ -98,7 +127,7 @@ async function handleImport(event: Event) {
     <button
       @click="togglePanel"
       class="btn-icon"
-      title="导入/导出历史记录"
+      :title="t('exportImportHistory')"
     >
       <FileJson :size="20" />
     </button>
@@ -112,7 +141,7 @@ async function handleImport(event: Event) {
     <Transition name="panel">
       <div v-if="isOpen" class="panel">
         <div class="panel-header">
-          <h3 class="panel-title">导入/导出</h3>
+          <h3 class="panel-title">{{ t('importExport') }}</h3>
           <button @click="isOpen = false" class="close-btn">
             <X :size="16" />
           </button>
@@ -121,9 +150,9 @@ async function handleImport(event: Event) {
         <div class="panel-content">
           <!-- Export -->
           <div class="section">
-            <h4 class="section-title">导出</h4>
+            <h4 class="section-title">{{ t('export') }}</h4>
             <p class="section-desc">
-              将历史记录导出为{{ isDesktopRuntime ? ' ZIP 包' : ' JSON 文件' }}
+              {{ t('exportHistoryAs', { format: isDesktopRuntime ? t('zipPackage') : t('jsonFile') }) }}
             </p>
             <button
               @click="handleExport"
@@ -131,7 +160,7 @@ async function handleImport(event: Event) {
               :disabled="isExporting"
             >
               <Download :size="16" />
-              <span>{{ isExporting ? '导出中...' : '导出历史记录' }}</span>
+              <span>{{ isExporting ? t('exporting') : t('exportHistory') }}</span>
             </button>
 
             <Transition name="slide-up">
@@ -150,9 +179,9 @@ async function handleImport(event: Event) {
 
           <!-- Import -->
           <div class="section">
-            <h4 class="section-title">导入</h4>
+            <h4 class="section-title">{{ t('import') }}</h4>
             <p class="section-desc">
-              从{{ isDesktopRuntime ? ' ZIP 包或 JSON 文件' : ' JSON 文件' }}导入历史记录
+              {{ t('importHistoryFrom', { format: isDesktopRuntime ? t('zipOrJsonFile') : t('jsonFile') }) }}
             </p>
 
             <div class="import-mode">
@@ -164,8 +193,8 @@ async function handleImport(event: Event) {
                   name="importMode"
                 />
                 <span class="mode-label">
-                  <strong>合并</strong>
-                  <small>添加新消息，保留现有</small>
+                  <strong>{{ t('merge') }}</strong>
+                  <small>{{ t('mergeDescription') }}</small>
                 </span>
               </label>
               <label class="mode-option">
@@ -176,8 +205,8 @@ async function handleImport(event: Event) {
                   name="importMode"
                 />
                 <span class="mode-label">
-                  <strong>替换</strong>
-                  <small>清除现有，使用导入数据</small>
+                  <strong>{{ t('replace') }}</strong>
+                  <small>{{ t('replaceDescription') }}</small>
                 </span>
               </label>
             </div>
@@ -188,7 +217,7 @@ async function handleImport(event: Event) {
               :disabled="isImporting"
             >
               <Upload :size="16" />
-              <span>{{ isImporting ? '导入中...' : '选择文件导入' }}</span>
+              <span>{{ isImporting ? t('importing') : t('selectFileToImport') }}</span>
             </button>
 
             <input

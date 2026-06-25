@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
-import type { ChatExportData, ChatHistory, ChatMessage } from '../types'
+import type { ChatExportData, ChatHistory, ChatMessage, GalleryImageItem, GeneratedImage } from '../types'
 import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
 import { generateId } from '../utils/storage'
 import { stripBase64FromMessages } from '../utils/imagePersistence'
@@ -13,6 +13,7 @@ import {
   setMetadataValue,
 } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
+import i18n from '../i18n'
 import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
 
 // 获取历史记录列表
@@ -62,6 +63,69 @@ function collectImages(messages: ChatMessage[]) {
   return messages.flatMap(message => message.images || [])
 }
 
+function galleryImageDedupeKey(image: GeneratedImage): string {
+  if (image.id) return `id:${image.id}`
+  if (image.localPath) return `local:${image.localPath}`
+  return `url:${image.url}`
+}
+
+function promptForGalleryImage(
+  messages: ChatMessage[],
+  message: ChatMessage,
+  messageIndex: number,
+  image: GeneratedImage,
+): string {
+  if (image.sourcePrompt?.trim()) return image.sourcePrompt
+
+  if (image.sourceMessageId) {
+    const sourceMessage = messages.find(item => item.id === image.sourceMessageId)
+    if (sourceMessage?.content.trim()) return sourceMessage.content
+  }
+
+  for (let index = messageIndex; index >= 0; index -= 1) {
+    const candidate = messages[index]
+    if (candidate.type === 'user' && candidate.content.trim()) {
+      return candidate.content
+    }
+  }
+
+  return message.content
+}
+
+function collectGalleryImageItems(
+  messages: ChatMessage[],
+  source: {
+    type: GalleryImageItem['sourceType']
+    history?: ChatHistory
+  },
+  seenKeys: Set<string>,
+): GalleryImageItem[] {
+  const items: GalleryImageItem[] = []
+
+  messages.forEach((message, messageIndex) => {
+    message.images?.forEach((image) => {
+      const dedupeKey = galleryImageDedupeKey(image)
+      if (seenKeys.has(dedupeKey)) return
+      seenKeys.add(dedupeKey)
+
+      items.push({
+        id: `${source.type}:${source.history?.id || 'current'}:${dedupeKey}`,
+        image,
+        sourceMessage: message,
+        sourceMessageId: image.sourceMessageId || message.id,
+        sourceHistoryId: source.history?.id,
+        sourceHistoryTitle: source.history?.title,
+        sourceType: source.type,
+        prompt: promptForGalleryImage(messages, message, messageIndex, image),
+        timestamp: image.timestamp || message.timestamp,
+        isFavorite: Boolean(message.isFavorite || source.history?.isFavorite),
+      })
+    })
+  })
+
+  return items
+}
+
 function collectLocalImagePaths(messages: ChatMessage[]): Set<string> {
   return new Set(collectImages(messages)
     .map(image => image.localPath)
@@ -70,6 +134,73 @@ function collectLocalImagePaths(messages: ChatMessage[]): Set<string> {
 
 function cloneData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
+}
+
+const historyList = ref<ChatHistory[]>(getHistoryList())
+
+function historyMessageSignature(messages: ChatMessage[]): string | null {
+  if (messages.length === 0) return null
+  return messages.map(message => message.id).join('\u001f')
+}
+
+function chooseDuplicateHistory(items: ChatHistory[]): ChatHistory {
+  return [...items].sort((a, b) => {
+    if (a.isFavorite !== b.isFavorite) {
+      return a.isFavorite ? -1 : 1
+    }
+    return b.timestamp - a.timestamp
+  })[0]
+}
+
+async function removeDuplicateHistories(list: ChatHistory[]): Promise<ChatHistory[]> {
+  const groupedByMessages = new Map<string, ChatHistory[]>()
+
+  await Promise.all(list.map(async item => {
+    const signature = historyMessageSignature(await readHistoryMessages(item.id))
+    if (!signature) return
+
+    const group = groupedByMessages.get(signature) || []
+    group.push(item)
+    groupedByMessages.set(signature, group)
+  }))
+
+  const idsToRemove = new Set<string>()
+  groupedByMessages.forEach(items => {
+    if (items.length <= 1) return
+
+    const keep = chooseDuplicateHistory(items)
+    items.forEach(item => {
+      if (item.id !== keep.id) {
+        idsToRemove.add(item.id)
+      }
+    })
+  })
+
+  if (idsToRemove.size === 0) return list
+
+  await Promise.all(Array.from(idsToRemove).map(id => deleteHistoryMessages(id)))
+  const deduped = list.filter(item => !idsToRemove.has(item.id))
+  await setHistoryList(deduped)
+  return deduped
+}
+
+function refreshHistoryList(): void {
+  if (isTauriRuntime()) {
+    void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, []).then(async list => {
+      historyList.value = await removeDuplicateHistories(list)
+    }).catch(error => {
+      console.error('Failed to load history list:', error)
+    })
+    return
+  }
+
+  const list = getHistoryList()
+  historyList.value = list
+  void removeDuplicateHistories(list).then(deduped => {
+    historyList.value = deduped
+  }).catch(error => {
+    console.error('Failed to clean duplicate histories:', error)
+  })
 }
 
 // 保存历史对话消息
@@ -137,13 +268,8 @@ export function useHistory() {
 
   const searchQuery = ref('')
   const showFavoritesOnly = ref(false)
-  const historyList = ref<ChatHistory[]>(getHistoryList())
-
-  if (isTauriRuntime()) {
-    void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, []).then(list => {
-      historyList.value = list
-    })
-  }
+  const t = i18n.global.t
+  refreshHistoryList()
 
   async function ensureDesktopHistoryHydrated(): Promise<void> {
     await initializeDesktopPersistence()
@@ -162,6 +288,33 @@ export function useHistory() {
         ] as const),
       ),
     )
+  }
+
+  async function loadGalleryImages(): Promise<GalleryImageItem[]> {
+    if (isTauriRuntime()) {
+      await ensureDesktopHistoryHydrated()
+      historyList.value = await getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, historyList.value)
+    }
+
+    const seenKeys = new Set<string>()
+    const items = collectGalleryImageItems(
+      chatStore.messages,
+      { type: 'current' },
+      seenKeys,
+    )
+
+    const savedHistories = [...historyList.value].sort((a, b) => b.timestamp - a.timestamp)
+    const savedMessages = await Promise.all(savedHistories.map(history => readHistoryMessages(history.id)))
+
+    savedMessages.forEach((messages, index) => {
+      items.push(...collectGalleryImageItems(
+        messages,
+        { type: 'history', history: savedHistories[index] },
+        seenKeys,
+      ))
+    })
+
+    return items.sort((a, b) => b.timestamp - a.timestamp)
   }
 
   function isZipHistoryFile(file: File): boolean {
@@ -279,19 +432,22 @@ export function useHistory() {
   }
 
   // 保存当前对话到历史记录
-  async function saveCurrentChat(): Promise<string | null> {
+  async function saveCurrentChat(existingHistoryId?: string | null): Promise<string | null> {
     if (chatStore.messages.length === 0) return null
 
     const firstUserMessage = chatStore.messages.find(m => m.type === 'user')
-    const title = firstUserMessage?.content.slice(0, 50) || '新对话'
-    const historyId = generateId()
+    const title = firstUserMessage?.content.slice(0, 50) || t('newChat')
+    const existingHistory = existingHistoryId
+      ? historyList.value.find(item => item.id === existingHistoryId)
+      : undefined
+    const historyId = existingHistory?.id || generateId()
 
     const history: ChatHistory = {
       id: historyId,
       title,
       timestamp: Date.now(),
       messageCount: chatStore.messages.length,
-      isFavorite: false,
+      isFavorite: existingHistory?.isFavorite ?? false,
       preview: firstUserMessage?.content.slice(0, 100),
     }
 
@@ -300,7 +456,13 @@ export function useHistory() {
     await setHistoryMessages(historyId, chatStore.messages)
 
     // 更新历史列表
-    historyList.value.unshift(history)
+    if (existingHistory) {
+      historyList.value = historyList.value.map(item =>
+        item.id === historyId ? history : item
+      )
+    } else {
+      historyList.value.unshift(history)
+    }
     await setHistoryList(historyList.value)
 
     return historyId
@@ -484,6 +646,7 @@ export function useHistory() {
     searchHistory,
     saveCurrentChat,
     loadHistoryChat,
+    loadGalleryImages,
     deleteHistoryItem,
     clearHistory,
     toggleHistoryFavorite,

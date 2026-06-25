@@ -23,13 +23,13 @@
               class="btn-secondary"
               ref="cancelBtn"
             >
-              {{ cancelText }}
+              {{ displayCancelText }}
             </button>
             <button
               @click="handleConfirm"
               :class="['btn-primary', type]"
             >
-              {{ confirmText }}
+              {{ displayConfirmText }}
             </button>
           </div>
         </div>
@@ -39,8 +39,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, useId } from 'vue'
+import { computed, ref, onMounted, onUnmounted, useId } from 'vue'
 import { AlertTriangle, AlertCircle, Info } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 interface Props {
   isOpen: boolean
@@ -52,8 +53,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  confirmText: '确认',
-  cancelText: '取消',
+  confirmText: '',
+  cancelText: '',
   type: 'info',
 })
 
@@ -64,6 +65,9 @@ const emit = defineEmits<{
 
 const titleId = `confirm-title-${useId()}`
 const cancelBtn = ref<HTMLButtonElement>()
+const { t } = useI18n()
+const displayConfirmText = computed(() => props.confirmText || t('confirm'))
+const displayCancelText = computed(() => props.cancelText || t('cancel'))
 
 function handleConfirm() {
   emit('confirm')
