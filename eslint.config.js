@@ -23,6 +23,9 @@ export default [
         ...globals.es2023,
       },
     },
+    rules: {
+      'no-undef': 'off',
+    },
   },
   {
     files: ['src/**/*.{js,ts,vue}'],

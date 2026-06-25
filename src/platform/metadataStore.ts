@@ -1,5 +1,6 @@
-import type { ApiConfig, ChatHistory, ChatMessage, GenerationOptions, Theme } from '../types'
+import type { ChatHistory, ChatMessage, GenerationOptions, Theme } from '../types'
 import { STORAGE_KEYS } from '../utils/constants'
+import { normalizeApiConfigState } from '../utils/storage'
 import { resolveStoredImageUrls, stripBase64FromMessages } from '../utils/imagePersistence'
 import { getImageRepository } from './imageRepository'
 import { isTauriRuntime } from './runtime'
@@ -70,18 +71,6 @@ function readLocalStorageValue<T>(key: string, defaultValue: T): T {
   }
 }
 
-function readLocalApiConfig(): ApiConfig | null {
-  const config = readLocalStorageValue<ApiConfig | null>(STORAGE_KEYS.API_CONFIG, null)
-  if (config?.apiKey) {
-    try {
-      config.apiKey = atob(config.apiKey)
-    } catch {
-      // Backward compatibility with legacy plaintext values.
-    }
-  }
-  return config
-}
-
 async function localizeMessages(messages: ChatMessage[]): Promise<ChatMessage[]> {
   const repository = getImageRepository()
   const withLocalImages = await Promise.all(messages.map(async msg => {
@@ -139,9 +128,11 @@ export async function initializeDesktopPersistence(): Promise<void> {
     }))
   }
 
-  const apiConfig = readLocalApiConfig()
-  if (apiConfig) {
-    await store.set(STORAGE_KEYS.API_CONFIG, apiConfig)
+  const apiConfigState = normalizeApiConfigState(
+    readLocalStorageValue<unknown>(STORAGE_KEYS.API_CONFIG, null),
+  )
+  if (apiConfigState.configs.length > 0) {
+    await store.set(STORAGE_KEYS.API_CONFIG, apiConfigState)
   }
 
   const theme = readLocalStorageValue<Theme | null>(STORAGE_KEYS.THEME, null)

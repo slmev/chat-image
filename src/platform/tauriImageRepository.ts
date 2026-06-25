@@ -29,6 +29,36 @@ function bytesToBlob(bytes: Uint8Array, mimeType = 'image/png'): Blob {
   return new Blob([buffer], { type: mimeType })
 }
 
+function fallbackGeneratedImage(input: SaveGeneratedImageInput): GeneratedImage {
+  if (input.b64Json) {
+    try {
+      const bytes = base64ToBytes(input.b64Json)
+      return {
+        id: input.id,
+        url: URL.createObjectURL(bytesToBlob(bytes, 'image/png')),
+        base64: input.b64Json,
+        originalUrl: input.url,
+        mimeType: 'image/png',
+        byteSize: bytes.byteLength,
+        timestamp: input.timestamp,
+        sourcePrompt: input.sourcePrompt,
+        sourceMessageId: input.sourceMessageId,
+      }
+    } catch {
+      // Fall through to the original URL fallback when the response payload is malformed.
+    }
+  }
+
+  return {
+    id: input.id,
+    url: input.url || '',
+    originalUrl: input.url,
+    timestamp: input.timestamp,
+    sourcePrompt: input.sourcePrompt,
+    sourceMessageId: input.sourceMessageId,
+  }
+}
+
 async function readLocalBytes(localPath: string): Promise<Uint8Array> {
   const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs')
   return readFile(localPath, { baseDir: BaseDirectory.AppData })
@@ -94,14 +124,7 @@ export const tauriImageRepository: ImageRepository = {
       }
     } catch (error) {
       console.warn('Failed to persist generated image locally:', error)
-      return {
-        id: input.id,
-        url: input.url || '',
-        originalUrl: input.url,
-        timestamp: input.timestamp,
-        sourcePrompt: input.sourcePrompt,
-        sourceMessageId: input.sourceMessageId,
-      }
+      return fallbackGeneratedImage(input)
     }
   },
 
@@ -119,6 +142,16 @@ export const tauriImageRepository: ImageRepository = {
         id: image.id,
         b64Json: image.base64,
         url: image.originalUrl,
+        timestamp: image.timestamp,
+        sourcePrompt: image.sourcePrompt,
+        sourceMessageId: image.sourceMessageId,
+      })
+    }
+
+    if (isExternalImageUrl(image.url)) {
+      return this.saveGeneratedImage({
+        id: image.id,
+        url: image.url,
         timestamp: image.timestamp,
         sourcePrompt: image.sourcePrompt,
         sourceMessageId: image.sourceMessageId,

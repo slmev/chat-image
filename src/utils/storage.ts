@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from './constants'
-import type { ApiConfig, ChatMessage, Theme, GenerationOptions } from '../types'
+import type { ApiConfig, ApiConfigProfile, ApiConfigState, ChatMessage, Theme, GenerationOptions } from '../types'
 import { reviveStoredImageUrls, stripBase64FromMessages } from './imagePersistence'
 
 // 通用的本地存储工具函数
@@ -34,31 +34,119 @@ export function removeFromStorage(key: string): void {
   }
 }
 
-// API 配置存储（API Key 使用 Base64 编码存储）
-export function getApiConfig(): ApiConfig | null {
-  const config = getFromStorage<ApiConfig | null>(STORAGE_KEYS.API_CONFIG, null)
-  if (config && config.apiKey) {
+function decodeApiKey(config: ApiConfig): ApiConfig {
+  const next = { ...config }
+  if (next.apiKey) {
     try {
-      // 尝试解码 Base64
-      config.apiKey = atob(config.apiKey)
+      next.apiKey = atob(next.apiKey)
     } catch {
       // 如果解码失败，说明是明文存储（向后兼容）
     }
   }
-  return config
+  return next
 }
 
-export function setApiConfig(config: ApiConfig): void {
-  // 对 API Key 进行 Base64 编码
-  const encodedConfig = {
+function encodeApiKey<T extends ApiConfig>(config: T): T {
+  return {
     ...config,
     apiKey: btoa(config.apiKey),
   }
-  setToStorage(STORAGE_KEYS.API_CONFIG, encodedConfig)
+}
+
+function isApiConfig(value: unknown): value is ApiConfig {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as ApiConfig).endpoint === 'string'
+    && typeof (value as ApiConfig).apiKey === 'string'
+    && typeof (value as ApiConfig).model === 'string'
+}
+
+function isApiConfigProfile(value: unknown): value is ApiConfigProfile {
+  return isApiConfig(value)
+    && typeof (value as ApiConfigProfile).id === 'string'
+    && typeof (value as ApiConfigProfile).name === 'string'
+}
+
+export function normalizeApiConfigState(value: unknown, decodeKeys = true): ApiConfigState {
+  if (
+    value
+    && typeof value === 'object'
+    && Array.isArray((value as ApiConfigState).configs)
+  ) {
+    const configs = (value as ApiConfigState).configs
+      .filter(isApiConfigProfile)
+      .map(profile => ({
+        ...(decodeKeys ? decodeApiKey(profile) : profile),
+        id: profile.id,
+        name: profile.name.trim() || '配置 1',
+      }))
+    const activeConfigId = configs.some(profile => profile.id === (value as ApiConfigState).activeConfigId)
+      ? (value as ApiConfigState).activeConfigId
+      : configs[0]?.id ?? null
+    return { configs, activeConfigId }
+  }
+
+  if (isApiConfig(value)) {
+    const config = decodeKeys ? decodeApiKey(value) : value
+    const id = generateId()
+    return {
+      configs: [{
+        ...config,
+        id,
+        name: '配置 1',
+      }],
+      activeConfigId: id,
+    }
+  }
+
+  return { configs: [], activeConfigId: null }
+}
+
+// API 配置存储（API Key 使用 Base64 编码存储）
+export function getApiConfigState(): ApiConfigState {
+  const state = normalizeApiConfigState(getFromStorage<unknown>(STORAGE_KEYS.API_CONFIG, null))
+  return {
+    configs: state.configs,
+    activeConfigId: state.activeConfigId ?? state.configs[0]?.id ?? null,
+  }
+}
+
+export function setApiConfigState(state: ApiConfigState): void {
+  setToStorage(STORAGE_KEYS.API_CONFIG, {
+    activeConfigId: state.activeConfigId,
+    configs: state.configs.map(profile => encodeApiKey(profile)),
+  })
+}
+
+export function clearApiConfigState(): void {
+  removeFromStorage(STORAGE_KEYS.API_CONFIG)
+}
+
+export function getApiConfig(): ApiConfig | null {
+  const state = getApiConfigState()
+  const activeProfile = state.configs.find(profile => profile.id === state.activeConfigId) || null
+  if (!activeProfile) return null
+  return {
+    endpoint: activeProfile.endpoint,
+    apiKey: activeProfile.apiKey,
+    model: activeProfile.model,
+  }
+}
+
+export function setApiConfig(config: ApiConfig): void {
+  const profile: ApiConfigProfile = {
+    ...config,
+    id: generateId(),
+    name: '配置 1',
+  }
+  setApiConfigState({
+    configs: [profile],
+    activeConfigId: profile.id,
+  })
 }
 
 export function clearApiConfig(): void {
-  removeFromStorage(STORAGE_KEYS.API_CONFIG)
+  clearApiConfigState()
 }
 
 // 对话历史存储

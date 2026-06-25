@@ -13,6 +13,12 @@
         </button>
 
         <div class="logo-section">
+          <img
+            :src="appLogo"
+            class="logo-mark"
+            alt=""
+            aria-hidden="true"
+          />
           <h1 class="logo-text">
             <span class="logo-text-primary">{{ t('imageGen') }}</span>
             <span class="logo-text-secondary">Workspace</span>
@@ -84,8 +90,11 @@ import ExportImportPanel from '../Chat/ExportImportPanel.vue'
 import ConfirmModal from '../Common/ConfirmModal.vue'
 import { useChat } from '../../composables/useChat'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import appLogo from '../../assets/app-logo.svg'
 
 const { t } = useI18n()
+const router = useRouter()
 
 const emit = defineEmits<{
   'toggle-config': []
@@ -99,6 +108,7 @@ const showClearConfirm = ref(false)
 async function handleNewChat() {
   try {
     await startNewChat()
+    await router.push({ name: 'chat' })
   } catch (error) {
     console.error('Start new chat failed:', error)
   }
@@ -168,6 +178,16 @@ async function confirmClearChat() {
 .logo-section {
   display: flex;
   align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.logo-mark {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px -12px rgb(15 23 42 / 0.38);
 }
 
 .logo-text {
@@ -177,6 +197,7 @@ async function confirmClearChat() {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   white-space: nowrap;
 }
 

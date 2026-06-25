@@ -5,6 +5,16 @@ export interface ApiConfig {
   model: string
 }
 
+export interface ApiConfigProfile extends ApiConfig {
+  id: string
+  name: string
+}
+
+export interface ApiConfigState {
+  configs: ApiConfigProfile[]
+  activeConfigId: string | null
+}
+
 export interface ImageGenerationRequest {
   model: string
   prompt: string
@@ -39,6 +49,7 @@ export interface ChatMessage {
   content: string
   timestamp: number
   images?: GeneratedImage[]
+  generationSize?: GenerationOptions['size']
   status: 'pending' | 'success' | 'error'
   error?: string
   isFavorite?: boolean

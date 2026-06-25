@@ -20,12 +20,28 @@
 
     <!-- Assistant Message -->
     <div v-else class="assistant-message">
-      <div class="assistant-bubble">
-        <!-- Status Content -->
-        <p v-if="message.status === 'pending'" class="assistant-text">
-          {{ message.content }}
-        </p>
-        <div v-else-if="message.status === 'error'" class="error-container">
+      <div
+        v-if="message.status === 'pending'"
+        class="generation-placeholder"
+        :style="{ aspectRatio: placeholderAspectRatio }"
+        role="status"
+        :aria-label="t('generating')"
+      >
+        <div class="generation-placeholder-sheen" aria-hidden="true"></div>
+        <div class="generation-spinner" aria-hidden="true"></div>
+        <button
+          type="button"
+          class="placeholder-cancel-btn"
+          aria-label="取消生成"
+          title="取消生成"
+          @click="emit('cancel')"
+        >
+          <X :size="16" />
+        </button>
+      </div>
+
+      <div v-else-if="message.status === 'error'" class="assistant-bubble">
+        <div class="error-container">
           <p class="error-text">
             <AlertCircle :size="16" />
             <span>{{ message.error || '生成失败' }}</span>
@@ -39,7 +55,15 @@
             <span>{{ isRetrying ? '重试中...' : '重试' }}</span>
           </button>
         </div>
-        <p v-else class="assistant-text">图片已生成</p>
+
+        <!-- Favorite Badge -->
+        <div v-if="message.isFavorite" class="favorite-badge">
+          <Star :size="12" fill="currentColor" />
+        </div>
+      </div>
+
+      <div v-else-if="!hasImages" class="assistant-bubble">
+        <p class="assistant-text">{{ message.content }}</p>
 
         <!-- Favorite Badge -->
         <div v-if="message.isFavorite" class="favorite-badge">
@@ -49,12 +73,15 @@
 
       <!-- Image Grid -->
       <div
-        v-if="message.images && message.images.length > 0"
+        v-if="hasImages"
         class="image-grid"
-        :class="`grid-cols-${Math.min(message.images.length, 2)}`"
+        :class="`grid-cols-${Math.min(message.images?.length || 0, 2)}`"
       >
+        <div v-if="message.isFavorite" class="favorite-badge image-favorite-badge">
+          <Star :size="12" fill="currentColor" />
+        </div>
         <ImagePreview
-          v-for="image in message.images"
+          v-for="image in message.images || []"
           :key="image.id"
           :image="image"
           @create-variation="openVariationDialog"
@@ -107,7 +134,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Star, AlertCircle, RefreshCw } from 'lucide-vue-next'
+import { Star, AlertCircle, RefreshCw, X } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import type { ChatMessage, GeneratedImage, ImageGenerationResponse } from '../../types'
 import { highlightText } from '../../utils/highlight'
 import ImagePreview from './ImagePreview.vue'
@@ -131,11 +159,12 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   delete: [messageId: string]
   toggleFavorite: [messageId: string]
-  retry: [messageId: string]
+  cancel: []
 }>()
 
+const { t } = useI18n()
 const chatStore = useChatStore()
-const { sendMessage } = useChat()
+const { retryMessage } = useChat()
 const { error: showError } = useToast()
 const { downloadMultipleImages } = useImageDownload()
 
@@ -155,6 +184,20 @@ const messageClasses = computed(() => {
 const highlightedContent = computed(() => {
   if (!props.searchQuery) return null
   return highlightText(props.message.content, props.searchQuery)
+})
+
+const hasImages = computed(() => !!props.message.images && props.message.images.length > 0)
+
+const placeholderAspectRatio = computed(() => {
+  switch (props.message.generationSize) {
+    case '1024x1024':
+      return '1 / 1'
+    case '1792x1024':
+      return '16 / 9'
+    case '1024x1792':
+    default:
+      return '9 / 16'
+  }
 })
 
 function handleDelete(messageId: string) {
@@ -196,11 +239,7 @@ async function handleRetry() {
       return
     }
 
-    // 删除当前错误消息
-    emit('delete', props.message.id)
-
-    // 重新发送
-    await sendMessage(userPrompt, {
+    await retryMessage(props.message.id, userPrompt, {
       size: '1024x1024',
       quality: 'standard',
       n: 1,
@@ -378,6 +417,103 @@ async function handleEditResult(response: ImageGenerationResponse) {
   color: var(--color-text-primary);
 }
 
+.generation-placeholder {
+  position: relative;
+  width: 100%;
+  max-width: 760px;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-border) 62%, transparent);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-bg-secondary) 78%, transparent), transparent 58%),
+    color-mix(in srgb, var(--color-bg-primary) 74%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.generation-placeholder::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.04) 36%, transparent 64%),
+    repeating-linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-border) 18%, transparent) 0,
+      color-mix(in srgb, var(--color-border) 18%, transparent) 1px,
+      transparent 1px,
+      transparent 14px
+    );
+  opacity: 0.55;
+}
+
+.generation-placeholder-sheen {
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(
+    110deg,
+    transparent 30%,
+    color-mix(in srgb, var(--color-bg-primary) 68%, transparent) 48%,
+    transparent 66%
+  );
+  animation: placeholderSheen 2.4s ease-in-out infinite;
+}
+
+.generation-spinner {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 2px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: placeholderSpin 0.9s linear infinite;
+}
+
+.placeholder-cancel-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: color-mix(in srgb, var(--color-bg-primary) 76%, transparent);
+  color: var(--color-text-secondary);
+  border: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: all var(--transition-base);
+}
+
+.placeholder-cancel-btn:hover {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+@keyframes placeholderSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes placeholderSheen {
+  0% {
+    transform: translateX(-22%);
+  }
+  55%,
+  100% {
+    transform: translateX(22%);
+  }
+}
+
 .error-container {
   display: flex;
   flex-direction: column;
@@ -421,10 +557,15 @@ async function handleEditResult(response: ImageGenerationResponse) {
 
 /* Image Grid */
 .image-grid {
+  position: relative;
   display: grid;
   gap: 14px;
   width: 100%;
   max-width: 760px;
+}
+
+.image-favorite-badge {
+  z-index: 1;
 }
 
 .grid-cols-1 {

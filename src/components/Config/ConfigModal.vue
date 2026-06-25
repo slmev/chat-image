@@ -62,74 +62,6 @@
           />
         </div>
 
-        <div v-if="isDesktop" class="storage-section">
-          <div class="storage-header">
-            <div>
-              <h3 class="storage-title">{{ t('localStorage') }}</h3>
-              <p class="form-hint">{{ t('localStorageHint') }}</p>
-            </div>
-            <button
-              @click="loadStorageStats"
-              class="btn-secondary compact"
-              :disabled="isStorageLoading"
-              type="button"
-            >
-              <Loader2 v-if="isStorageLoading" :size="14" class="spin" />
-              <span>{{ t('refresh') }}</span>
-            </button>
-          </div>
-
-          <div class="storage-grid">
-            <div class="storage-stat">
-              <span class="storage-label">{{ t('imageCount') }}</span>
-              <strong>{{ storageStats.totalCount }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span class="storage-label">{{ t('storageUsed') }}</span>
-              <strong>{{ formatBytes(storageStats.totalBytes) }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span class="storage-label">{{ t('orphanImages') }}</span>
-              <strong>{{ storageStats.orphanCount }}</strong>
-            </div>
-            <div class="storage-stat">
-              <span class="storage-label">{{ t('reclaimableSpace') }}</span>
-              <strong>{{ formatBytes(storageStats.orphanBytes) }}</strong>
-            </div>
-          </div>
-
-          <div class="storage-path-row">
-            <div class="storage-path-content">
-              <span class="storage-label">{{ t('dataDirectory') }}</span>
-              <strong class="storage-path" :title="dataDirectory">
-                {{ dataDirectory || t('loading') }}
-              </strong>
-            </div>
-            <button
-              @click="handleOpenDataDirectory"
-              class="btn-secondary compact"
-              :disabled="!dataDirectory || isOpeningDataDirectory"
-              type="button"
-            >
-              <Loader2 v-if="isOpeningDataDirectory" :size="14" class="spin" />
-              <FolderOpen v-else :size="14" />
-              <span>{{ t('openDirectory') }}</span>
-            </button>
-          </div>
-
-          <div class="storage-actions">
-            <button
-              @click="showCleanupConfirm = true"
-              class="btn-ghost danger storage-cleanup"
-              :disabled="storageStats.orphanCount === 0 || isStorageLoading || isCleaningStorage"
-              type="button"
-            >
-              <Loader2 v-if="isCleaningStorage" :size="16" class="spin" />
-              <span>{{ t('cleanupOrphans') }}</span>
-            </button>
-          </div>
-        </div>
-
         <!-- Test Result -->
         <Transition name="slide-up">
           <div v-if="testResult" :class="['test-result', testResult.success ? 'success' : 'error']" role="alert">
@@ -141,13 +73,6 @@
 
       <!-- Footer -->
       <div class="modal-footer">
-        <button
-          v-if="configStore.isConfigured"
-          @click="handleClear"
-          class="btn-ghost danger"
-        >
-          {{ t('clearConfig') }}
-        </button>
         <div class="footer-spacer"></div>
         <button
           @click="handleTest"
@@ -169,18 +94,6 @@
       </div>
     </div>
 
-    <ConfirmModal
-      :is-open="showCleanupConfirm"
-      :title="t('cleanupOrphans')"
-      :message="t('cleanupOrphansConfirm', {
-        count: storageStats.orphanCount,
-        size: formatBytes(storageStats.orphanBytes),
-      })"
-      :confirm-text="t('clear')"
-      type="warning"
-      @confirm="handleCleanupOrphans"
-      @cancel="showCleanupConfirm = false"
-    />
   </div>
 </template>
 
@@ -191,7 +104,6 @@ import {
   CheckCircle,
   Eye,
   EyeOff,
-  FolderOpen,
   Loader2,
   Save,
   Settings,
@@ -200,21 +112,9 @@ import {
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useConfig } from '../../composables/useConfig'
-import { useToast } from '../../composables/useToast'
-import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ApiConfig } from '../../types'
-import { DEFAULT_MODEL } from '../../utils/constants'
-import { isTauriRuntime } from '../../platform/runtime'
-import {
-  cleanupOrphanedLocalImages,
-  getLocalDataDirectory,
-  getLocalImageStorageStats,
-  openLocalDataDirectory,
-  type LocalImageStorageStats,
-} from '../../platform/imageReferenceCleanup'
 
 const { t } = useI18n()
-const { success, warning, error: showError } = useToast()
 
 const emit = defineEmits<{
   close: []
@@ -226,23 +126,8 @@ const localConfig = ref<ApiConfig>(initializeConfig())
 const isTesting = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const showApiKey = ref(false)
-const isDesktop = isTauriRuntime()
-const isStorageLoading = ref(false)
-const isCleaningStorage = ref(false)
-const isOpeningDataDirectory = ref(false)
-const showCleanupConfirm = ref(false)
-const dataDirectory = ref('')
-const storageStats = ref<LocalImageStorageStats>({
-  totalCount: 0,
-  totalBytes: 0,
-  orphanCount: 0,
-  orphanBytes: 0,
-})
 
 function handleKeydown(event: KeyboardEvent) {
-  if (showCleanupConfirm.value) {
-    return
-  }
   if (event.key === 'Escape') {
     emit('close')
   }
@@ -250,9 +135,6 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
-  if (isDesktop) {
-    void loadStorageStats()
-  }
 })
 
 onUnmounted(() => {
@@ -266,74 +148,6 @@ const isFormValid = computed(() => {
     localConfig.value.model.trim() !== ''
   )
 })
-
-function formatBytes(bytes: number): string {
-  if (bytes <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / 1024 ** index
-  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
-}
-
-async function loadStorageStats() {
-  if (!isDesktop) return
-  isStorageLoading.value = true
-  try {
-    const [nextStats, nextDataDirectory] = await Promise.all([
-      getLocalImageStorageStats(),
-      getLocalDataDirectory(),
-    ])
-    storageStats.value = nextStats
-    dataDirectory.value = nextDataDirectory
-  } catch (error) {
-    console.error('Load local image storage stats failed:', error)
-    showError(t('storageStatsFailed'))
-  } finally {
-    isStorageLoading.value = false
-  }
-}
-
-async function handleCleanupOrphans() {
-  if (!isDesktop) return
-  showCleanupConfirm.value = false
-  isCleaningStorage.value = true
-  try {
-    const result = await cleanupOrphanedLocalImages()
-    storageStats.value = {
-      totalCount: result.totalCount,
-      totalBytes: result.totalBytes,
-      orphanCount: result.orphanCount,
-      orphanBytes: result.orphanBytes,
-    }
-
-    if (result.failedCount > 0) {
-      warning(t('cleanupPartial', { count: result.failedCount }))
-    } else {
-      success(t('cleanupComplete', {
-        count: result.deletedCount,
-        size: formatBytes(result.deletedBytes),
-      }))
-    }
-  } catch (error) {
-    console.error('Cleanup orphan image files failed:', error)
-    showError(t('cleanupFailed'))
-  } finally {
-    isCleaningStorage.value = false
-  }
-}
-
-async function handleOpenDataDirectory() {
-  if (!isDesktop || !dataDirectory.value) return
-  isOpeningDataDirectory.value = true
-  try {
-    await openLocalDataDirectory()
-  } catch (error) {
-    console.error('Open local data directory failed:', error)
-    showError(t('openDataDirectoryFailed'))
-  } finally {
-    isOpeningDataDirectory.value = false
-  }
-}
 
 async function handleSave() {
   if (isFormValid.value) {
@@ -365,22 +179,6 @@ async function handleTest() {
   } finally {
     isTesting.value = false
   }
-}
-
-async function handleClear() {
-  try {
-    await configStore.clearConfig()
-  } catch (error) {
-    console.error('Clear config failed:', error)
-    testResult.value = { success: false, message: t('unknownError') }
-    return
-  }
-  localConfig.value = {
-    endpoint: '',
-    apiKey: '',
-    model: DEFAULT_MODEL,
-  }
-  testResult.value = null
 }
 </script>
 

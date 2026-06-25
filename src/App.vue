@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, defineAsyncComponent, onMounted } from 'vue'
+import { ref, defineAsyncComponent, onMounted, computed, watch } from 'vue'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import Header from './components/Layout/Header.vue'
-import ChatContainer from './components/Chat/ChatContainer.vue'
 import ToastNotification from './components/Common/ToastNotification.vue'
 import UpdatePrompt from './components/Common/UpdatePrompt.vue'
 import { useConfigStore } from './stores/config'
@@ -16,26 +16,51 @@ const GalleryView = defineAsyncComponent(() => import('./components/Gallery/Gall
 
 const configStore = useConfigStore()
 const chatStore = useChatStore()
-const showConfig = ref(!configStore.isConfigured)
+const route = useRoute()
+const router = useRouter()
+const showConfigGuide = ref(false)
+const dismissedConfigGuide = ref(false)
 const showSidebar = ref(false)
 const showGallery = ref(false)
+const isChatRoute = computed(() => route.name === 'chat')
+const isSettingsRoute = computed(() => route.name === 'settings')
+
+function syncConfigGuide() {
+  showConfigGuide.value = !dismissedConfigGuide.value &&
+    !configStore.isConfigured &&
+    !isSettingsRoute.value
+}
+
+watch(
+  [() => configStore.isConfigured, () => route.name],
+  syncConfigGuide,
+  { immediate: true },
+)
 
 onMounted(async () => {
-  if (!isTauriRuntime()) return
-
-  await initializeDesktopPersistence()
-  await Promise.all([
-    configStore.hydrateFromPersistence(),
-    chatStore.hydrateFromPersistence(),
-  ])
-  showConfig.value = !configStore.isConfigured
+  if (isTauriRuntime()) {
+    await initializeDesktopPersistence()
+    await Promise.all([
+      configStore.hydrateFromPersistence(),
+      chatStore.hydrateFromPersistence(),
+    ])
+  }
+  syncConfigGuide()
 })
 
 function toggleConfig() {
-  showConfig.value = !showConfig.value
+  router.push({ name: 'settings' })
 }
 
-function toggleSidebar() {
+function closeConfigGuide() {
+  dismissedConfigGuide.value = true
+  showConfigGuide.value = false
+}
+
+async function toggleSidebar() {
+  if (!isChatRoute.value) {
+    await router.push({ name: 'chat' })
+  }
   showSidebar.value = !showSidebar.value
 }
 
@@ -62,15 +87,15 @@ function toggleGallery() {
       <!-- History Sidebar -->
       <Suspense>
         <HistorySidebar
-          v-if="showSidebar"
+          v-if="showSidebar && isChatRoute"
           :is-open="showSidebar"
           @close="closeSidebar"
         />
       </Suspense>
 
-      <!-- Chat Area -->
-      <div class="chat-area">
-        <ChatContainer />
+      <!-- Routed Content -->
+      <div class="content-area">
+        <RouterView />
       </div>
     </main>
 
@@ -78,8 +103,8 @@ function toggleGallery() {
     <Suspense>
       <Transition name="modal">
         <ConfigModal
-          v-if="showConfig"
-          @close="toggleConfig"
+          v-if="showConfigGuide"
+          @close="closeConfigGuide"
         />
       </Transition>
     </Suspense>
@@ -117,7 +142,7 @@ function toggleGallery() {
   overflow: hidden;
 }
 
-.chat-area {
+.content-area {
   flex: 1;
   display: flex;
   flex-direction: column;

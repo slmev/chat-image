@@ -7,6 +7,8 @@ export default {
   newChat: '新对话',
   gallery: '图片画廊',
   apiConfig: 'API 配置',
+  settings: '设置',
+  backToChat: '返回聊天',
   switchTheme: '切换主题',
   clearChat: '清空对话',
   clearChatConfirm: '确定要清空所有对话吗？此操作不可恢复。',
@@ -52,6 +54,21 @@ export default {
   testConnection: '测试连接',
   saveConfig: '保存配置',
   configSaved: '配置已保存',
+  configList: '配置列表',
+  addConfig: '新增配置',
+  editConfig: '编辑配置',
+  noConfigs: '暂无配置',
+  activeConfig: '当前配置',
+  activeConfigSaved: '已切换当前配置',
+  setActive: '设为当前',
+  configName: '配置名称',
+  configNamePlaceholder: '例如：OpenAI 主账号',
+  multiConfigHint: '保存多个 API 配置，并手动选择当前用于生成和编辑图片的配置',
+  deleteConfig: '删除所选配置',
+  deleteConfigConfirm: '确定要删除当前所选配置吗？如果它是当前配置，将自动切换到剩余第一条配置。',
+  clearAllConfigs: '清除全部配置',
+  clearAllConfigsConfirm: '确定要清除全部 API 配置吗？此操作不可恢复。',
+  notConfigured: '未配置',
   localStorage: '本地存储',
   localStorageHint: '统计桌面端保存的生成图片和可清理文件',
   refresh: '刷新',
@@ -69,6 +86,7 @@ export default {
   cleanupPartial: '{count} 个文件清理失败，其余文件已处理',
   cleanupFailed: '清理失败，请稍后重试',
   storageStatsFailed: '读取本地存储统计失败',
+  unknownError: '未知错误，请重试',
 
   // HistorySidebar
   closeSidebar: '关闭侧边栏',
@@ -102,12 +120,6 @@ export default {
   landscape: '风景',
   animals: '动物',
   abstract: '抽象',
-
-  // Loading texts
-  aiThinking: 'AI 正在构思',
-  mixingColors: '正在调配色彩',
-  drawingDetails: '绘制细节中',
-  almostDone: '即将完成',
 
   // Update prompt
   updateAvailable: '有新版本可用',

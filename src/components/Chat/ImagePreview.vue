@@ -11,14 +11,14 @@
       <div class="image-overlay">
         <div class="overlay-actions">
           <button
-            @click.stop="$emit('createVariation', image)"
+            @click.stop="$emit('createVariation', displayImage)"
             class="overlay-btn"
             title="创建变体"
           >
             <Shuffle :size="16" />
           </button>
           <button
-            @click.stop="$emit('editImage', image)"
+            @click.stop="$emit('editImage', displayImage)"
             class="overlay-btn"
             title="编辑图片"
           >
@@ -65,7 +65,7 @@
             />
 
             <!-- Metadata Panel -->
-            <div v-if="image.sourcePrompt" class="metadata-panel">
+            <div v-if="displayImage.sourcePrompt" class="metadata-panel">
               <div class="metadata-header">
                 <Info :size="16" />
                 <span>图片信息</span>
@@ -73,11 +73,11 @@
               <div class="metadata-content">
                 <div class="metadata-item">
                   <span class="metadata-label">提示词:</span>
-                  <span class="metadata-value">{{ image.sourcePrompt }}</span>
+                  <span class="metadata-value">{{ displayImage.sourcePrompt }}</span>
                 </div>
                 <div class="metadata-item">
                   <span class="metadata-label">生成时间:</span>
-                  <span class="metadata-value">{{ formatTime(image.timestamp) }}</span>
+                  <span class="metadata-value">{{ formatTime(displayImage.timestamp) }}</span>
                 </div>
               </div>
               <button @click.stop="copyPrompt" class="copy-btn">
@@ -88,7 +88,7 @@
 
             <div class="preview-actions">
               <button
-                @click.stop="$emit('createVariation', image)"
+                @click.stop="$emit('createVariation', displayImage)"
                 class="preview-btn"
                 title="创建变体"
               >
@@ -96,7 +96,7 @@
                 <span>变体</span>
               </button>
               <button
-                @click.stop="$emit('editImage', image)"
+                @click.stop="$emit('editImage', displayImage)"
                 class="preview-btn"
                 title="编辑图片"
               >
@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import {
   ClipboardCopy,
   Copy,
@@ -188,6 +188,7 @@ import { useImageDownload } from '../../composables/useImageDownload'
 import type { GeneratedImage } from '../../types'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
 import { getImageRepository } from '../../platform/imageRepository'
+import { isTauriRuntime } from '../../platform/runtime'
 import {
   LocalImageActionError,
   copyLocalImageToClipboard,
@@ -210,16 +211,86 @@ defineEmits<{
 const { success, error: showError } = useToast()
 const { downloadSingleImage } = useImageDownload()
 const showPreview = ref(false)
+const displayImage = ref<GeneratedImage>(props.image)
+const resolveFailed = ref(false)
+const ownedObjectUrls = new Set<string>()
+let resolveRun = 0
 
-const localActionsAvailable = computed(() => isLocalImageActionAvailable(props.image))
+const localActionsAvailable = computed(() => isLocalImageActionAvailable(displayImage.value))
+
+function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
+  const validUrl = isValidImageUrl(image.url)
+  return Boolean(
+    (image.localPath && !validUrl)
+    || (image.base64 && !validUrl)
+    || (isTauriRuntime() && isExternalImageUrl(image.url)),
+  )
+}
+
+function revokeObjectUrl(url: string) {
+  if (typeof URL.revokeObjectURL === 'function') {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function revokeOwnedObjectUrls() {
+  ownedObjectUrls.forEach(revokeObjectUrl)
+  ownedObjectUrls.clear()
+}
+
+watch(
+  () => [
+    props.image.id,
+    props.image.url,
+    props.image.localPath,
+    props.image.base64,
+    props.image.mimeType,
+  ] as const,
+  async () => {
+    const run = ++resolveRun
+    resolveFailed.value = false
+
+    if (!shouldResolveDisplayUrl(props.image)) {
+      revokeOwnedObjectUrls()
+      displayImage.value = props.image
+      return
+    }
+
+    try {
+      const resolved = await getImageRepository().resolveDisplayUrl(props.image)
+      if (run !== resolveRun) {
+        if (resolved.url.startsWith('blob:') && resolved.url !== props.image.url) {
+          revokeObjectUrl(resolved.url)
+        }
+        return
+      }
+
+      revokeOwnedObjectUrls()
+      displayImage.value = resolved
+      if (resolved.url.startsWith('blob:') && resolved.url !== props.image.url) {
+        ownedObjectUrls.add(resolved.url)
+      }
+    } catch (err) {
+      if (run !== resolveRun) return
+      console.warn('Failed to resolve local image URL:', err)
+      revokeOwnedObjectUrls()
+      resolveFailed.value = true
+      displayImage.value = props.image
+    }
+  },
+  { immediate: true },
+)
 
 const imageUrl = computed(() => {
   // 校验 URL 安全性
-  if (!isValidImageUrl(props.image.url)) {
-    console.warn('Invalid image URL detected:', props.image.url)
+  if (!isValidImageUrl(displayImage.value.url)) {
+    if (shouldResolveDisplayUrl(props.image) && !resolveFailed.value) {
+      return ''
+    }
+    console.warn('Invalid image URL detected:', displayImage.value.url)
     return ''
   }
-  return props.image.url
+  return displayImage.value.url
 })
 
 function handleKeydown(event: KeyboardEvent) {
@@ -244,6 +315,7 @@ onUnmounted(() => {
   if (showPreview.value) {
     document.removeEventListener('keydown', handleKeydown)
   }
+  revokeOwnedObjectUrls()
 })
 
 function formatTime(timestamp: number): string {
@@ -257,9 +329,9 @@ function formatTime(timestamp: number): string {
 }
 
 async function copyPrompt() {
-  if (props.image.sourcePrompt) {
+  if (displayImage.value.sourcePrompt) {
     try {
-      await navigator.clipboard.writeText(props.image.sourcePrompt)
+      await navigator.clipboard.writeText(displayImage.value.sourcePrompt)
       success('提示词已复制')
     } catch {
       showError('复制失败')
@@ -268,12 +340,12 @@ async function copyPrompt() {
 }
 
 async function downloadImage() {
-  await downloadSingleImage(props.image)
+  await downloadSingleImage(displayImage.value)
 }
 
 async function openImageFile() {
   try {
-    await openLocalImage(props.image)
+    await openLocalImage(displayImage.value)
     success('已打开本地图片')
   } catch (err) {
     console.error('Open local image failed:', err)
@@ -283,7 +355,7 @@ async function openImageFile() {
 
 async function revealImageFile() {
   try {
-    await revealLocalImage(props.image)
+    await revealLocalImage(displayImage.value)
     success('已在文件管理器中显示')
   } catch (err) {
     console.error('Reveal local image failed:', err)
@@ -293,7 +365,7 @@ async function revealImageFile() {
 
 async function copyImageFile() {
   try {
-    await copyLocalImageToClipboard(props.image)
+    await copyLocalImageToClipboard(displayImage.value)
     success('图片已复制到剪贴板')
   } catch (err) {
     console.error('Copy local image failed:', err)
@@ -317,17 +389,17 @@ async function shareImage() {
     }
 
     if (navigator.share && !isExternalImageUrl(url)) {
-      const blob = await getImageRepository().readImageBlob(props.image)
+      const blob = await getImageRepository().readImageBlob(displayImage.value)
       const file = new File([blob], 'ai-image.png', { type: blob.type || 'image/png' })
       await navigator.share({
         title: 'AI 生成的图片',
-        text: props.image.sourcePrompt || '查看这张 AI 生成的图片',
+        text: displayImage.value.sourcePrompt || '查看这张 AI 生成的图片',
         files: [file],
       })
     } else if (navigator.share && isExternalImageUrl(url)) {
       await navigator.share({
         title: 'AI 生成的图片',
-        text: props.image.sourcePrompt || '查看这张 AI 生成的图片',
+        text: displayImage.value.sourcePrompt || '查看这张 AI 生成的图片',
         url,
       })
     } else {

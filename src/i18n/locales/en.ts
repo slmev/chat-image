@@ -7,6 +7,8 @@ export default {
   newChat: 'New Chat',
   gallery: 'Gallery',
   apiConfig: 'API Settings',
+  settings: 'Settings',
+  backToChat: 'Back to Chat',
   switchTheme: 'Switch theme',
   clearChat: 'Clear Chat',
   clearChatConfirm: 'Are you sure you want to clear all conversations? This action cannot be undone.',
@@ -52,6 +54,21 @@ export default {
   testConnection: 'Test Connection',
   saveConfig: 'Save Config',
   configSaved: 'Config saved',
+  configList: 'Configurations',
+  addConfig: 'Add Config',
+  editConfig: 'Edit Config',
+  noConfigs: 'No configurations',
+  activeConfig: 'Active',
+  activeConfigSaved: 'Active configuration updated',
+  setActive: 'Set Active',
+  configName: 'Config Name',
+  configNamePlaceholder: 'e.g.: OpenAI primary',
+  multiConfigHint: 'Save multiple API configurations and manually choose the one used for generation and editing',
+  deleteConfig: 'Delete Selected',
+  deleteConfigConfirm: 'Delete the selected configuration? If it is active, the first remaining configuration will become active.',
+  clearAllConfigs: 'Clear All Configs',
+  clearAllConfigsConfirm: 'Clear all API configurations? This cannot be undone.',
+  notConfigured: 'Not configured',
   localStorage: 'Local Storage',
   localStorageHint: 'Review generated images saved by the desktop app and clean unused files',
   refresh: 'Refresh',
@@ -69,6 +86,7 @@ export default {
   cleanupPartial: '{count} files could not be cleaned; the rest were processed',
   cleanupFailed: 'Cleanup failed. Please try again later.',
   storageStatsFailed: 'Failed to read local storage stats',
+  unknownError: 'Unknown error. Please try again.',
 
   // HistorySidebar
   closeSidebar: 'Close sidebar',
@@ -102,12 +120,6 @@ export default {
   landscape: 'Landscape',
   animals: 'Animals',
   abstract: 'Abstract',
-
-  // Loading texts
-  aiThinking: 'AI is thinking',
-  mixingColors: 'Mixing colors',
-  drawingDetails: 'Drawing details',
-  almostDone: 'Almost done',
 
   // Update prompt
   updateAvailable: 'New version available',

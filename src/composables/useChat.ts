@@ -36,6 +36,7 @@ export function useChat() {
     const assistantMessage = chatStore.addMessage({
       type: 'assistant',
       content: '正在生成图片...',
+      generationSize: options.size,
       status: 'pending',
     })
 
@@ -54,6 +55,39 @@ export function useChat() {
       // 设置错误状态
       const errorMessage = error instanceof Error ? error.message : '生成失败'
       await chatStore.setMessageError(assistantMessage.id, errorMessage)
+    } finally {
+      chatStore.setLoading(false)
+    }
+  }
+
+  async function retryMessage(
+    messageId: string,
+    content: string,
+    options: GenerationOptions
+  ): Promise<void> {
+    if (!configStore.isConfigured) {
+      throw new Error('请先配置 API')
+    }
+
+    if (!content.trim()) {
+      throw new Error('请输入图片描述')
+    }
+
+    await chatStore.updateMessage(messageId, {
+      content: '正在生成图片...',
+      generationSize: options.size,
+      status: 'pending',
+      error: undefined,
+      images: undefined,
+    })
+    chatStore.setLoading(true)
+
+    try {
+      const images = await generateImage(content, options)
+      await chatStore.addImagesToMessage(messageId, images)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '生成失败'
+      await chatStore.setMessageError(messageId, errorMessage)
     } finally {
       chatStore.setLoading(false)
     }
@@ -106,6 +140,7 @@ export function useChat() {
   return {
     chatStore,
     sendMessage,
+    retryMessage,
     cancelCurrentGeneration,
     clearChat,
     startNewChat,

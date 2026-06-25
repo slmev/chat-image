@@ -1,4 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AI image generator logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="app-logo-title app-logo-desc">
+  <title id="app-logo-title">AI Image Generator logo</title>
+  <desc id="app-logo-desc">A chat bubble containing an image frame and AI spark.</desc>
   <defs>
     <linearGradient id="logo-bg" x1="9" x2="55" y1="7" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#0f766e"/>

@@ -1,4 +1,4 @@
-import { DOMWrapper, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ImagePreview from '../../components/Chat/ImagePreview.vue'
 import type { GeneratedImage } from '../../types'
@@ -11,6 +11,8 @@ const mockState = vi.hoisted(() => ({
   openLocalImage: vi.fn(),
   revealLocalImage: vi.fn(),
   copyLocalImageToClipboard: vi.fn(),
+  resolveDisplayUrl: vi.fn(),
+  readImageBlob: vi.fn(),
 }))
 
 vi.mock('../../composables/useToast', () => ({
@@ -52,6 +54,13 @@ vi.mock('../../platform/localImageActions', () => {
   }
 })
 
+vi.mock('../../platform/imageRepository', () => ({
+  getImageRepository: () => ({
+    resolveDisplayUrl: mockState.resolveDisplayUrl,
+    readImageBlob: mockState.readImageBlob,
+  }),
+}))
+
 function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   return {
     id: 'image-1',
@@ -83,6 +92,13 @@ describe('ImagePreview local image actions', () => {
     mockState.openLocalImage.mockReset()
     mockState.revealLocalImage.mockReset()
     mockState.copyLocalImageToClipboard.mockReset()
+    mockState.resolveDisplayUrl.mockReset()
+    mockState.resolveDisplayUrl.mockImplementation(async (image: GeneratedImage) => ({
+      ...image,
+      url: 'blob:resolved-local-image',
+    }))
+    mockState.readImageBlob.mockReset()
+    mockState.readImageBlob.mockResolvedValue(new Blob(['image'], { type: 'image/png' }))
     mockState.tauriRuntime = true
     document.body.innerHTML = ''
   })
@@ -123,6 +139,32 @@ describe('ImagePreview local image actions', () => {
     expect(document.body.textContent).not.toContain('显示')
     expect(document.body.textContent).not.toContain('另存为')
     expect(document.body.textContent).not.toContain('复制')
+  })
+
+  it('resolves desktop local paths before rendering images', async () => {
+    const localImage = image({
+      url: 'images/image-1.png',
+      localPath: 'images/image-1.png',
+    })
+    const wrapper = mount(ImagePreview, { props: { image: localImage } })
+
+    await flushPromises()
+
+    expect(mockState.resolveDisplayUrl).toHaveBeenCalledWith(localImage)
+    expect(wrapper.find('img.image').attributes('src')).toBe('blob:resolved-local-image')
+  })
+
+  it('resolves external URLs through the desktop repository before rendering', async () => {
+    const remoteImage = image({
+      url: 'http://images.example.test/generated.png',
+      localPath: undefined,
+    })
+    const wrapper = mount(ImagePreview, { props: { image: remoteImage } })
+
+    await flushPromises()
+
+    expect(mockState.resolveDisplayUrl).toHaveBeenCalledWith(remoteImage)
+    expect(wrapper.find('img.image').attributes('src')).toBe('blob:resolved-local-image')
   })
 
   it('runs local actions and reports success', async () => {

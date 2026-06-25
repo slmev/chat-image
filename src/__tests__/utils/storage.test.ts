@@ -7,7 +7,9 @@ import {
   getTheme,
   setTheme,
   getApiConfig,
+  getApiConfigState,
   setApiConfig,
+  setApiConfigState,
   getChatHistory,
   setChatHistory,
 } from '../../utils/storage'
@@ -76,6 +78,36 @@ describe('storage utils', () => {
       const retrieved = getApiConfig()
       expect(retrieved?.apiKey).toBe('sk-test123')
       expect(retrieved?.endpoint).toBe('https://api.test.com')
+    })
+
+    it('stores and restores multiple API config profiles', () => {
+      setApiConfigState({
+        activeConfigId: 'profile-2',
+        configs: [
+          {
+            id: 'profile-1',
+            name: 'Primary',
+            endpoint: 'https://primary.example.test',
+            apiKey: 'sk-primary',
+            model: 'gpt-image-2',
+          },
+          {
+            id: 'profile-2',
+            name: 'Backup',
+            endpoint: 'https://backup.example.test',
+            apiKey: 'sk-backup',
+            model: 'gpt-image-2',
+          },
+        ],
+      })
+
+      const raw = JSON.parse(localStorage.getItem('chat-image-api-config') || '{}')
+      expect(raw.configs[0].apiKey).not.toBe('sk-primary')
+
+      const restored = getApiConfigState()
+      expect(restored.activeConfigId).toBe('profile-2')
+      expect(restored.configs[0].apiKey).toBe('sk-primary')
+      expect(getApiConfig()?.endpoint).toBe('https://backup.example.test')
     })
   })
 
