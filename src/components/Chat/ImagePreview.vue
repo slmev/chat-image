@@ -467,7 +467,13 @@ async function shareImage() {
 
 .overlay-actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  padding: 6px;
+  background: rgba(15, 23, 42, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 40px -26px rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px) saturate(1.1);
 }
 
 .overlay-btn {
@@ -476,19 +482,25 @@ async function shareImage() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
-  border: none;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.74);
   border-radius: var(--radius-md);
-  color: var(--color-text-primary);
+  color: #0f172a;
   cursor: pointer;
   transition: all var(--transition-base);
+  box-shadow:
+    0 10px 24px -16px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(8px);
 }
 
 .overlay-btn:hover {
-  background: white;
+  background: #ffffff;
+  color: #020617;
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow:
+    0 16px 30px -16px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
 }
 
 /* Preview Modal */
