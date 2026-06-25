@@ -46,13 +46,14 @@ function generatedImage(): GeneratedImage {
   }
 }
 
-function message(id: string): ChatMessage {
+function message(id: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id,
     type: 'assistant',
     content: id,
     timestamp: 1,
     status: 'success',
+    ...overrides,
   }
 }
 
@@ -128,19 +129,87 @@ describe('history duplicate prevention', () => {
     expect(nextHistory[0].id).toBe(firstHistory[0].id)
   })
 
-  it('removes existing histories with identical message id snapshots', async () => {
-    const olderDuplicate = history('older-duplicate', { timestamp: 10 })
+  it('continues a saved chat after reload without creating another history', async () => {
+    await configureApi()
+    const chat = useChat()
+
+    await chat.sendMessage('a courtyard with paper lanterns', {
+      size: '1024x1024',
+      quality: 'standard',
+      n: 1,
+    })
+    const firstHistory = readHistoryList()
+    expect(firstHistory).toHaveLength(1)
+
+    vi.resetModules()
+    setActivePinia(createPinia())
+    const { useChat: useFreshChat } = await import('../../composables/useChat')
+    const reloadedChat = useFreshChat()
+
+    await reloadedChat.sendMessage('add rain reflections', {
+      size: '1024x1024',
+      quality: 'standard',
+      n: 1,
+    })
+
+    const nextHistory = readHistoryList()
+    expect(nextHistory).toHaveLength(1)
+    expect(nextHistory[0]).toMatchObject({
+      id: firstHistory[0].id,
+      messageCount: 4,
+    })
+  })
+
+  it('updates a prefix-matched history when saving without a current history id', async () => {
+    const savedHistory = history('history-1', {
+      title: 'first generated prompt',
+      messageCount: 2,
+    })
+    const savedMessages = [
+      message('user-1', { type: 'user', content: 'first generated prompt' }),
+      message('assistant-1'),
+    ]
+    const currentMessages = [
+      ...savedMessages,
+      message('user-2', { type: 'user', content: 'follow up prompt' }),
+      message('assistant-2'),
+    ]
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify(savedMessages))
+    await useChatStore().importMessages(currentMessages, 'replace')
+
+    const historyApi = useHistory()
+    await flushPromises()
+    const savedId = await historyApi.saveCurrentChat(null)
+
+    expect(savedId).toBe(savedHistory.id)
+    expect(readHistoryList()).toHaveLength(1)
+    expect(readHistoryList()[0]).toMatchObject({
+      id: savedHistory.id,
+      messageCount: 4,
+    })
+    expect(JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + savedHistory.id) || '[]')
+      .map((item: ChatMessage) => item.id)).toEqual([
+      'user-1',
+      'assistant-1',
+      'user-2',
+      'assistant-2',
+    ])
+  })
+
+  it('removes existing histories with identical message id snapshots and preserves favorites', async () => {
+    const newerDuplicate = history('newer-duplicate', { timestamp: 10 })
     const favoriteDuplicate = history('favorite-duplicate', {
       timestamp: 1,
       isFavorite: true,
     })
     const unique = history('unique', { timestamp: 5 })
     localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([
-      olderDuplicate,
+      newerDuplicate,
       favoriteDuplicate,
       unique,
     ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + olderDuplicate.id, JSON.stringify([
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + newerDuplicate.id, JSON.stringify([
       message('same-user'),
       message('same-assistant'),
     ]))
@@ -156,15 +225,85 @@ describe('history duplicate prevention', () => {
     await flushPromises()
 
     expect(historyList.value.map(item => item.id)).toEqual([
-      favoriteDuplicate.id,
+      newerDuplicate.id,
       unique.id,
     ])
-    expect(readHistoryList().map(item => item.id)).toEqual([
-      favoriteDuplicate.id,
-      unique.id,
+    expect(readHistoryList()[0]).toMatchObject({
+      id: newerDuplicate.id,
+      isFavorite: true,
+    })
+    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id)).toBeNull()
+    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + newerDuplicate.id)).not.toBeNull()
+  })
+
+  it('merges prefix-related history snapshots and keeps the complete renamed record', async () => {
+    const shorterSnapshot = history('shorter-snapshot', {
+      title: 'Renamed title',
+      timestamp: 10,
+      messageCount: 2,
+      isFavorite: true,
+    })
+    const longerSnapshot = history('longer-snapshot', {
+      title: 'first generated prompt',
+      timestamp: 20,
+      messageCount: 4,
+    })
+    const shortMessages = [
+      message('shared-user', { type: 'user', content: 'first generated prompt' }),
+      message('shared-assistant'),
+    ]
+    const longMessages = [
+      ...shortMessages,
+      message('follow-up-user', { type: 'user', content: 'follow up prompt' }),
+      message('follow-up-assistant'),
+    ]
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([
+      shorterSnapshot,
+      longerSnapshot,
+    ]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + shorterSnapshot.id, JSON.stringify(shortMessages))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id, JSON.stringify(longMessages))
+
+    const { historyList } = useHistory()
+    await flushPromises()
+
+    expect(historyList.value).toHaveLength(1)
+    expect(historyList.value[0]).toMatchObject({
+      id: longerSnapshot.id,
+      title: 'Renamed title',
+      messageCount: 4,
+      isFavorite: true,
+    })
+    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + shorterSnapshot.id)).toBeNull()
+    expect(JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id) || '[]')
+      .map((item: ChatMessage) => item.id)).toEqual([
+      'shared-user',
+      'shared-assistant',
+      'follow-up-user',
+      'follow-up-assistant',
     ])
-    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + olderDuplicate.id)).toBeNull()
-    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id)).not.toBeNull()
+  })
+
+  it('does not merge separate chats with the same title and prompt', async () => {
+    const first = history('first-history', { title: 'same prompt' })
+    const second = history('second-history', { title: 'same prompt' })
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([first, second]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + first.id, JSON.stringify([
+      message('first-user', { type: 'user', content: 'same prompt' }),
+      message('first-assistant'),
+    ]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + second.id, JSON.stringify([
+      message('second-user', { type: 'user', content: 'same prompt' }),
+      message('second-assistant'),
+    ]))
+
+    const { historyList } = useHistory()
+    await flushPromises()
+
+    expect(historyList.value.map(item => item.id)).toEqual([
+      first.id,
+      second.id,
+    ])
   })
 
   it('renames a saved history item and persists the title', async () => {

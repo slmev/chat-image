@@ -138,38 +138,118 @@ function cloneData<T>(value: T): T {
 
 const historyList = ref<ChatHistory[]>(getHistoryList())
 
-function historyMessageSignature(messages: ChatMessage[]): string | null {
-  if (messages.length === 0) return null
-  return messages.map(message => message.id).join('\u001f')
+function messageIds(messages: ChatMessage[]): string[] {
+  return messages.map(message => message.id)
 }
 
-function chooseDuplicateHistory(items: ChatHistory[]): ChatHistory {
+function isPrefixSequence(shorter: string[], longer: string[]): boolean {
+  if (shorter.length > longer.length) return false
+  return shorter.every((id, index) => id === longer[index])
+}
+
+function hasSnapshotRelation(left: string[], right: string[]): boolean {
+  return isPrefixSequence(left, right) || isPrefixSequence(right, left)
+}
+
+interface HistorySnapshot {
+  item: ChatHistory
+  messages: ChatMessage[]
+  ids: string[]
+}
+
+function chooseMergedHistory(items: HistorySnapshot[]): HistorySnapshot {
   return [...items].sort((a, b) => {
-    if (a.isFavorite !== b.isFavorite) {
-      return a.isFavorite ? -1 : 1
+    if (a.messages.length !== b.messages.length) {
+      return b.messages.length - a.messages.length
     }
-    return b.timestamp - a.timestamp
-  })[0]
+    return b.item.timestamp - a.item.timestamp
+  })[0] ?? items[0]
 }
 
-async function removeDuplicateHistories(list: ChatHistory[]): Promise<ChatHistory[]> {
-  const groupedByMessages = new Map<string, ChatHistory[]>()
+async function removeDuplicateHistories(
+  list: ChatHistory[],
+  defaultHistoryTitle: (messages: ChatMessage[]) => string,
+): Promise<ChatHistory[]> {
+  const snapshots = (await Promise.all(list.map(async item => {
+    const messages = await readHistoryMessages(item.id)
+    return {
+      item,
+      messages,
+      ids: messageIds(messages),
+    }
+  }))).filter(snapshot => snapshot.messages.length > 0)
 
-  await Promise.all(list.map(async item => {
-    const signature = historyMessageSignature(await readHistoryMessages(item.id))
-    if (!signature) return
+  if (snapshots.length <= 1) return list
 
-    const group = groupedByMessages.get(signature) || []
-    group.push(item)
-    groupedByMessages.set(signature, group)
-  }))
+  const parents = snapshots.map((_, index) => index)
+
+  function find(index: number): number {
+    if (parents[index] !== index) {
+      parents[index] = find(parents[index])
+    }
+    return parents[index]
+  }
+
+  function union(left: number, right: number): void {
+    const leftRoot = find(left)
+    const rightRoot = find(right)
+    if (leftRoot !== rightRoot) {
+      parents[rightRoot] = leftRoot
+    }
+  }
+
+  for (let left = 0; left < snapshots.length; left += 1) {
+    for (let right = left + 1; right < snapshots.length; right += 1) {
+      if (hasSnapshotRelation(snapshots[left].ids, snapshots[right].ids)) {
+        union(left, right)
+      }
+    }
+  }
+
+  const groupedSnapshots = new Map<number, HistorySnapshot[]>()
+  snapshots.forEach((snapshot, index) => {
+    const root = find(index)
+    const group = groupedSnapshots.get(root) || []
+    group.push(snapshot)
+    groupedSnapshots.set(root, group)
+  })
 
   const idsToRemove = new Set<string>()
-  groupedByMessages.forEach(items => {
-    if (items.length <= 1) return
+  const mergedSnapshots = new Map<string, HistorySnapshot>()
 
-    const keep = chooseDuplicateHistory(items)
-    items.forEach(item => {
+  groupedSnapshots.forEach((group) => {
+    if (group.length <= 1) return
+
+    const merged = chooseMergedHistory(group)
+    const mergedTitle = (() => {
+      const renamedItem = [...group]
+        .sort((a, b) => {
+          if (a.messages.length !== b.messages.length) {
+            return b.messages.length - a.messages.length
+          }
+          return b.item.timestamp - a.item.timestamp
+        })
+        .find(({ item, messages }) => {
+          return item.title.trim() !== defaultHistoryTitle(messages)
+        })
+      return renamedItem?.item.title.trim() || merged.item.title
+    })()
+    const keep = {
+      ...merged.item,
+      title: mergedTitle,
+      timestamp: Math.max(...group.map(({ item }) => item.timestamp)),
+      messageCount: merged.messages.length,
+      isFavorite: group.some(({ item }) => item.isFavorite),
+      preview: merged.messages.find(message => message.type === 'user')?.content.slice(0, 100),
+    }
+
+    mergedSnapshots.set(keep.id, {
+      item: keep,
+      messages: merged.messages,
+      ids: merged.ids,
+    })
+
+    group.forEach(({ item }) => {
       if (item.id !== keep.id) {
         idsToRemove.add(item.id)
       }
@@ -178,16 +258,22 @@ async function removeDuplicateHistories(list: ChatHistory[]): Promise<ChatHistor
 
   if (idsToRemove.size === 0) return list
 
+  await Promise.all(Array.from(mergedSnapshots.values()).map(async ({ item, messages }) => {
+    await setHistoryMessages(item.id, messages)
+  }))
+
   await Promise.all(Array.from(idsToRemove).map(id => deleteHistoryMessages(id)))
-  const deduped = list.filter(item => !idsToRemove.has(item.id))
+  const deduped = list
+    .filter(item => !idsToRemove.has(item.id))
+    .map(item => mergedSnapshots.get(item.id)?.item || item)
   await setHistoryList(deduped)
   return deduped
 }
 
-function refreshHistoryList(): void {
+function refreshHistoryList(defaultHistoryTitle: (messages: ChatMessage[]) => string): void {
   if (isTauriRuntime()) {
     void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, []).then(async list => {
-      historyList.value = await removeDuplicateHistories(list)
+      historyList.value = await removeDuplicateHistories(list, defaultHistoryTitle)
     }).catch(error => {
       console.error('Failed to load history list:', error)
     })
@@ -196,7 +282,7 @@ function refreshHistoryList(): void {
 
   const list = getHistoryList()
   historyList.value = list
-  void removeDuplicateHistories(list).then(deduped => {
+  void removeDuplicateHistories(list, defaultHistoryTitle).then(deduped => {
     historyList.value = deduped
   }).catch(error => {
     console.error('Failed to clean duplicate histories:', error)
@@ -269,7 +355,11 @@ export function useHistory() {
   const searchQuery = ref('')
   const showFavoritesOnly = ref(false)
   const t = i18n.global.t
-  refreshHistoryList()
+  const defaultHistoryTitle = (messages: ChatMessage[]): string => {
+    const firstUserMessage = messages.find(message => message.type === 'user')
+    return firstUserMessage?.content.slice(0, 50) || t('newChat')
+  }
+  refreshHistoryList(defaultHistoryTitle)
 
   async function ensureDesktopHistoryHydrated(): Promise<void> {
     await initializeDesktopPersistence()
@@ -277,6 +367,26 @@ export function useHistory() {
       await chatStore.hydrateFromPersistence()
     }
     await chatStore.flushHistorySave()
+  }
+
+  async function findMatchingHistory(messages: ChatMessage[]): Promise<ChatHistory | undefined> {
+    const currentIds = messageIds(messages)
+    const candidates = await Promise.all(historyList.value.map(async item => ({
+      item,
+      messages: await readHistoryMessages(item.id),
+    })))
+
+    return candidates
+      .filter(({ messages: candidateMessages }) => candidateMessages.length > 0)
+      .filter(({ messages: candidateMessages }) => hasSnapshotRelation(currentIds, messageIds(candidateMessages)))
+      .sort((a, b) => {
+        const leftLength = a.messages.length
+        const rightLength = b.messages.length
+        if (leftLength !== rightLength) {
+          return rightLength - leftLength
+        }
+        return b.item.timestamp - a.item.timestamp
+      })[0]?.item
   }
 
   async function readHistoryMessageMap(list: ChatHistory[]): Promise<Record<string, ChatMessage[]>> {
@@ -439,15 +549,16 @@ export function useHistory() {
     const existingHistory = existingHistoryId
       ? historyList.value.find(item => item.id === existingHistoryId)
       : undefined
-    const title = existingHistory?.title || firstUserMessage?.content.slice(0, 50) || t('newChat')
-    const historyId = existingHistory?.id || generateId()
+    const historyCandidate = existingHistory ?? (await findMatchingHistory(chatStore.messages))
+    const title = historyCandidate?.title || firstUserMessage?.content.slice(0, 50) || t('newChat')
+    const historyId = historyCandidate?.id || generateId()
 
     const history: ChatHistory = {
       id: historyId,
       title,
       timestamp: Date.now(),
       messageCount: chatStore.messages.length,
-      isFavorite: existingHistory?.isFavorite ?? false,
+      isFavorite: historyCandidate?.isFavorite ?? false,
       preview: firstUserMessage?.content.slice(0, 100),
     }
 
@@ -456,7 +567,7 @@ export function useHistory() {
     await setHistoryMessages(historyId, chatStore.messages)
 
     // 更新历史列表
-    if (existingHistory) {
+    if (historyCandidate) {
       historyList.value = historyList.value.map(item =>
         item.id === historyId ? history : item
       )
@@ -464,8 +575,13 @@ export function useHistory() {
       historyList.value.unshift(history)
     }
     await setHistoryList(historyList.value)
+    historyList.value = await removeDuplicateHistories(historyList.value, defaultHistoryTitle)
 
-    return historyId
+    if (historyList.value.some(item => item.id === historyId)) {
+      return historyId
+    }
+
+    return (await findMatchingHistory(chatStore.messages))?.id || historyId
   }
 
   // 加载历史对话
