@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { X, Loader2 } from 'lucide-vue-next'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { X, Loader2, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import { useImageEdit } from '../../composables/useImageEdit'
 import EditToolbar from './EditToolbar.vue'
 import type { GeneratedImage, ImageGenerationResponse } from '../../types'
+import type { CSSProperties } from 'vue'
 
 interface Props {
   image: GeneratedImage
@@ -18,18 +20,34 @@ const emit = defineEmits<{
 }>()
 
 const { isLoading, error, editImage, cancelEdit } = useImageEdit()
+const { t } = useI18n()
 
 const canvasRef = ref<HTMLCanvasElement>()
 const imageRef = ref<HTMLImageElement>()
+const viewportRef = ref<HTMLDivElement>()
 const prompt = ref('')
 const brushSize = ref(20)
 const isEraser = ref(false)
 const isDrawing = ref(false)
+const naturalSize = ref({ width: 0, height: 0 })
+const fitScale = ref(1)
+const zoomLevel = ref(1)
 
 let ctx: CanvasRenderingContext2D | null = null
 let lastX = 0
 let lastY = 0
 let drawHistory: ImageData[] = []
+
+const MIN_ZOOM = 1
+const MAX_ZOOM = 4
+const ZOOM_STEP = 0.25
+
+const displayScale = computed(() => fitScale.value * zoomLevel.value)
+const zoomPercent = computed(() => Math.round(zoomLevel.value * 100))
+const stageStyle = computed<CSSProperties>(() => ({
+  width: `${naturalSize.value.width * displayScale.value}px`,
+  height: `${naturalSize.value.height * displayScale.value}px`,
+}))
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -39,11 +57,42 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   document.addEventListener('keydown', handleKeydown)
+  window.addEventListener('resize', updateFitScale)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('resize', updateFitScale)
 })
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+}
+
+function zoomIn() {
+  zoomLevel.value = clampZoom(zoomLevel.value + ZOOM_STEP)
+}
+
+function zoomOut() {
+  zoomLevel.value = clampZoom(zoomLevel.value - ZOOM_STEP)
+}
+
+function fitToView() {
+  zoomLevel.value = MIN_ZOOM
+}
+
+function updateFitScale() {
+  const viewport = viewportRef.value
+  const { width, height } = naturalSize.value
+  if (!viewport || width <= 0 || height <= 0) return
+
+  const rect = viewport.getBoundingClientRect()
+  const viewportWidth = rect.width || viewport.clientWidth
+  const viewportHeight = rect.height || viewport.clientHeight
+  if (viewportWidth <= 0 || viewportHeight <= 0) return
+
+  fitScale.value = Math.min(viewportWidth / width, viewportHeight / height)
+}
 
 async function setupCanvas() {
   await nextTick()
@@ -65,6 +114,9 @@ async function setupCanvas() {
   const w = img.naturalWidth || 1024
   const h = img.naturalHeight || 1024
 
+  naturalSize.value = { width: w, height: h }
+  zoomLevel.value = MIN_ZOOM
+
   canvas.width = w
   canvas.height = h
 
@@ -73,6 +125,9 @@ async function setupCanvas() {
     ctx.clearRect(0, 0, w, h)
     drawHistory = []
   }
+
+  await nextTick()
+  updateFitScale()
 }
 
 function startDrawing(event: MouseEvent | TouchEvent) {
@@ -168,7 +223,7 @@ async function handleSubmit() {
           if (blob) {
             resolve(blob)
           } else {
-            reject(new Error('创建遮罩图片失败'))
+            reject(new Error(t('unknownError')))
           }
         }, 'image/png')
       })
@@ -211,8 +266,8 @@ onMounted(() => {
         <div class="dialog-content scale-in">
           <!-- Header -->
           <div class="dialog-header">
-            <h2 class="dialog-title">编辑图片</h2>
-            <button @click="handleClose" class="btn-icon">
+            <h2 class="dialog-title">{{ t('editImageTitle') }}</h2>
+            <button class="btn-icon" @click="handleClose">
               <X :size="20" />
             </button>
           </div>
@@ -220,40 +275,75 @@ onMounted(() => {
           <!-- Body -->
           <div class="dialog-body">
             <!-- Image with Canvas -->
-            <div class="image-container">
-              <img
-                ref="imageRef"
-                :src="image.url"
-                alt="Source image"
-                class="source-image"
-              />
-              <canvas
-                ref="canvasRef"
-                class="mask-canvas"
-                @mousedown="startDrawing"
-                @mousemove="draw"
-                @mouseup="stopDrawing"
-                @mouseleave="stopDrawing"
-                @touchstart.prevent="startDrawing"
-                @touchmove.prevent="draw"
-                @touchend="stopDrawing"
-              />
+            <div ref="viewportRef" class="image-container">
+              <div class="image-stage" :style="stageStyle">
+                <img
+                  ref="imageRef"
+                  :src="image.url"
+                  :alt="t('sourceImageAlt')"
+                  class="source-image"
+                />
+                <canvas
+                  ref="canvasRef"
+                  class="mask-canvas"
+                  @mousedown="startDrawing"
+                  @mousemove="draw"
+                  @mouseup="stopDrawing"
+                  @mouseleave="stopDrawing"
+                  @touchstart.prevent="startDrawing"
+                  @touchmove.prevent="draw"
+                  @touchend="stopDrawing"
+                />
+              </div>
+            </div>
+
+            <!-- Zoom controls -->
+            <div class="zoom-controls">
+              <button
+                class="zoom-btn"
+                :disabled="zoomLevel <= MIN_ZOOM"
+                :title="t('zoomOut')"
+                :aria-label="t('zoomOut')"
+                @click="zoomOut"
+              >
+                <ZoomOut :size="16" />
+              </button>
+              <button
+                class="zoom-fit-btn"
+                :title="t('fitToView')"
+                @click="fitToView"
+              >
+                <Maximize2 :size="15" />
+                <span>{{ t('fitToView') }}</span>
+              </button>
+              <span class="zoom-value" :aria-label="t('zoomLevel')">
+                {{ zoomPercent }}%
+              </span>
+              <button
+                class="zoom-btn"
+                :disabled="zoomLevel >= MAX_ZOOM"
+                :title="t('zoomIn')"
+                :aria-label="t('zoomIn')"
+                @click="zoomIn"
+              >
+                <ZoomIn :size="16" />
+              </button>
             </div>
 
             <!-- Toolbar -->
             <EditToolbar
-              v-model:brushSize="brushSize"
-              v-model:isEraser="isEraser"
+              v-model:brush-size="brushSize"
+              v-model:is-eraser="isEraser"
               @undo="undo"
               @clear="clearCanvas"
             />
 
             <!-- Prompt -->
             <div class="form-group">
-              <label class="form-label">描述要修改的内容</label>
+              <label class="form-label">{{ t('editPromptLabel') }}</label>
               <textarea
                 v-model="prompt"
-                placeholder="例如：将背景改为海滩场景"
+                :placeholder="t('editPromptPlaceholder')"
                 rows="3"
                 class="input-field"
               />
@@ -266,22 +356,22 @@ onMounted(() => {
 
             <!-- Info -->
             <p class="info-text">
-              在图片上绘制白色区域作为遮罩，AI 将只修改遮罩覆盖的区域。不绘制遮罩则修改整张图片。
+              {{ t('editMaskHint') }}
             </p>
           </div>
 
           <!-- Footer -->
           <div class="dialog-footer">
-            <button @click="handleClose" class="btn-secondary">
-              取消
+            <button class="btn-secondary" @click="handleClose">
+              {{ t('cancel') }}
             </button>
             <button
-              @click="handleSubmit"
               :disabled="!prompt.trim() || isLoading"
               class="btn-primary"
+              @click="handleSubmit"
             >
               <Loader2 v-if="isLoading" :size="16" class="spin" />
-              <span>{{ isLoading ? '处理中...' : '应用编辑' }}</span>
+              <span>{{ isLoading ? t('processing') : t('applyEdit') }}</span>
             </button>
           </div>
         </div>
@@ -338,16 +428,27 @@ onMounted(() => {
 }
 
 .image-container {
-  position: relative;
+  height: clamp(260px, 52vh, 520px);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.image-stage {
+  position: relative;
+  flex: none;
+  margin: 0 auto;
+  min-width: 1px;
+  min-height: 1px;
 }
 
 .source-image {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  user-select: none;
+  pointer-events: none;
 }
 
 .mask-canvas {
@@ -357,6 +458,58 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -8px;
+}
+
+.zoom-btn,
+.zoom-fit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.zoom-btn {
+  width: 32px;
+}
+
+.zoom-fit-btn {
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.zoom-btn:hover:not(:disabled),
+.zoom-fit-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.zoom-value {
+  min-width: 48px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  text-align: center;
 }
 
 .form-group {
