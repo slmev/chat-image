@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import MessageBubble from '../../components/Chat/MessageBubble.vue'
 import { useChatStore } from '../../stores/chat'
-import type { ChatAttachment, ChatMessage, GeneratedImage } from '../../types'
+import type { ChatAttachment, ChatMessage, GeneratedImage, StyleTemplate } from '../../types'
 
 const mockState = vi.hoisted(() => ({
   retryMessage: vi.fn(),
@@ -56,6 +56,16 @@ function attachment(overrides: Partial<ChatAttachment> = {}): ChatAttachment {
     url: 'blob:reference',
     timestamp: 1,
     ...overrides,
+  }
+}
+
+function style(): StyleTemplate {
+  return {
+    id: 'cinematic',
+    name: 'Cinematic',
+    description: 'Cinematic lighting',
+    promptSuffix: 'cinematic lighting, film still',
+    icon: 'sparkles',
   }
 }
 
@@ -160,6 +170,7 @@ describe('MessageBubble generation display', () => {
 
   it('retries failed assistant messages with the previous user attachments', async () => {
     const reference = attachment()
+    const selectedStyle = style()
     mockState.retryMessage.mockResolvedValueOnce(undefined)
     const chatStore = useChatStore()
     const userMessage = chatStore.addMessage({
@@ -173,6 +184,10 @@ describe('MessageBubble generation display', () => {
       content: '生成失败',
       status: 'error',
       error: '生成失败',
+      generationSize: '1792x1024',
+      generationQuality: 'hd',
+      generationCount: 2,
+      generationStyle: selectedStyle,
     })
 
     const wrapper = mountBubble(assistantMessage)
@@ -183,9 +198,10 @@ describe('MessageBubble generation display', () => {
       assistantMessage.id,
       'redesign this room',
       {
-        size: '1024x1024',
-        quality: 'standard',
-        n: 1,
+        size: '1792x1024',
+        quality: 'hd',
+        n: 2,
+        style: selectedStyle,
       },
       [reference],
     )

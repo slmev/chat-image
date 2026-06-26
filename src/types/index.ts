@@ -53,6 +53,7 @@ export interface ChatMessage {
   generationSize?: GenerationOptions['size']
   generationQuality?: GenerationOptions['quality']
   generationCount?: GenerationOptions['n']
+  generationStyle?: GenerationOptions['style']
   status: 'pending' | 'success' | 'error'
   error?: string
   isFavorite?: boolean

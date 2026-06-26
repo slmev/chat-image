@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useChat } from '../../composables/useChat'
 import { useChatStore } from '../../stores/chat'
 import { useConfigStore } from '../../stores/config'
-import type { ChatAttachment, GeneratedImage } from '../../types'
+import type { ChatAttachment, GeneratedImage, StyleTemplate } from '../../types'
 
 const mockState = vi.hoisted(() => ({
   generateImage: vi.fn(),
@@ -63,6 +63,16 @@ function attachment(): ChatAttachment {
     base64: btoa('reference'),
     mimeType: 'image/png',
     timestamp: 1,
+  }
+}
+
+function style(): StyleTemplate {
+  return {
+    id: 'cinematic',
+    name: 'Cinematic',
+    description: 'Cinematic lighting',
+    promptSuffix: 'cinematic lighting, film still',
+    icon: 'sparkles',
   }
 }
 
@@ -154,9 +164,10 @@ describe('useChat', () => {
     )
   })
 
-  it('stores the requested generation size on pending assistant messages', async () => {
+  it('stores the requested generation options on pending assistant messages', async () => {
     mockState.generateImage.mockResolvedValueOnce([generatedImage()])
     mockState.saveCurrentChat.mockResolvedValueOnce('history-1')
+    const selectedStyle = style()
     const configStore = useConfigStore()
     await configStore.saveConfig({
       endpoint: 'https://api.example.test',
@@ -169,14 +180,18 @@ describe('useChat', () => {
 
     await sendMessage('a wide city skyline', {
       size: '1792x1024',
-      quality: 'standard',
-      n: 1,
+      quality: 'hd',
+      n: 2,
+      style: selectedStyle,
     })
 
     expect(chatStore.messages).toHaveLength(2)
     expect(chatStore.messages[1]).toMatchObject({
       type: 'assistant',
       generationSize: '1792x1024',
+      generationQuality: 'hd',
+      generationCount: 2,
+      generationStyle: selectedStyle,
       status: 'success',
       images: [expect.objectContaining({ id: 'image-1' })],
     })

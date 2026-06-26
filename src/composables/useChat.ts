@@ -48,6 +48,7 @@ export function useChat() {
       generationSize: options.size,
       generationQuality: options.quality,
       generationCount: options.n,
+      generationStyle: options.style,
       status: 'pending',
     })
 
@@ -90,6 +91,7 @@ export function useChat() {
       generationSize: options.size,
       generationQuality: options.quality,
       generationCount: options.n,
+      generationStyle: options.style,
       status: 'pending',
       error: undefined,
       images: undefined,

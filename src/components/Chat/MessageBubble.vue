@@ -268,6 +268,7 @@ async function handleRetry() {
         size: props.message.generationSize ?? '1024x1024',
         quality: props.message.generationQuality ?? 'standard',
         n: props.message.generationCount ?? 1,
+        ...(props.message.generationStyle ? { style: props.message.generationStyle } : {}),
       },
       attachments,
     )
