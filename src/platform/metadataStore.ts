@@ -18,9 +18,13 @@ let storePromise: Promise<Store> | null = null
 
 async function getStore(): Promise<Store> {
   if (!storePromise) {
-    storePromise = import('@tauri-apps/plugin-store').then(({ Store }) =>
-      Store.load(STORE_FILE, { defaults: {}, autoSave: 100 }),
-    )
+    // 失败时重置缓存，避免永久缓存一个 rejected promise 导致后续所有读写都失败。
+    storePromise = import('@tauri-apps/plugin-store')
+      .then(({ Store }) => Store.load(STORE_FILE, { defaults: {}, autoSave: 100 }))
+      .catch(error => {
+        storePromise = null
+        throw error
+      })
   }
   return storePromise
 }

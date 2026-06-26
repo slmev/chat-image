@@ -22,7 +22,11 @@ export function useImageEdit() {
       }
       currentService = new ImageGenerationService(config)
     } else {
-      currentService.updateConfig(configStore.apiConfig!)
+      const config = configStore.apiConfig
+      if (!config) {
+        throw new Error(t('configureApiFirst'))
+      }
+      currentService.updateConfig(config)
     }
     return currentService
   }
@@ -55,7 +59,7 @@ export function useImageEdit() {
       const service = getService()
 
       // Build variation prompt
-      const basePrompt = image.sourcePrompt || options.prompt
+      const basePrompt = options.prompt?.trim() || image.sourcePrompt || ''
       let variationPrompt = `${basePrompt}, alternative version, different perspective`
 
       // Append style suffix if selected

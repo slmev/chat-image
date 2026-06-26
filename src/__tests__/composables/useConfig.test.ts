@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useConfig } from '../../composables/useConfig'
+import { useConfig, localizeApiTestResult } from '../../composables/useConfig'
 import { useConfigStore } from '../../stores/config'
 
 const mockState = vi.hoisted(() => ({
@@ -47,7 +47,7 @@ describe('useConfig', () => {
     const { testApiConnection } = useConfig()
     const result = await testApiConnection()
 
-    expect(result).toEqual({ success: true, message: 'API 连接成功' })
+    expect(result).toEqual({ success: true, code: 'apiConnectionSuccess' })
     expect(mockState.runtimeFetch).toHaveBeenCalledWith('https://api.example.test/v1/models', {
       method: 'GET',
       headers: {
@@ -66,7 +66,7 @@ describe('useConfig', () => {
       model: 'gpt-image-2',
     })
 
-    expect(result).toEqual({ success: true, message: 'API 连接成功' })
+    expect(result).toEqual({ success: true, code: 'apiConnectionSuccess' })
     expect(mockState.runtimeFetch).toHaveBeenCalledWith('https://api.unsaved.test/v1/models', {
       method: 'GET',
       headers: {
@@ -90,7 +90,27 @@ describe('useConfig', () => {
 
     await expect(testApiConnection()).resolves.toEqual({
       success: false,
-      message: 'model endpoint unavailable',
+      code: 'serverError',
+      detail: 'model endpoint unavailable',
+      status: 400,
     })
+  })
+
+  it('localizeApiTestResult translates known codes', () => {
+    const t = (key: string) => key
+    expect(localizeApiTestResult({ success: true, code: 'apiConnectionSuccess' }, t)).toBe('apiConnectionSuccess')
+    expect(localizeApiTestResult({ success: false, code: 'invalidApiKey' }, t)).toBe('invalidApiKey')
+  })
+
+  it('localizeApiTestResult prefers server detail over i18n key', () => {
+    const t = (key: string, named?: Record<string, unknown>) => `${key}:${named?.code}`
+    expect(localizeApiTestResult(
+      { success: false, code: 'serverError', detail: 'model not found', status: 400 },
+      t,
+    )).toBe('model not found')
+    expect(localizeApiTestResult(
+      { success: false, code: 'serverError', status: 400 },
+      t,
+    )).toBe('apiTestServerError:400')
   })
 })

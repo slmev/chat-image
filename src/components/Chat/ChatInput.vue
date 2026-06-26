@@ -392,6 +392,10 @@ onMounted(async () => {
     quality: savedOptions.quality,
     n: savedOptions.n,
   }
+  // 恢复上次选择的风格（若该风格仍存在）
+  if (savedOptions.style && allStyles.value.some(style => style.id === savedOptions.style!.id)) {
+    selectedStyleId.value = savedOptions.style.id
+  }
 })
 
 // 保存生成参数
@@ -524,8 +528,8 @@ function handleDragLeave(event: DragEvent) {
 }
 
 function handleDrop(event: DragEvent) {
-  if (props.disabled) return
   isDragging.value = false
+  if (props.disabled) return
   addAttachmentFiles(Array.from(event.dataTransfer?.files || []))
 }
 

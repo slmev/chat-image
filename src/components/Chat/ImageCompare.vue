@@ -18,7 +18,7 @@
           <div class="compare-view" ref="compareRef">
             <!-- Left Image -->
             <div class="compare-left">
-              <img :src="getImageUrl(leftImage)" :alt="t('originalImage')" class="compare-image" />
+              <img :src="leftUrl" :alt="t('originalImage')" class="compare-image" />
               <div class="compare-label">{{ t('originalImage') }}</div>
             </div>
 
@@ -37,7 +37,7 @@
 
             <!-- Right Image -->
             <div class="compare-right" :style="{ clipPath: `inset(0 0 0 ${sliderPosition}%)` }">
-              <img :src="getImageUrl(rightImage)" :alt="t('variationImage')" class="compare-image" />
+              <img :src="rightUrl" :alt="t('variationImage')" class="compare-image" />
               <div class="compare-label">{{ t('variationImage') }}</div>
             </div>
           </div>
@@ -60,10 +60,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { X, Scale, ChevronsLeftRight } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type { GeneratedImage } from '../../types'
+import { getImageRepository } from '../../platform/imageRepository'
+import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
+import { isTauriRuntime } from '../../platform/runtime'
 
 interface Props {
   isOpen: boolean
@@ -71,7 +74,7 @@ interface Props {
   rightImage: GeneratedImage
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 defineEmits<{
   close: []
 }>()
@@ -81,9 +84,72 @@ const compareRef = ref<HTMLElement>()
 const sliderPosition = ref(50)
 const isDragging = ref(false)
 
-function getImageUrl(image: GeneratedImage): string {
-  return image.url
+const leftUrl = ref('')
+const rightUrl = ref('')
+const ownedObjectUrls = new Set<string>()
+let resolveRun = 0
+
+function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
+  const validUrl = isValidImageUrl(image.url)
+  return Boolean(
+    (image.localPath && !validUrl)
+    || (image.base64 && !validUrl)
+    || (isTauriRuntime() && isExternalImageUrl(image.url)),
+  )
 }
+
+function revokeObjectUrl(url: string) {
+  if (url && typeof URL.revokeObjectURL === 'function') {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function revokeOwnedObjectUrls() {
+  ownedObjectUrls.forEach(revokeObjectUrl)
+  ownedObjectUrls.clear()
+}
+
+async function resolveImageUrl(image: GeneratedImage): Promise<string> {
+  if (!shouldResolveDisplayUrl(image)) {
+    return isValidImageUrl(image.url) ? image.url : ''
+  }
+  try {
+    const resolved = await getImageRepository().resolveDisplayUrl(image)
+    if (resolved.url.startsWith('blob:') && resolved.url !== image.url) {
+      ownedObjectUrls.add(resolved.url)
+    }
+    return resolved.url
+  } catch (err) {
+    console.warn('Failed to resolve compare image URL:', err)
+    return isValidImageUrl(image.url) ? image.url : ''
+  }
+}
+
+watch(
+  () => [props.isOpen, props.leftImage, props.rightImage] as const,
+  async () => {
+    if (!props.isOpen) {
+      revokeOwnedObjectUrls()
+      leftUrl.value = ''
+      rightUrl.value = ''
+      return
+    }
+    const run = ++resolveRun
+    revokeOwnedObjectUrls()
+    const [left, right] = await Promise.all([
+      resolveImageUrl(props.leftImage),
+      resolveImageUrl(props.rightImage),
+    ])
+    if (run !== resolveRun) {
+      // A newer resolve superseded this one; drop any URLs it created.
+      revokeOwnedObjectUrls()
+      return
+    }
+    leftUrl.value = left
+    rightUrl.value = right
+  },
+  { immediate: true },
+)
 
 function updateSliderPosition(clientX: number) {
   if (!compareRef.value) return
@@ -126,6 +192,7 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('touchend', stopDrag)
+  revokeOwnedObjectUrls()
 })
 </script>
 

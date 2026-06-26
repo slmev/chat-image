@@ -524,6 +524,8 @@ export function useHistory() {
       result = result.filter(msg => {
         if (msg.content.toLowerCase().includes(query)) return true
         if (msg.error?.toLowerCase().includes(query)) return true
+        if (msg.images?.some(img => img.sourcePrompt?.toLowerCase().includes(query))) return true
+        if (msg.attachments?.some(att => att.sourcePrompt?.toLowerCase().includes(query))) return true
         return false
       })
     }

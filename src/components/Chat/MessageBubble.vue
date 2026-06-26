@@ -4,7 +4,7 @@
     <div v-if="message.type === 'user'" class="user-message">
       <div class="user-content">
         <div class="user-bubble">
-          <p v-if="highlightedContent" class="user-text"><template v-for="(part, i) in highlightedContent" :key="i">{{ part }}</template></p>
+          <p v-if="highlightedContent" class="user-text"><template v-for="(part, i) in highlightedContent" :key="i"><mark v-if="part.isMatch" class="search-highlight">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></p>
           <p v-else class="user-text">{{ message.content }}</p>
           <div v-if="message.isFavorite" class="favorite-badge">
             <Star :size="12" fill="currentColor" />
@@ -265,9 +265,9 @@ async function handleRetry() {
       props.message.id,
       userPrompt,
       {
-        size: '1024x1024',
-        quality: 'standard',
-        n: 1,
+        size: props.message.generationSize ?? '1024x1024',
+        quality: props.message.generationQuality ?? 'standard',
+        n: props.message.generationCount ?? 1,
       },
       attachments,
     )

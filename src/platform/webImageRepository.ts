@@ -1,5 +1,5 @@
 import type { GeneratedImage } from '../types'
-import { createBlobUrlFromBase64 } from '../utils/imagePersistence'
+import { getCachedBlobUrl } from '../utils/imagePersistence'
 import { isBrowserReadableImageUrl, isExternalImageUrl } from '../utils/images'
 import type { ImageRepository, SaveGeneratedImageInput } from './imageRepository'
 
@@ -15,7 +15,14 @@ function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
 export const webImageRepository: ImageRepository = {
   async saveGeneratedImage(input: SaveGeneratedImageInput): Promise<GeneratedImage> {
     const mimeType = input.mimeType || 'image/png'
-    const url = input.b64Json ? createBlobUrlFromBase64(input.b64Json, mimeType) : input.url || ''
+    let url = input.url || ''
+    let byteSize: number | undefined
+
+    if (input.b64Json) {
+      const blob = base64ToBlob(input.b64Json, mimeType)
+      byteSize = blob.size
+      url = getCachedBlobUrl(input.id, input.b64Json, mimeType)
+    }
 
     return {
       id: input.id,
@@ -23,7 +30,7 @@ export const webImageRepository: ImageRepository = {
       base64: input.b64Json,
       originalUrl: input.url,
       mimeType,
-      byteSize: input.b64Json ? base64ToBlob(input.b64Json, mimeType).size : undefined,
+      byteSize,
       timestamp: input.timestamp,
       sourcePrompt: input.sourcePrompt,
       sourceMessageId: input.sourceMessageId,
@@ -34,7 +41,7 @@ export const webImageRepository: ImageRepository = {
     if (image.base64) {
       return {
         ...image,
-        url: createBlobUrlFromBase64(image.base64, image.mimeType),
+        url: getCachedBlobUrl(image.id, image.base64, image.mimeType),
       }
     }
     return image

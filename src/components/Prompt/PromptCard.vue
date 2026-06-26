@@ -18,8 +18,11 @@ function handleClick() {
 }
 
 function promptTemplateTitle(template: PromptTemplate): string {
-  const [category, index] = template.id.split('-')
-  if (!category || !index) return template.title
+  const sep = template.id.lastIndexOf('-')
+  if (sep <= 0) return template.title
+  const category = template.id.slice(0, sep)
+  const index = template.id.slice(sep + 1)
+  if (!index) return template.title
   const key = `promptTemplate${category[0].toUpperCase()}${category.slice(1)}${index}`
   return t(key)
 }

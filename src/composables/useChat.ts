@@ -46,6 +46,8 @@ export function useChat() {
       type: 'assistant',
       content: t('generationInProgress'),
       generationSize: options.size,
+      generationQuality: options.quality,
+      generationCount: options.n,
       status: 'pending',
     })
 
@@ -86,6 +88,8 @@ export function useChat() {
     await chatStore.updateMessage(messageId, {
       content: t('generationInProgress'),
       generationSize: options.size,
+      generationQuality: options.quality,
+      generationCount: options.n,
       status: 'pending',
       error: undefined,
       images: undefined,

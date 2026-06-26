@@ -51,6 +51,8 @@ export interface ChatMessage {
   attachments?: ChatAttachment[]
   images?: GeneratedImage[]
   generationSize?: GenerationOptions['size']
+  generationQuality?: GenerationOptions['quality']
+  generationCount?: GenerationOptions['n']
   status: 'pending' | 'success' | 'error'
   error?: string
   isFavorite?: boolean

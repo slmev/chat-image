@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types'
+import type { ChatMessage, GeneratedImage } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
 
 export function createBlobUrlFromBase64(base64: string, mimeType = 'image/png'): string {
@@ -12,6 +12,35 @@ export function createBlobUrlFromBase64(base64: string, mimeType = 'image/png'):
   return URL.createObjectURL(blob)
 }
 
+// blob URL 按 image.id 缓存复用：reviveStoredImageUrls / resolveDisplayUrl 会被反复调用
+// （如每次读取历史、切换会话），若每次都新建 URL 而不释放，旧 URL 会无界泄漏。
+const blobUrlCache = new Map<string, string>()
+
+export function getCachedBlobUrl(key: string, base64: string, mimeType?: string): string {
+  const existing = blobUrlCache.get(key)
+  if (existing) return existing
+
+  const url = createBlobUrlFromBase64(base64, mimeType)
+  blobUrlCache.set(key, url)
+  return url
+}
+
+export function revokeCachedBlobUrls(keys: Iterable<string>): void {
+  for (const key of keys) {
+    const url = blobUrlCache.get(key)
+    if (url) {
+      if (typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(url)
+      }
+      blobUrlCache.delete(key)
+    }
+  }
+}
+
+export function revokeCachedBlobUrlsForImages(images: GeneratedImage[]): void {
+  revokeCachedBlobUrls(images.map(image => image.id).filter(Boolean))
+}
+
 export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
   return messages.map(msg => {
     if (!msg.images && !msg.attachments) return msg
@@ -21,12 +50,12 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
       attachments: msg.attachments?.map(attachment => ({
         ...attachment,
         url: attachment.base64
-          ? createBlobUrlFromBase64(attachment.base64, attachment.mimeType)
+          ? getCachedBlobUrl(attachment.id, attachment.base64, attachment.mimeType)
           : attachment.url,
       })),
       images: msg.images?.map(img => ({
         ...img,
-        url: img.base64 ? createBlobUrlFromBase64(img.base64, img.mimeType) : img.url,
+        url: img.base64 ? getCachedBlobUrl(img.id, img.base64, img.mimeType) : img.url,
       })),
     }
   })

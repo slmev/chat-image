@@ -16,11 +16,12 @@ export function useKeyboardShortcuts(shortcuts: Shortcut[]) {
     const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
     for (const shortcut of shortcuts) {
-      const ctrlMatch = shortcut.ctrl ? (event.ctrlKey || event.metaKey) : !(event.ctrlKey || event.metaKey)
+      const wantsCtrl = shortcut.ctrl || shortcut.meta
+      const ctrlMatch = wantsCtrl ? (event.ctrlKey || event.metaKey) : !(event.ctrlKey || event.metaKey)
       const shiftMatch = shortcut.shift ? event.shiftKey : !event.shiftKey
 
       // 没有修饰键的快捷键在输入框中不触发
-      if (isInput && !shortcut.ctrl && !shortcut.meta) continue
+      if (isInput && !wantsCtrl) continue
 
       if (event.key.toLowerCase() === shortcut.key.toLowerCase() && ctrlMatch && shiftMatch) {
         event.preventDefault()

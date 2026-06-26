@@ -293,7 +293,7 @@ import {
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useConfigStore } from '../../stores/config'
-import { useConfig } from '../../composables/useConfig'
+import { useConfig, localizeApiTestResult } from '../../composables/useConfig'
 import { useToast } from '../../composables/useToast'
 import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ApiConfigProfile } from '../../types'
@@ -404,17 +404,6 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
 }
 
-function localizeConfigTestMessage(message: string): string {
-  const matches: Record<string, string> = {
-    '请先配置 API 端点和密钥': 'apiConfigRequired',
-    'API 端点和密钥不能为空': 'apiConfigFieldsRequired',
-    'API 连接成功': 'apiConnectionSuccess',
-    'API Key 无效': 'invalidApiKey',
-    '请求过于频繁': 'rateLimited',
-    '网络连接失败，请检查端点地址和网络': 'networkConnectionFailed',
-  }
-  return matches[message] ? t(matches[message]) : message
-}
 
 async function handleSave() {
   if (!isFormValid.value) return
@@ -443,10 +432,7 @@ async function handleTest() {
       apiKey: draft.value.apiKey,
       model: draft.value.model,
     })
-    testResult.value = {
-      ...result,
-      message: localizeConfigTestMessage(result.message),
-    }
+    testResult.value = { success: result.success, message: localizeApiTestResult(result, t) }
   } catch (error) {
     console.error('API connection test failed:', error)
     testResult.value = { success: false, message: t('unknownError') }

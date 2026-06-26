@@ -50,6 +50,10 @@ watch(() => props.image, (newImage) => {
 watch(() => props.isOpen, (newVal) => {
   if (newVal) {
     prompt.value = props.image.sourcePrompt || ''
+    selectedSize.value = '1024x1024'
+    selectedQuality.value = 'standard'
+    selectedCount.value = 1
+    selectedStyleId.value = ''
     setupImage()
   }
 })
@@ -145,7 +149,7 @@ async function handleSubmit() {
       style: selectedStyle.value,
       size: selectedSize.value,
       quality: selectedQuality.value,
-      n: selectedCount.value,
+      n: Math.min(4, Math.max(1, Math.round(selectedCount.value) || 1)),
     })
     emit('result', response)
     emit('close')

@@ -2,7 +2,7 @@
   <button
     @click="toggleLocale"
     class="btn-icon lang-btn"
-    :aria-label="t('switchTheme')"
+    :aria-label="t('switchLanguage')"
     :title="locale === 'zh-CN' ? 'English' : '中文'"
   >
     <Languages :size="20" />

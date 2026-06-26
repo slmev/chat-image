@@ -10,6 +10,7 @@ export default {
   settings: '设置',
   backToChat: '返回聊天',
   switchTheme: '切换主题',
+  switchLanguage: '切换语言',
   clearChat: '清空对话',
   clearChatConfirm: '确定要清空所有对话吗？此操作不可恢复。',
   clear: '清空',
@@ -116,6 +117,7 @@ export default {
   invalidApiKey: 'API Key 无效',
   rateLimited: '请求过于频繁',
   networkConnectionFailed: '网络连接失败，请检查端点地址和网络',
+  apiTestServerError: '服务器错误（错误代码：{code}）',
 
   // HistorySidebar
   closeSidebar: '关闭侧边栏',

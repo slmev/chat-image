@@ -33,14 +33,18 @@ export function useImageDownload() {
       const zip = new JSZip()
 
       const repository = getImageRepository()
-      const externalImages = images.filter(image => isExternalImageUrl(image.url))
+      const externalEntries: { index: number; image: GeneratedImage }[] = []
 
-      // 并行读取可访问的图片，外链读取失败时只记录链接，避免跨域读取触发 403
+      // 并行读取可访问的图片；已知外链跳过 readImageBlob（必然跨域失败），
+      // 直接记入 external-image-links.txt，编号与 zip 内 image-N.png 保持一致。
       const downloadPromises = images.map(async (image, index) => {
+        if (isExternalImageUrl(image.url)) {
+          externalEntries.push({ index, image })
+          return
+        }
         try {
           const blob = await repository.readImageBlob(image)
-          const fileName = `image-${index + 1}.png`
-          zip.file(fileName, blob)
+          zip.file(`image-${index + 1}.png`, blob)
         } catch (err) {
           console.error(`Failed to download image ${index + 1}:`, err)
         }
@@ -48,8 +52,8 @@ export function useImageDownload() {
 
       await Promise.all(downloadPromises)
 
-      if (externalImages.length > 0) {
-        const links = externalImages.map((image, index) => {
+      if (externalEntries.length > 0) {
+        const links = externalEntries.map(({ index, image }) => {
           const prompt = image.sourcePrompt ? `\nPrompt: ${image.sourcePrompt}` : ''
           return `Image ${index + 1}: ${image.url}${prompt}`
         })

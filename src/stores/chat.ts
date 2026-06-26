@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ChatMessage, GeneratedImage } from '../types'
 import { getChatHistory, setChatHistory, clearChatHistory, generateId } from '../utils/storage'
-import { resolveStoredImageUrls, reviveStoredImageUrls } from '../utils/imagePersistence'
+import { resolveStoredImageUrls, reviveStoredImageUrls, revokeCachedBlobUrlsForImages } from '../utils/imagePersistence'
 import { getDesktopChatHistory, setMetadataValue } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
 import { STORAGE_KEYS } from '../utils/constants'
@@ -34,6 +34,16 @@ export const useChatStore = defineStore('chat', () => {
     ])
   }
 
+  // Web 端：释放被移除图片的缓存 blob URL，但排除当前视图仍引用的 id
+  // （历史记录稍后载入时 getCachedBlobUrl 会按需重建）。
+  function revokeRemovedWebBlobUrls(removedImages: GeneratedImage[]): void {
+    if (isTauriRuntime()) return
+    const stillReferenced = new Set(
+      collectMessageImagesForCleanup(messages.value).map(image => image.id),
+    )
+    revokeCachedBlobUrlsForImages(removedImages.filter(image => !stillReferenced.has(image.id)))
+  }
+
   // Computed
   const messageCount = computed(() => messages.value.length)
   const lastMessage = computed(() => messages.value[messages.value.length - 1] || null)
@@ -59,6 +69,7 @@ export const useChatStore = defineStore('chat', () => {
       const removedImages = collectMessageImagesForCleanup([messages.value[index]])
       messages.value.splice(index, 1)
       await saveHistory()
+      revokeRemovedWebBlobUrls(removedImages)
       await deleteUnreferencedLocalImages(removedImages)
     }
   }
@@ -132,6 +143,7 @@ export const useChatStore = defineStore('chat', () => {
       pendingHistorySave = setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, cloneMessages())
       await pendingHistorySave
     }
+    revokeRemovedWebBlobUrls(removedImages)
     await deleteUnreferencedLocalImages(removedImages)
   }
 

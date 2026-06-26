@@ -10,6 +10,7 @@ export default {
   settings: 'Settings',
   backToChat: 'Back to Chat',
   switchTheme: 'Switch theme',
+  switchLanguage: 'Switch language',
   clearChat: 'Clear Chat',
   clearChatConfirm: 'Are you sure you want to clear all conversations? This action cannot be undone.',
   clear: 'Clear',
@@ -116,6 +117,7 @@ export default {
   invalidApiKey: 'Invalid API Key',
   rateLimited: 'Too many requests',
   networkConnectionFailed: 'Network connection failed. Check the endpoint address and network.',
+  apiTestServerError: 'Server error (code: {code})',
 
   // HistorySidebar
   closeSidebar: 'Close sidebar',

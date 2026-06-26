@@ -24,40 +24,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-vue-next'
+import { useToast } from '../../composables/useToast'
 
-export interface Toast {
-  id: string
-  type: 'success' | 'error' | 'warning' | 'info'
-  message: string
-  duration?: number
-}
-
-const toasts = ref<Toast[]>([])
-let toastId = 0
-
-function addToast(type: Toast['type'], message: string, duration = 3000) {
-  const id = `toast-${++toastId}`
-  const toast: Toast = { id, type, message, duration }
-  toasts.value.push(toast)
-
-  if (duration > 0) {
-    setTimeout(() => removeToast(id), duration)
-  }
-}
-
-function removeToast(id: string) {
-  toasts.value = toasts.value.filter(t => t.id !== id)
-}
-
-// 暴露方法供外部调用
-defineExpose({
-  success: (message: string, duration?: number) => addToast('success', message, duration),
-  error: (message: string, duration?: number) => addToast('error', message, duration),
-  warning: (message: string, duration?: number) => addToast('warning', message, duration),
-  info: (message: string, duration?: number) => addToast('info', message, duration),
-})
+const { toasts, removeToast } = useToast()
 </script>
 
 <style scoped>

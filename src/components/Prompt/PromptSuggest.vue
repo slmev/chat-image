@@ -31,7 +31,7 @@
         class="template-item"
       >
         <span class="template-title">{{ promptTemplateTitle(tmpl) }}</span>
-        <span class="template-preview">{{ tmpl.prompt.slice(0, 60) }}...</span>
+        <span class="template-preview">{{ tmpl.prompt.length > 60 ? tmpl.prompt.slice(0, 60) + '...' : tmpl.prompt }}</span>
       </button>
     </div>
   </div>
@@ -69,8 +69,11 @@ function enhancerLabel(category: string, fallback: string): string {
 }
 
 function promptTemplateTitle(template: PromptTemplate): string {
-  const [category, index] = template.id.split('-')
-  if (!category || !index) return template.title
+  const sep = template.id.lastIndexOf('-')
+  if (sep <= 0) return template.title
+  const category = template.id.slice(0, sep)
+  const index = template.id.slice(sep + 1)
+  if (!index) return template.title
   const key = `promptTemplate${category[0].toUpperCase()}${category.slice(1)}${index}`
   return t(key)
 }

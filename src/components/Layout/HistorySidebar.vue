@@ -276,7 +276,7 @@ const filteredHistory = computed(() => {
   if (searchQuery.value) {
     list = searchHistory(searchQuery.value)
   }
-  return list.sort((a, b) => b.timestamp - a.timestamp)
+  return [...list].sort((a, b) => b.timestamp - a.timestamp)
 })
 
 const filteredFavorites = computed(() => {
