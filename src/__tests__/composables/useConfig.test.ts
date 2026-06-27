@@ -51,7 +51,7 @@ describe('useConfig', () => {
     expect(mockState.runtimeFetch).toHaveBeenCalledWith('https://api.example.test/v1/models', {
       method: 'GET',
       headers: {
-        'Authorization': 'Bearer sk-test',
+        Authorization: 'Bearer sk-test',
       },
     })
   })
@@ -70,15 +70,20 @@ describe('useConfig', () => {
     expect(mockState.runtimeFetch).toHaveBeenCalledWith('https://api.unsaved.test/v1/models', {
       method: 'GET',
       headers: {
-        'Authorization': 'Bearer sk-unsaved',
+        Authorization: 'Bearer sk-unsaved',
       },
     })
   })
 
   it('keeps existing connection error messages', async () => {
-    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
-      error: { message: 'model endpoint unavailable' },
-    }, 400))
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: { message: 'model endpoint unavailable' },
+        },
+        400,
+      ),
+    )
     const store = useConfigStore()
     await store.saveConfig({
       endpoint: 'https://api.example.test',
@@ -98,19 +103,24 @@ describe('useConfig', () => {
 
   it('localizeApiTestResult translates known codes', () => {
     const t = (key: string) => key
-    expect(localizeApiTestResult({ success: true, code: 'apiConnectionSuccess' }, t)).toBe('apiConnectionSuccess')
-    expect(localizeApiTestResult({ success: false, code: 'invalidApiKey' }, t)).toBe('invalidApiKey')
+    expect(localizeApiTestResult({ success: true, code: 'apiConnectionSuccess' }, t)).toBe(
+      'apiConnectionSuccess',
+    )
+    expect(localizeApiTestResult({ success: false, code: 'invalidApiKey' }, t)).toBe(
+      'invalidApiKey',
+    )
   })
 
   it('localizeApiTestResult prefers server detail over i18n key', () => {
     const t = (key: string, named?: Record<string, unknown>) => `${key}:${named?.code}`
-    expect(localizeApiTestResult(
-      { success: false, code: 'serverError', detail: 'model not found', status: 400 },
-      t,
-    )).toBe('model not found')
-    expect(localizeApiTestResult(
-      { success: false, code: 'serverError', status: 400 },
-      t,
-    )).toBe('apiTestServerError:400')
+    expect(
+      localizeApiTestResult(
+        { success: false, code: 'serverError', detail: 'model not found', status: 400 },
+        t,
+      ),
+    ).toBe('model not found')
+    expect(localizeApiTestResult({ success: false, code: 'serverError', status: 400 }, t)).toBe(
+      'apiTestServerError:400',
+    )
   })
 })

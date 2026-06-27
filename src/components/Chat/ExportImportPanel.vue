@@ -62,11 +62,11 @@ function triggerFileInput() {
 function localizedImportMessage(message: string): string {
   const exactMatches: Record<string, string> = {
     '导入失败，现有数据已保持不变': 'importFailedRollback',
-    '历史记录已替换': 'historyReplaced',
-    '历史记录已合并': 'historyMerged',
-    '无效的文件格式': 'invalidFileFormat',
+    历史记录已替换: 'historyReplaced',
+    历史记录已合并: 'historyMerged',
+    无效的文件格式: 'invalidFileFormat',
     '消息数量超过限制（最多 1000 条）': 'tooManyMessages',
-    '文件数据格式不正确': 'invalidFileData',
+    文件数据格式不正确: 'invalidFileData',
     '导入失败，请检查文件格式': 'importFailedCheckFormat',
     '桌面 ZIP 导入仅支持桌面端': 'desktopZipImportOnly',
     'ZIP 包损坏，无法读取': 'corruptZipFile',
@@ -124,11 +124,7 @@ async function handleImport(event: Event) {
 
 <template>
   <div class="export-import-wrapper">
-    <button
-      @click="togglePanel"
-      class="btn-icon"
-      :title="t('exportImportHistory')"
-    >
+    <button class="btn-icon" :title="t('exportImportHistory')" @click="togglePanel">
       <FileJson :size="20" />
     </button>
 
@@ -142,7 +138,7 @@ async function handleImport(event: Event) {
       <div v-if="isOpen" class="panel">
         <div class="panel-header">
           <h3 class="panel-title">{{ t('importExport') }}</h3>
-          <button @click="isOpen = false" class="close-btn">
+          <button class="close-btn" @click="isOpen = false">
             <X :size="16" />
           </button>
         </div>
@@ -152,22 +148,17 @@ async function handleImport(event: Event) {
           <div class="section">
             <h4 class="section-title">{{ t('export') }}</h4>
             <p class="section-desc">
-              {{ t('exportHistoryAs', { format: isDesktopRuntime ? t('zipPackage') : t('jsonFile') }) }}
+              {{
+                t('exportHistoryAs', { format: isDesktopRuntime ? t('zipPackage') : t('jsonFile') })
+              }}
             </p>
-            <button
-              @click="handleExport"
-              class="btn-primary export-btn"
-              :disabled="isExporting"
-            >
+            <button class="btn-primary export-btn" :disabled="isExporting" @click="handleExport">
               <Download :size="16" />
               <span>{{ isExporting ? t('exporting') : t('exportHistory') }}</span>
             </button>
 
             <Transition name="slide-up">
-              <div
-                v-if="exportStatus"
-                :class="['status-message', exportStatus.type]"
-              >
+              <div v-if="exportStatus" :class="['status-message', exportStatus.type]">
                 <Check v-if="exportStatus.type === 'success'" :size="16" />
                 <AlertCircle v-else :size="16" />
                 <span>{{ exportStatus.message }}</span>
@@ -181,29 +172,23 @@ async function handleImport(event: Event) {
           <div class="section">
             <h4 class="section-title">{{ t('import') }}</h4>
             <p class="section-desc">
-              {{ t('importHistoryFrom', { format: isDesktopRuntime ? t('zipOrJsonFile') : t('jsonFile') }) }}
+              {{
+                t('importHistoryFrom', {
+                  format: isDesktopRuntime ? t('zipOrJsonFile') : t('jsonFile'),
+                })
+              }}
             </p>
 
             <div class="import-mode">
               <label class="mode-option">
-                <input
-                  type="radio"
-                  v-model="importMode"
-                  value="merge"
-                  name="importMode"
-                />
+                <input v-model="importMode" type="radio" value="merge" name="importMode" />
                 <span class="mode-label">
                   <strong>{{ t('merge') }}</strong>
                   <small>{{ t('mergeDescription') }}</small>
                 </span>
               </label>
               <label class="mode-option">
-                <input
-                  type="radio"
-                  v-model="importMode"
-                  value="replace"
-                  name="importMode"
-                />
+                <input v-model="importMode" type="radio" value="replace" name="importMode" />
                 <span class="mode-label">
                   <strong>{{ t('replace') }}</strong>
                   <small>{{ t('replaceDescription') }}</small>
@@ -212,9 +197,9 @@ async function handleImport(event: Event) {
             </div>
 
             <button
-              @click="triggerFileInput"
               class="btn-secondary import-btn"
               :disabled="isImporting"
+              @click="triggerFileInput"
             >
               <Upload :size="16" />
               <span>{{ isImporting ? t('importing') : t('selectFileToImport') }}</span>
@@ -224,16 +209,13 @@ async function handleImport(event: Event) {
               ref="fileInput"
               type="file"
               :accept="isDesktopRuntime ? '.zip,.json' : '.json'"
-              @change="handleImport"
               class="hidden-input"
+              @change="handleImport"
             />
 
             <!-- Status -->
             <Transition name="slide-up">
-              <div
-                v-if="importStatus"
-                :class="['status-message', importStatus.type]"
-              >
+              <div v-if="importStatus" :class="['status-message', importStatus.type]">
                 <Check v-if="importStatus.type === 'success'" :size="16" />
                 <AlertCircle v-else :size="16" />
                 <span>{{ importStatus.message }}</span>
@@ -351,7 +333,7 @@ async function handleImport(event: Event) {
   border-color: var(--color-border-hover);
 }
 
-.mode-option input[type="radio"] {
+.mode-option input[type='radio'] {
   margin-top: 2px;
   accent-color: var(--color-primary);
 }

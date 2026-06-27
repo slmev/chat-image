@@ -44,9 +44,7 @@ export function buildGeneratedImagesFromResponse(
   },
 ): GeneratedImage[] {
   return response.data.map((item, index) => {
-    const id = options.idPrefix
-      ? `${options.idPrefix}-${generateId()}`
-      : generateId()
+    const id = options.idPrefix ? `${options.idPrefix}-${generateId()}` : generateId()
 
     return {
       id,
@@ -69,20 +67,20 @@ export async function persistGeneratedImagesFromResponse(
 ): Promise<GeneratedImage[]> {
   const repository = getImageRepository()
 
-  return Promise.all(response.data.map((item, index) => {
-    const id = options.idPrefix
-      ? `${options.idPrefix}-${generateId()}`
-      : generateId()
+  return Promise.all(
+    response.data.map((item, index) => {
+      const id = options.idPrefix ? `${options.idPrefix}-${generateId()}` : generateId()
 
-    return repository.saveGeneratedImage({
-      id,
-      b64Json: item.b64_json,
-      url: item.url,
-      timestamp: Date.now() + index,
-      sourcePrompt: options.sourcePrompt,
-      sourceMessageId: options.sourceMessageId,
-    })
-  }))
+      return repository.saveGeneratedImage({
+        id,
+        b64Json: item.b64_json,
+        url: item.url,
+        timestamp: Date.now() + index,
+        sourcePrompt: options.sourcePrompt,
+        sourceMessageId: options.sourceMessageId,
+      })
+    }),
+  )
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -105,21 +103,23 @@ export async function persistChatAttachments(
 ): Promise<ChatAttachment[]> {
   const repository = getImageRepository()
 
-  return Promise.all(files.map(async (file, index) => {
-    const mimeType = file.type || 'image/png'
-    const savedImage = await repository.saveGeneratedImage({
-      id: `attachment-${generateId()}`,
-      b64Json: await blobToBase64(file),
-      mimeType,
-      timestamp: Date.now() + index,
-      sourcePrompt: options.sourcePrompt,
-    })
+  return Promise.all(
+    files.map(async (file, index) => {
+      const mimeType = file.type || 'image/png'
+      const savedImage = await repository.saveGeneratedImage({
+        id: `attachment-${generateId()}`,
+        b64Json: await blobToBase64(file),
+        mimeType,
+        timestamp: Date.now() + index,
+        sourcePrompt: options.sourcePrompt,
+      })
 
-    return {
-      ...savedImage,
-      name: file.name,
-      mimeType,
-      byteSize: file.size || savedImage.byteSize,
-    }
-  }))
+      return {
+        ...savedImage,
+        name: file.name,
+        mimeType,
+        byteSize: file.size || savedImage.byteSize,
+      }
+    }),
+  )
 }

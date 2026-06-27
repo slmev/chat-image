@@ -1,11 +1,7 @@
 import type { ChatHistory, ChatMessage, GeneratedImage } from '../types'
 import { STORAGE_KEYS } from '../utils/constants'
 import { getImageRepository } from './imageRepository'
-import {
-  HISTORY_LIST_KEY,
-  HISTORY_MESSAGES_PREFIX,
-  getMetadataValue,
-} from './metadataStore'
+import { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX, getMetadataValue } from './metadataStore'
 import { isTauriRuntime } from './runtime'
 
 const IMAGE_DIR = 'images'
@@ -56,16 +52,18 @@ function collectLocalPaths(messages: ChatMessage[]): Set<string> {
 async function getAllReferencedLocalPaths(): Promise<Set<string>> {
   const references = new Set<string>()
   const currentMessages = await getMetadataValue<ChatMessage[]>(STORAGE_KEYS.CHAT_HISTORY, [])
-  collectLocalPaths(currentMessages).forEach(path => references.add(path))
+  collectLocalPaths(currentMessages).forEach((path) => references.add(path))
 
   const historyList = await getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
-  await Promise.all(historyList.map(async history => {
-    const messages = await getMetadataValue<ChatMessage[]>(
-      HISTORY_MESSAGES_PREFIX + history.id,
-      [],
-    )
-    collectLocalPaths(messages).forEach(path => references.add(path))
-  }))
+  await Promise.all(
+    historyList.map(async (history) => {
+      const messages = await getMetadataValue<ChatMessage[]>(
+        HISTORY_MESSAGES_PREFIX + history.id,
+        [],
+      )
+      collectLocalPaths(messages).forEach((path) => references.add(path))
+    }),
+  )
 
   return references
 }
@@ -81,25 +79,27 @@ async function listLocalImageFiles(): Promise<LocalImageFile[]> {
     return []
   }
 
-  const files = await Promise.all(entries
-    .filter(entry => entry.isFile)
-    .map(async entry => {
-      const localPath = `${IMAGE_DIR}/${entry.name}`
-      try {
-        const info = await stat(localPath, { baseDir: BaseDirectory.AppData })
-        return {
-          name: entry.name,
-          localPath,
-          byteSize: info.size,
+  const files = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile)
+      .map(async (entry) => {
+        const localPath = `${IMAGE_DIR}/${entry.name}`
+        try {
+          const info = await stat(localPath, { baseDir: BaseDirectory.AppData })
+          return {
+            name: entry.name,
+            localPath,
+            byteSize: info.size,
+          }
+        } catch {
+          return {
+            name: entry.name,
+            localPath,
+            byteSize: 0,
+          }
         }
-      } catch {
-        return {
-          name: entry.name,
-          localPath,
-          byteSize: 0,
-        }
-      }
-    }))
+      }),
+  )
 
   return files
 }
@@ -119,22 +119,20 @@ async function getOrphanLocalImageFiles(): Promise<{
   const references = await getAllReferencedLocalPaths()
   return {
     files,
-    orphanFiles: files.filter(file => !references.has(file.localPath)),
+    orphanFiles: files.filter((file) => !references.has(file.localPath)),
   }
 }
 
 function uniqueImagesByLocalPath(images: GeneratedImage[]): GeneratedImage[] {
   const seen = new Set<string>()
-  return images.filter(image => {
+  return images.filter((image) => {
     if (!image.localPath || seen.has(image.localPath)) return false
     seen.add(image.localPath)
     return true
   })
 }
 
-export async function deleteUnreferencedLocalImages(
-  candidates: GeneratedImage[],
-): Promise<void> {
+export async function deleteUnreferencedLocalImages(candidates: GeneratedImage[]): Promise<void> {
   if (!isTauriRuntime()) return
 
   const localImages = uniqueImagesByLocalPath(candidates)
@@ -142,15 +140,17 @@ export async function deleteUnreferencedLocalImages(
 
   const references = await getAllReferencedLocalPaths()
   const repository = getImageRepository()
-  await Promise.all(localImages.map(async image => {
-    if (image.localPath && !references.has(image.localPath)) {
-      try {
-        await repository.deleteImageFile(image)
-      } catch (error) {
-        console.warn('Failed to delete unreferenced image file:', error)
+  await Promise.all(
+    localImages.map(async (image) => {
+      if (image.localPath && !references.has(image.localPath)) {
+        try {
+          await repository.deleteImageFile(image)
+        } catch (error) {
+          console.warn('Failed to delete unreferenced image file:', error)
+        }
       }
-    }
-  }))
+    }),
+  )
 }
 
 export async function getLocalImageStorageStats(): Promise<LocalImageStorageStats> {
@@ -196,23 +196,25 @@ export async function cleanupOrphanedLocalImages(): Promise<OrphanImageCleanupRe
   let failedCount = 0
   const failedFiles: LocalImageFile[] = []
 
-  await Promise.all(orphanFiles.map(async file => {
-    try {
-      await repository.deleteImageFile({
-        id: file.name,
-        url: '',
-        localPath: file.localPath,
-        byteSize: file.byteSize,
-        timestamp: Date.now(),
-      })
-      deletedCount += 1
-      deletedBytes += file.byteSize
-    } catch (error) {
-      failedCount += 1
-      failedFiles.push(file)
-      console.warn('Failed to delete orphan image file:', error)
-    }
-  }))
+  await Promise.all(
+    orphanFiles.map(async (file) => {
+      try {
+        await repository.deleteImageFile({
+          id: file.name,
+          url: '',
+          localPath: file.localPath,
+          byteSize: file.byteSize,
+          timestamp: Date.now(),
+        })
+        deletedCount += 1
+        deletedBytes += file.byteSize
+      } catch (error) {
+        failedCount += 1
+        failedFiles.push(file)
+        console.warn('Failed to delete orphan image file:', error)
+      }
+    }),
+  )
 
   return {
     totalCount: files.length - deletedCount,

@@ -2,47 +2,30 @@
   <div class="image-card">
     <!-- Image -->
     <div class="image-wrapper" @click="openPreview">
-      <img
-        :src="imageUrl"
-        :alt="t('generatedImageAlt')"
-        class="image"
-        loading="lazy"
-      />
+      <img :src="imageUrl" :alt="t('generatedImageAlt')" class="image" loading="lazy" />
       <div class="image-overlay">
         <div class="overlay-actions">
           <button
-            @click.stop="$emit('createVariation', displayImage)"
             class="overlay-btn"
             :title="t('createVariation')"
+            @click.stop="$emit('createVariation', displayImage)"
           >
             <Shuffle :size="16" />
           </button>
           <button
-            @click.stop="$emit('editImage', displayImage)"
             class="overlay-btn"
             :title="t('editImage')"
+            @click.stop="$emit('editImage', displayImage)"
           >
             <Edit :size="16" />
           </button>
-          <button
-            @click.stop="downloadImage"
-            class="overlay-btn"
-            :title="t('downloadImage')"
-          >
+          <button class="overlay-btn" :title="t('downloadImage')" @click.stop="downloadImage">
             <Download :size="16" />
           </button>
-          <button
-            @click.stop="shareImage"
-            class="overlay-btn"
-            :title="t('shareImage')"
-          >
+          <button class="overlay-btn" :title="t('shareImage')" @click.stop="shareImage">
             <Share2 :size="16" />
           </button>
-          <button
-            @click.stop="openPreview"
-            class="overlay-btn"
-            :title="t('expandImage')"
-          >
+          <button class="overlay-btn" :title="t('expandImage')" @click.stop="openPreview">
             <Expand :size="16" />
           </button>
         </div>
@@ -52,17 +35,9 @@
     <!-- Preview Modal -->
     <Teleport to="body">
       <Transition name="preview">
-        <div
-          v-if="showPreview"
-          class="preview-overlay"
-          @click="closePreview"
-        >
+        <div v-if="showPreview" class="preview-overlay" @click="closePreview">
           <div class="preview-container" @click.stop>
-            <img
-              :src="imageUrl"
-              :alt="t('generatedImageAlt')"
-              class="preview-image"
-            />
+            <img :src="imageUrl" :alt="t('generatedImageAlt')" class="preview-image" />
 
             <!-- Metadata Panel -->
             <div v-if="displayImage.sourcePrompt" class="metadata-panel">
@@ -80,7 +55,7 @@
                   <span class="metadata-value">{{ formatTime(displayImage.timestamp) }}</span>
                 </div>
               </div>
-              <button @click.stop="copyPrompt" class="copy-btn">
+              <button class="copy-btn" @click.stop="copyPrompt">
                 <Copy :size="14" />
                 <span>{{ t('copyPrompt') }}</span>
               </button>
@@ -88,76 +63,61 @@
 
             <div class="preview-actions">
               <button
-                @click.stop="$emit('createVariation', displayImage)"
                 class="preview-btn"
                 :title="t('createVariation')"
+                @click.stop="$emit('createVariation', displayImage)"
               >
                 <Shuffle :size="18" />
                 <span>{{ t('variation') }}</span>
               </button>
               <button
-                @click.stop="$emit('editImage', displayImage)"
                 class="preview-btn"
                 :title="t('editImage')"
+                @click.stop="$emit('editImage', displayImage)"
               >
                 <Edit :size="18" />
                 <span>{{ t('edit') }}</span>
               </button>
-              <button
-                @click.stop="downloadImage"
-                class="preview-btn"
-                :title="t('downloadImage')"
-              >
+              <button class="preview-btn" :title="t('downloadImage')" @click.stop="downloadImage">
                 <Download :size="18" />
                 <span>{{ t('download') }}</span>
               </button>
-              <button
-                @click.stop="shareImage"
-                class="preview-btn"
-                :title="t('share')"
-              >
+              <button class="preview-btn" :title="t('share')" @click.stop="shareImage">
                 <Share2 :size="18" />
                 <span>{{ t('share') }}</span>
               </button>
               <template v-if="localActionsAvailable">
                 <button
-                  @click.stop="openImageFile"
                   class="preview-btn"
                   :title="t('openLocalImage')"
+                  @click.stop="openImageFile"
                 >
                   <ExternalLink :size="18" />
                   <span>{{ t('open') }}</span>
                 </button>
                 <button
-                  @click.stop="revealImageFile"
                   class="preview-btn"
                   :title="t('revealLocalImage')"
+                  @click.stop="revealImageFile"
                 >
                   <FolderSearch :size="18" />
                   <span>{{ t('reveal') }}</span>
                 </button>
-                <button
-                  @click.stop="downloadImage"
-                  class="preview-btn"
-                  :title="t('saveAs')"
-                >
+                <button class="preview-btn" :title="t('saveAs')" @click.stop="downloadImage">
                   <Save :size="18" />
                   <span>{{ t('saveAs') }}</span>
                 </button>
                 <button
-                  @click.stop="copyImageFile"
                   class="preview-btn"
                   :title="t('copyImageToClipboard')"
+                  @click.stop="copyImageFile"
                 >
                   <ClipboardCopy :size="18" />
                   <span>{{ t('copy') }}</span>
                 </button>
               </template>
             </div>
-            <button
-              @click="closePreview"
-              class="close-btn"
-            >
+            <button class="close-btn" @click="closePreview">
               <X :size="20" />
             </button>
           </div>
@@ -223,9 +183,9 @@ const localActionsAvailable = computed(() => isLocalImageActionAvailable(display
 function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
   const validUrl = isValidImageUrl(image.url)
   return Boolean(
-    (image.localPath && !validUrl)
-    || (image.base64 && !validUrl)
-    || (isTauriRuntime() && isExternalImageUrl(image.url)),
+    (image.localPath && !validUrl) ||
+    (image.base64 && !validUrl) ||
+    (isTauriRuntime() && isExternalImageUrl(image.url)),
   )
 }
 
@@ -241,13 +201,14 @@ function revokeOwnedObjectUrls() {
 }
 
 watch(
-  () => [
-    props.image.id,
-    props.image.url,
-    props.image.localPath,
-    props.image.base64,
-    props.image.mimeType,
-  ] as const,
+  () =>
+    [
+      props.image.id,
+      props.image.url,
+      props.image.localPath,
+      props.image.base64,
+      props.image.mimeType,
+    ] as const,
   async () => {
     const run = ++resolveRun
     resolveFailed.value = false
@@ -457,11 +418,7 @@ async function shareImage() {
 .image-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.6) 0%,
-    rgba(0, 0, 0, 0) 50%
-  );
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0) 50%);
   opacity: 0;
   transition: opacity var(--transition-base);
   display: flex;

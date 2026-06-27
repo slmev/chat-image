@@ -38,24 +38,19 @@ function toggleFavorites() {
       <input
         type="text"
         :value="searchQuery"
-        @input="handleInput"
         :placeholder="t('searchMessages')"
         class="search-input"
+        @input="handleInput"
       />
-      <button
-        v-if="searchQuery"
-        @click="handleClear"
-        class="clear-btn"
-        :title="t('clearSearch')"
-      >
+      <button v-if="searchQuery" class="clear-btn" :title="t('clearSearch')" @click="handleClear">
         <X :size="14" />
       </button>
     </div>
 
     <button
-      @click="toggleFavorites"
       :class="['favorites-btn', { active: showFavoritesOnly }]"
       :title="showFavoritesOnly ? t('showAll') : t('showFavoritesOnly')"
+      @click="toggleFavorites"
     >
       <Star :size="16" :fill="showFavoritesOnly ? 'currentColor' : 'none'" />
     </button>

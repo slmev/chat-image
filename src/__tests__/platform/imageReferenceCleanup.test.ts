@@ -20,9 +20,10 @@ vi.mock('../../platform/metadataStore', async () => {
   )
   return {
     ...actual,
-    getMetadataValue: vi.fn(async <T>(key: string, defaultValue: T): Promise<T> => (
-      metadata.has(key) ? metadata.get(key) as T : defaultValue
-    )),
+    getMetadataValue: vi.fn(
+      async <T>(key: string, defaultValue: T): Promise<T> =>
+        metadata.has(key) ? (metadata.get(key) as T) : defaultValue,
+    ),
   }
 })
 
@@ -66,7 +67,7 @@ function attachment(localPath: string): ChatAttachment {
 
 function message(images: GeneratedImage[], attachments: ChatAttachment[] = []): ChatMessage {
   return {
-    id: 'message-' + images.map(item => item.localPath).join('-'),
+    id: 'message-' + images.map((item) => item.localPath).join('-'),
     type: 'assistant',
     content: 'generated',
     timestamp: 1,
@@ -95,9 +96,11 @@ describe('deleteUnreferencedLocalImages', () => {
 
     await deleteUnreferencedLocalImages([image('images/orphan.png')])
 
-    expect(deleteImageFile).toHaveBeenCalledWith(expect.objectContaining({
-      localPath: 'images/orphan.png',
-    }))
+    expect(deleteImageFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localPath: 'images/orphan.png',
+      }),
+    )
   })
 
   it('keeps local images still referenced by current chat history', async () => {
@@ -143,16 +146,11 @@ describe('deleteUnreferencedLocalImages', () => {
 
   it('continues deleting other images when one file delete fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    deleteImageFile
-      .mockRejectedValueOnce(new Error('delete failed'))
-      .mockResolvedValue(undefined)
+    deleteImageFile.mockRejectedValueOnce(new Error('delete failed')).mockResolvedValue(undefined)
 
     const { deleteUnreferencedLocalImages } = await import('../../platform/imageReferenceCleanup')
 
-    await deleteUnreferencedLocalImages([
-      image('images/fail.png'),
-      image('images/success.png'),
-    ])
+    await deleteUnreferencedLocalImages([image('images/fail.png'), image('images/success.png')])
 
     expect(deleteImageFile).toHaveBeenCalledTimes(2)
     expect(warn).toHaveBeenCalledWith(
@@ -197,13 +195,15 @@ describe('deleteUnreferencedLocalImages', () => {
       isSymlink: false,
       size: path.includes('referenced') ? 100 : 250,
     }))
-    metadata.set(HISTORY_LIST_KEY, [{
-      id: 'history-1',
-      title: 'history',
-      timestamp: 1,
-      messageCount: 1,
-      isFavorite: false,
-    }])
+    metadata.set(HISTORY_LIST_KEY, [
+      {
+        id: 'history-1',
+        title: 'history',
+        timestamp: 1,
+        messageCount: 1,
+        isFavorite: false,
+      },
+    ])
     metadata.set(HISTORY_MESSAGES_PREFIX + 'history-1', [message([image('images/referenced.png')])])
 
     const { cleanupOrphanedLocalImages } = await import('../../platform/imageReferenceCleanup')
@@ -218,9 +218,11 @@ describe('deleteUnreferencedLocalImages', () => {
       failedCount: 0,
     })
     expect(deleteImageFile).toHaveBeenCalledTimes(1)
-    expect(deleteImageFile).toHaveBeenCalledWith(expect.objectContaining({
-      localPath: 'images/orphan.png',
-    }))
+    expect(deleteImageFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        localPath: 'images/orphan.png',
+      }),
+    )
   })
 
   it('keeps failed orphan deletions in cleanup result', async () => {
@@ -235,9 +237,7 @@ describe('deleteUnreferencedLocalImages', () => {
       isSymlink: false,
       size: path.includes('fail') ? 100 : 250,
     }))
-    deleteImageFile
-      .mockRejectedValueOnce(new Error('delete failed'))
-      .mockResolvedValue(undefined)
+    deleteImageFile.mockRejectedValueOnce(new Error('delete failed')).mockResolvedValue(undefined)
 
     const { cleanupOrphanedLocalImages } = await import('../../platform/imageReferenceCleanup')
 

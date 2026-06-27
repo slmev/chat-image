@@ -21,7 +21,7 @@ async function getStore(): Promise<Store> {
     // 失败时重置缓存，避免永久缓存一个 rejected promise 导致后续所有读写都失败。
     storePromise = import('@tauri-apps/plugin-store')
       .then(({ Store }) => Store.load(STORE_FILE, { defaults: {}, autoSave: 100 }))
-      .catch(error => {
+      .catch((error) => {
         storePromise = null
         throw error
       })
@@ -33,7 +33,7 @@ export async function getMetadataValue<T>(key: string, defaultValue: T): Promise
   if (!isTauriRuntime()) {
     try {
       const value = localStorage.getItem(key)
-      return value ? JSON.parse(value) as T : defaultValue
+      return value ? (JSON.parse(value) as T) : defaultValue
     } catch {
       return defaultValue
     }
@@ -69,7 +69,7 @@ export async function removeMetadataValue(key: string): Promise<void> {
 function readLocalStorageValue<T>(key: string, defaultValue: T): T {
   try {
     const value = localStorage.getItem(key)
-    return value ? JSON.parse(value) as T : defaultValue
+    return value ? (JSON.parse(value) as T) : defaultValue
   } catch {
     return defaultValue
   }
@@ -77,51 +77,59 @@ function readLocalStorageValue<T>(key: string, defaultValue: T): T {
 
 async function localizeMessages(messages: ChatMessage[]): Promise<ChatMessage[]> {
   const repository = getImageRepository()
-  const withLocalImages = await Promise.all(messages.map(async msg => {
-    if (!msg.images && !msg.attachments) {
+  const withLocalImages = await Promise.all(
+    messages.map(async (msg) => {
+      if (!msg.images && !msg.attachments) {
+        return {
+          ...msg,
+          isFavorite: msg.isFavorite ?? false,
+        }
+      }
+
+      const attachments = msg.attachments
+        ? await Promise.all(
+            msg.attachments.map(async (attachment) => ({
+              ...(attachment.localPath
+                ? await repository.resolveDisplayUrl(attachment)
+                : await repository.saveGeneratedImage({
+                    id: attachment.id,
+                    b64Json: attachment.base64,
+                    url: attachment.originalUrl || attachment.url,
+                    mimeType: attachment.mimeType,
+                    timestamp: attachment.timestamp,
+                    sourcePrompt: attachment.sourcePrompt,
+                    sourceMessageId: attachment.sourceMessageId,
+                  })),
+              name: attachment.name,
+            })),
+          )
+        : undefined
+
+      const images = msg.images
+        ? await Promise.all(
+            msg.images.map((image) => {
+              if (image.localPath) return repository.resolveDisplayUrl(image)
+              return repository.saveGeneratedImage({
+                id: image.id,
+                b64Json: image.base64,
+                url: image.originalUrl || image.url,
+                mimeType: image.mimeType,
+                timestamp: image.timestamp,
+                sourcePrompt: image.sourcePrompt,
+                sourceMessageId: image.sourceMessageId,
+              })
+            }),
+          )
+        : undefined
+
       return {
         ...msg,
         isFavorite: msg.isFavorite ?? false,
+        attachments,
+        images,
       }
-    }
-
-    const attachments = msg.attachments
-      ? await Promise.all(msg.attachments.map(async attachment => ({
-          ...(attachment.localPath
-            ? await repository.resolveDisplayUrl(attachment)
-            : await repository.saveGeneratedImage({
-                id: attachment.id,
-                b64Json: attachment.base64,
-                url: attachment.originalUrl || attachment.url,
-                mimeType: attachment.mimeType,
-                timestamp: attachment.timestamp,
-                sourcePrompt: attachment.sourcePrompt,
-                sourceMessageId: attachment.sourceMessageId,
-              })),
-          name: attachment.name,
-        })))
-      : undefined
-
-    const images = msg.images ? await Promise.all(msg.images.map(image => {
-      if (image.localPath) return repository.resolveDisplayUrl(image)
-      return repository.saveGeneratedImage({
-        id: image.id,
-        b64Json: image.base64,
-        url: image.originalUrl || image.url,
-        mimeType: image.mimeType,
-        timestamp: image.timestamp,
-        sourcePrompt: image.sourcePrompt,
-        sourceMessageId: image.sourceMessageId,
-      })
-    })) : undefined
-
-    return {
-      ...msg,
-      isFavorite: msg.isFavorite ?? false,
-      attachments,
-      images,
-    }
-  }))
+    }),
+  )
 
   return stripBase64FromMessages(withLocalImages)
 }
@@ -142,13 +150,15 @@ export async function initializeDesktopPersistence(): Promise<void> {
   if (historyList.length > 0) {
     await store.set(HISTORY_LIST_KEY, historyList)
 
-    await Promise.all(historyList.map(async item => {
-      const key = HISTORY_MESSAGES_PREFIX + item.id
-      const messages = readLocalStorageValue<ChatMessage[]>(key, [])
-      if (messages.length > 0) {
-        await store.set(key, await localizeMessages(messages))
-      }
-    }))
+    await Promise.all(
+      historyList.map(async (item) => {
+        const key = HISTORY_MESSAGES_PREFIX + item.id
+        const messages = readLocalStorageValue<ChatMessage[]>(key, [])
+        if (messages.length > 0) {
+          await store.set(key, await localizeMessages(messages))
+        }
+      }),
+    )
   }
 
   const apiConfigState = normalizeApiConfigState(
@@ -177,8 +187,10 @@ export async function initializeDesktopPersistence(): Promise<void> {
 
 export async function getDesktopChatHistory(): Promise<ChatMessage[]> {
   const messages = await getMetadataValue<ChatMessage[]>(STORAGE_KEYS.CHAT_HISTORY, [])
-  return resolveStoredImageUrls(messages.map(msg => ({
-    ...msg,
-    isFavorite: msg.isFavorite ?? false,
-  })))
+  return resolveStoredImageUrls(
+    messages.map((msg) => ({
+      ...msg,
+      isFavorite: msg.isFavorite ?? false,
+    })),
+  )
 }

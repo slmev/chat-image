@@ -2,7 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ChatMessage, GeneratedImage } from '../types'
 import { getChatHistory, setChatHistory, clearChatHistory, generateId } from '../utils/storage'
-import { resolveStoredImageUrls, reviveStoredImageUrls, revokeCachedBlobUrlsForImages } from '../utils/imagePersistence'
+import {
+  resolveStoredImageUrls,
+  reviveStoredImageUrls,
+  revokeCachedBlobUrlsForImages,
+} from '../utils/imagePersistence'
 import { getDesktopChatHistory, setMetadataValue } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
 import { STORAGE_KEYS } from '../utils/constants'
@@ -28,7 +32,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function collectMessageImagesForCleanup(chatMessages: ChatMessage[]): GeneratedImage[] {
-    return chatMessages.flatMap(message => [
+    return chatMessages.flatMap((message) => [
       ...(message.attachments || []),
       ...(message.images || []),
     ])
@@ -39,9 +43,9 @@ export const useChatStore = defineStore('chat', () => {
   function revokeRemovedWebBlobUrls(removedImages: GeneratedImage[]): void {
     if (isTauriRuntime()) return
     const stillReferenced = new Set(
-      collectMessageImagesForCleanup(messages.value).map(image => image.id),
+      collectMessageImagesForCleanup(messages.value).map((image) => image.id),
     )
-    revokeCachedBlobUrlsForImages(removedImages.filter(image => !stillReferenced.has(image.id)))
+    revokeCachedBlobUrlsForImages(removedImages.filter((image) => !stillReferenced.has(image.id)))
   }
 
   // Computed
@@ -82,9 +86,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function importMessages(newMessages: ChatMessage[], mode: 'replace' | 'merge'): Promise<void> {
+  async function importMessages(
+    newMessages: ChatMessage[],
+    mode: 'replace' | 'merge',
+  ): Promise<void> {
     // Migrate imported messages to ensure isFavorite field exists
-    const normalizedMessages = newMessages.map(msg => ({
+    const normalizedMessages = newMessages.map((msg) => ({
       ...msg,
       isFavorite: msg.isFavorite ?? false,
     }))
@@ -99,17 +106,14 @@ export const useChatStore = defineStore('chat', () => {
       await deleteUnreferencedLocalImages(removedImages)
     } else {
       // Merge: add only messages with new IDs
-      const existingIds = new Set(messages.value.map(m => m.id))
-      const uniqueNew = migratedMessages.filter(m => !existingIds.has(m.id))
+      const existingIds = new Set(messages.value.map((m) => m.id))
+      const uniqueNew = migratedMessages.filter((m) => !existingIds.has(m.id))
       messages.value.push(...uniqueNew)
       await saveHistory()
     }
   }
 
-  async function updateMessage(
-    messageId: string,
-    updates: Partial<ChatMessage>
-  ): Promise<void> {
+  async function updateMessage(messageId: string, updates: Partial<ChatMessage>): Promise<void> {
     const index = messages.value.findIndex((msg) => msg.id === messageId)
     if (index !== -1) {
       messages.value[index] = { ...messages.value[index], ...updates }
@@ -117,10 +121,7 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function addImagesToMessage(
-    messageId: string,
-    images: GeneratedImage[]
-  ): Promise<void> {
+  async function addImagesToMessage(messageId: string, images: GeneratedImage[]): Promise<void> {
     await updateMessage(messageId, {
       images,
       status: 'success',

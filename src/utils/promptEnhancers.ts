@@ -129,24 +129,24 @@ export function getEnhancementSuggestions(
 
   // 推荐增强关键词（排除用户已有的）
   const lowerInput = input.toLowerCase()
-  const enhancers = PROMPT_ENHANCERS.map(enhancer => {
-    const suggestions = enhancer.keywords.filter(kw => {
+  const enhancers = PROMPT_ENHANCERS.map((enhancer) => {
+    const suggestions = enhancer.keywords.filter((kw) => {
       // 如果用户输入中已经包含该关键词，不推荐
       const kwWords = kw.toLowerCase().split(/\s+/)
-      return !kwWords.some(w => lowerInput.includes(w))
+      return !kwWords.some((w) => lowerInput.includes(w))
     })
     return {
       category: enhancer.category,
       label: enhancer.label,
       suggestions: suggestions.slice(0, 4), // 每类最多 4 个
     }
-  }).filter(e => e.suggestions.length > 0)
+  }).filter((e) => e.suggestions.length > 0)
 
   // 匹配模板
   const templateMatches = allTemplates
-    .filter(t => {
+    .filter((t) => {
       const tLower = `${t.title} ${t.prompt} ${t.tags?.join(' ') || ''}`.toLowerCase()
-      return keywords.some(kw => tLower.includes(kw))
+      return keywords.some((kw) => tLower.includes(kw))
     })
     .slice(0, 3)
 

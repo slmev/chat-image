@@ -73,7 +73,11 @@ describe('storage utils', () => {
     })
 
     it('encodes and decodes API key', () => {
-      const config = { endpoint: 'https://api.test.com', apiKey: 'sk-test123', model: 'gpt-image-2' }
+      const config = {
+        endpoint: 'https://api.test.com',
+        apiKey: 'sk-test123',
+        model: 'gpt-image-2',
+      }
       setApiConfig(config)
       const retrieved = getApiConfig()
       expect(retrieved?.apiKey).toBe('sk-test123')
@@ -119,28 +123,34 @@ describe('storage utils', () => {
         value: createObjectURL,
       })
 
-      const messages: ChatMessage[] = [{
-        id: 'message-1',
-        type: 'assistant',
-        content: '图片已生成',
-        timestamp: Date.now(),
-        status: 'success',
-        attachments: [{
-          id: 'attachment-1',
-          name: 'reference.webp',
-          url: 'https://example.com/reference.webp',
-          base64: btoa('webp'),
-          mimeType: 'image/webp',
+      const messages: ChatMessage[] = [
+        {
+          id: 'message-1',
+          type: 'assistant',
+          content: '图片已生成',
           timestamp: Date.now(),
-        }],
-        images: [{
-          id: 'image-1',
-          url: 'https://example.com/image.png',
-          base64: btoa('png'),
-          timestamp: Date.now(),
-          sourcePrompt: 'test prompt',
-        }],
-      }]
+          status: 'success',
+          attachments: [
+            {
+              id: 'attachment-1',
+              name: 'reference.webp',
+              url: 'https://example.com/reference.webp',
+              base64: btoa('webp'),
+              mimeType: 'image/webp',
+              timestamp: Date.now(),
+            },
+          ],
+          images: [
+            {
+              id: 'image-1',
+              url: 'https://example.com/image.png',
+              base64: btoa('png'),
+              timestamp: Date.now(),
+              sourcePrompt: 'test prompt',
+            },
+          ],
+        },
+      ]
 
       setChatHistory(messages)
 

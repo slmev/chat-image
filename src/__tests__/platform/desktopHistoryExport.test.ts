@@ -1,6 +1,12 @@
 import JSZip from 'jszip'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
+import type {
+  ChatAttachment,
+  ChatHistory,
+  ChatMessage,
+  DesktopHistoryExportData,
+  GeneratedImage,
+} from '../../types'
 
 const readImageBlob = vi.fn<(...args: [GeneratedImage]) => Promise<Blob>>()
 const save = vi.fn()
@@ -74,9 +80,10 @@ async function readZip(bytes: Uint8Array): Promise<{
 describe('desktop history ZIP export', () => {
   beforeEach(() => {
     readImageBlob.mockReset()
-    readImageBlob.mockImplementation(async image => (
-      new Blob([`bytes:${image.localPath}`], { type: image.mimeType || 'image/png' })
-    ))
+    readImageBlob.mockImplementation(
+      async (image) =>
+        new Blob([`bytes:${image.localPath}`], { type: image.mimeType || 'image/png' }),
+    )
     save.mockReset()
     writeFile.mockReset()
   })
@@ -116,21 +123,27 @@ describe('desktop history ZIP export', () => {
     expect(data.currentMessages[0].attachments?.[0]).not.toHaveProperty('base64')
     expect(zip.file('images/current.png')).toBeTruthy()
     expect(zip.file('images/reference.webp')).toBeTruthy()
-    await expect(zip.file('images/current.png')?.async('string')).resolves.toBe('bytes:images/current.png')
-    await expect(zip.file('images/reference.webp')?.async('string')).resolves.toBe('bytes:images/reference.webp')
+    await expect(zip.file('images/current.png')?.async('string')).resolves.toBe(
+      'bytes:images/current.png',
+    )
+    await expect(zip.file('images/reference.webp')?.async('string')).resolves.toBe(
+      'bytes:images/reference.webp',
+    )
     expect(result.imageCount).toBe(2)
     expect(result.missingImageCount).toBe(0)
   })
 
   it('includes saved history list and each history message set', async () => {
     const { buildDesktopHistoryExportZip } = await import('../../platform/desktopHistoryExport')
-    const historyList: ChatHistory[] = [{
-      id: 'history-1',
-      title: 'saved',
-      timestamp: 1,
-      messageCount: 1,
-      isFavorite: false,
-    }]
+    const historyList: ChatHistory[] = [
+      {
+        id: 'history-1',
+        title: 'saved',
+        timestamp: 1,
+        messageCount: 1,
+        isFavorite: false,
+      },
+    ]
 
     const result = await buildDesktopHistoryExportZip({
       currentMessages: [],
@@ -195,12 +208,14 @@ describe('desktop history ZIP export', () => {
     save.mockResolvedValue(null)
     const { exportDesktopHistoryZip } = await import('../../platform/desktopHistoryExport')
 
-    await expect(exportDesktopHistoryZip({
-      currentMessages: [message('message-1', [image('image-1', 'images/current.png')])],
-      historyList: [],
-      historyMessages: {},
-      exportedAt: 123,
-    })).resolves.toEqual({ canceled: true })
+    await expect(
+      exportDesktopHistoryZip({
+        currentMessages: [message('message-1', [image('image-1', 'images/current.png')])],
+        historyList: [],
+        historyMessages: {},
+        exportedAt: 123,
+      }),
+    ).resolves.toEqual({ canceled: true })
 
     expect(readImageBlob).not.toHaveBeenCalled()
     expect(writeFile).not.toHaveBeenCalled()

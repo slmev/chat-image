@@ -29,8 +29,9 @@ vi.mock('../../composables/useConfig', () => ({
 }))
 
 async function triggerButtonByText(text: string) {
-  const button = Array.from(document.querySelectorAll('button'))
-    .find(item => item.textContent?.includes(text)) as HTMLButtonElement | undefined
+  const button = Array.from(document.querySelectorAll('button')).find((item) =>
+    item.textContent?.includes(text),
+  ) as HTMLButtonElement | undefined
   if (!button) {
     throw new Error(`Missing button: ${text}`)
   }

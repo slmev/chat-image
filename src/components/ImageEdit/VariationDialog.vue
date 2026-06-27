@@ -40,23 +40,29 @@ const stageStyle = computed<CSSProperties>(() => ({
   height: `${naturalSize.value.height * displayScale.value}px`,
 }))
 
-watch(() => props.image, (newImage) => {
-  prompt.value = newImage.sourcePrompt || ''
-  if (props.isOpen) {
-    setupImage()
-  }
-})
+watch(
+  () => props.image,
+  (newImage) => {
+    prompt.value = newImage.sourcePrompt || ''
+    if (props.isOpen) {
+      setupImage()
+    }
+  },
+)
 
-watch(() => props.isOpen, (newVal) => {
-  if (newVal) {
-    prompt.value = props.image.sourcePrompt || ''
-    selectedSize.value = '1024x1024'
-    selectedQuality.value = 'standard'
-    selectedCount.value = 1
-    selectedStyleId.value = ''
-    setupImage()
-  }
-})
+watch(
+  () => props.isOpen,
+  (newVal) => {
+    if (newVal) {
+      prompt.value = props.image.sourcePrompt || ''
+      selectedSize.value = '1024x1024'
+      selectedQuality.value = 'standard'
+      selectedCount.value = 1
+      selectedStyleId.value = ''
+      setupImage()
+    }
+  },
+)
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
@@ -137,7 +143,7 @@ const selectedStyleId = ref('')
 
 const selectedStyle = computed<StyleTemplate | undefined>(() => {
   if (!selectedStyleId.value) return undefined
-  return STYLE_TEMPLATES.find(s => s.id === selectedStyleId.value)
+  return STYLE_TEMPLATES.find((s) => s.id === selectedStyleId.value)
 })
 
 async function handleSubmit() {
@@ -242,17 +248,11 @@ function styleLabel(style: StyleTemplate): string {
               >
                 <ZoomOut :size="16" />
               </button>
-              <button
-                class="zoom-fit-btn"
-                :title="t('fitToView')"
-                @click="fitToView"
-              >
+              <button class="zoom-fit-btn" :title="t('fitToView')" @click="fitToView">
                 <Maximize2 :size="15" />
                 <span>{{ t('fitToView') }}</span>
               </button>
-              <span class="zoom-value" :aria-label="t('zoomLevel')">
-                {{ zoomPercent }}%
-              </span>
+              <span class="zoom-value" :aria-label="t('zoomLevel')"> {{ zoomPercent }}% </span>
               <button
                 class="zoom-btn"
                 :disabled="zoomLevel >= MAX_ZOOM"
@@ -299,7 +299,11 @@ function styleLabel(style: StyleTemplate): string {
               <div class="form-group">
                 <label class="form-label">{{ t('quality') }}</label>
                 <select v-model="selectedQuality" class="select-field">
-                  <option v-for="quality in IMAGE_QUALITIES" :key="quality.value" :value="quality.value">
+                  <option
+                    v-for="quality in IMAGE_QUALITIES"
+                    :key="quality.value"
+                    :value="quality.value"
+                  >
                     {{ imageQualityLabel(quality.value) }}
                   </option>
                 </select>

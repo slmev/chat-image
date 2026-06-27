@@ -1,8 +1,5 @@
 <template>
-  <div
-    @click="$emit('select', style)"
-    :class="['style-card', { active: isSelected }]"
-  >
+  <div :class="['style-card', { active: isSelected }]" @click="$emit('select', style)">
     <div class="style-icon">
       <component :is="iconComponent" :size="24" />
     </div>
@@ -18,6 +15,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { Component } from 'vue'
 import { Check, Sparkles, Camera, Palette, Droplet, Pencil, Zap } from 'lucide-vue-next'
 import type { StyleTemplate } from '../../types'
 
@@ -34,7 +32,7 @@ defineEmits<{
   select: [style: StyleTemplate]
 }>()
 
-const iconMap: Record<string, any> = {
+const iconMap: Record<string, Component> = {
   sparkles: Sparkles,
   camera: Camera,
   palette: Palette,

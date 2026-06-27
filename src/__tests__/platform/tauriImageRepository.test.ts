@@ -35,7 +35,7 @@ describe('tauri image repository', () => {
     pluginFetch.mockResolvedValue({
       ok: true,
       headers: {
-        get: (name: string) => name.toLowerCase() === 'content-type' ? 'image/png' : null,
+        get: (name: string) => (name.toLowerCase() === 'content-type' ? 'image/png' : null),
       },
       arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
     })
@@ -60,11 +60,9 @@ describe('tauri image repository', () => {
       baseDir: 'AppData',
       recursive: true,
     })
-    expect(writeFile).toHaveBeenCalledWith(
-      'images/image-1.png',
-      expect.any(Uint8Array),
-      { baseDir: 'AppData' },
-    )
+    expect(writeFile).toHaveBeenCalledWith('images/image-1.png', expect.any(Uint8Array), {
+      baseDir: 'AppData',
+    })
     expect(result).toMatchObject({
       id: 'image-1',
       url: 'blob:mock-image',
@@ -111,11 +109,9 @@ describe('tauri image repository', () => {
     })
 
     expect(pluginFetch).toHaveBeenCalledWith('http://images.example.test/generated.png')
-    expect(writeFile).toHaveBeenCalledWith(
-      'images/remote-image.png',
-      expect.any(Uint8Array),
-      { baseDir: 'AppData' },
-    )
+    expect(writeFile).toHaveBeenCalledWith('images/remote-image.png', expect.any(Uint8Array), {
+      baseDir: 'AppData',
+    })
     expect(result).toMatchObject({
       id: 'remote-image',
       url: 'blob:mock-image',

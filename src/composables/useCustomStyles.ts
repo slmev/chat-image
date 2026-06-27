@@ -23,7 +23,7 @@ export function useCustomStyles() {
   }
 
   function updateStyle(id: string, updates: Partial<Omit<StyleTemplate, 'id'>>): void {
-    const index = customStyles.value.findIndex(s => s.id === id)
+    const index = customStyles.value.findIndex((s) => s.id === id)
     if (index !== -1) {
       customStyles.value[index] = { ...customStyles.value[index], ...updates }
       save()
@@ -31,12 +31,12 @@ export function useCustomStyles() {
   }
 
   function deleteStyle(id: string): void {
-    customStyles.value = customStyles.value.filter(s => s.id !== id)
+    customStyles.value = customStyles.value.filter((s) => s.id !== id)
     save()
   }
 
   function getStyleById(id: string): StyleTemplate | undefined {
-    return customStyles.value.find(s => s.id === id)
+    return customStyles.value.find((s) => s.id === id)
   }
 
   return {

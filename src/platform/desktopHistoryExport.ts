@@ -30,10 +30,10 @@ interface PreparedExportImage {
 }
 
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
-  return stripBase64FromMessages(messages).map(message => ({
+  return stripBase64FromMessages(messages).map((message) => ({
     ...message,
-    attachments: message.attachments?.map(attachment => ({ ...attachment })),
-    images: message.images?.map(image => ({ ...image })),
+    attachments: message.attachments?.map((attachment) => ({ ...attachment })),
+    images: message.images?.map((image) => ({ ...image })),
   }))
 }
 
@@ -58,14 +58,17 @@ function uniqueZipImagePath(localPath: string, usedPaths: Set<string>): string {
   return candidate
 }
 
-function collectLocalImages(messages: ChatMessage[], imagesByPath: Map<string, GeneratedImage>): void {
-  messages.forEach(message => {
-    message.attachments?.forEach(attachment => {
+function collectLocalImages(
+  messages: ChatMessage[],
+  imagesByPath: Map<string, GeneratedImage>,
+): void {
+  messages.forEach((message) => {
+    message.attachments?.forEach((attachment) => {
       if (attachment.localPath && !imagesByPath.has(attachment.localPath)) {
         imagesByPath.set(attachment.localPath, attachment)
       }
     })
-    message.images?.forEach(image => {
+    message.images?.forEach((image) => {
       if (image.localPath && !imagesByPath.has(image.localPath)) {
         imagesByPath.set(image.localPath, image)
       }
@@ -77,7 +80,7 @@ function rewriteImageList<T extends GeneratedImage>(
   images: T[] | undefined,
   preparedImages: Map<string, PreparedExportImage>,
 ): T[] | undefined {
-  return images?.map(image => {
+  return images?.map((image) => {
     if (!image.localPath) return image
 
     const preparedImage = preparedImages.get(image.localPath)
@@ -101,7 +104,7 @@ function rewriteImagePaths(
   messages: ChatMessage[],
   preparedImages: Map<string, PreparedExportImage>,
 ): ChatMessage[] {
-  return messages.map(message => {
+  return messages.map((message) => {
     if (!message.images && !message.attachments) return message
 
     return {
@@ -137,7 +140,7 @@ export async function buildDesktopHistoryExportZip(
 ): Promise<ZipBuildResult> {
   const zip = new JSZip()
   const currentMessages = cloneMessages(input.currentMessages)
-  const historyList = input.historyList.map(item => ({ ...item }))
+  const historyList = input.historyList.map((item) => ({ ...item }))
   const historyMessages = Object.fromEntries(
     Object.entries(input.historyMessages).map(([historyId, messages]) => [
       historyId,
@@ -150,7 +153,7 @@ export async function buildDesktopHistoryExportZip(
   const usedZipPaths = new Set<string>()
 
   collectLocalImages(currentMessages, imagesByPath)
-  Object.values(historyMessages).forEach(messages => collectLocalImages(messages, imagesByPath))
+  Object.values(historyMessages).forEach((messages) => collectLocalImages(messages, imagesByPath))
 
   imagesByPath.forEach((image, localPath) => {
     preparedImages.set(localPath, {
@@ -160,7 +163,7 @@ export async function buildDesktopHistoryExportZip(
   })
 
   await addImagesToZip(zip, preparedImages)
-  const imageCount = Array.from(preparedImages.values()).filter(item => item.zipPath).length
+  const imageCount = Array.from(preparedImages.values()).filter((item) => item.zipPath).length
   const missingImageCount = preparedImages.size - imageCount
   const data: DesktopHistoryExportData = {
     version: 2,

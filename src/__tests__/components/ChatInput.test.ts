@@ -61,6 +61,12 @@ async function selectFiles(wrapper: ReturnType<typeof mountInput>, files: File[]
   await input.trigger('change')
 }
 
+async function addFilesFromParent(wrapper: ReturnType<typeof mountInput>, files: File[]) {
+  const exposed = wrapper.vm as unknown as { addAttachmentFiles: (files: File[]) => void }
+  exposed.addAttachmentFiles(files)
+  await wrapper.vm.$nextTick()
+}
+
 describe('ChatInput attachments', () => {
   let createObjectURL: ReturnType<typeof vi.fn>
   let revokeObjectURL: ReturnType<typeof vi.fn>
@@ -122,6 +128,23 @@ describe('ChatInput attachments', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:second.webp')
   })
 
+  it('accepts attachments added by a parent paste handler', async () => {
+    const wrapper = mountInput()
+    const pasted = new File(['pasted'], 'pasted.png', { type: 'image/png' })
+
+    await addFilesFromParent(wrapper, [pasted])
+
+    expect(wrapper.findAll('.attachment-thumb')).toHaveLength(1)
+    expect(wrapper.find('.attachment-preview').attributes('src')).toBe('blob:pasted.png')
+
+    await wrapper.find('textarea').setValue('use pasted reference')
+    await wrapper.find('.send-btn').trigger('click')
+
+    const event = wrapper.emitted('send')?.[0]
+    expect(event?.[2]).toEqual([pasted])
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:pasted.png')
+  })
+
   it('validates attachment type, size, and count', async () => {
     const wrapper = mountInput()
     const pdf = new File(['pdf'], 'brief.pdf', { type: 'application/pdf' })
@@ -135,9 +158,13 @@ describe('ChatInput attachments', () => {
     expect(mockState.showError).toHaveBeenCalledWith('attachmentInvalidType')
     expect(mockState.showError).toHaveBeenCalledWith('attachmentTooLarge')
 
-    await selectFiles(wrapper, Array.from({ length: 5 }, (_, index) => (
-      new File(['ok'], `reference-${index}.png`, { type: 'image/png' })
-    )))
+    await selectFiles(
+      wrapper,
+      Array.from(
+        { length: 5 },
+        (_, index) => new File(['ok'], `reference-${index}.png`, { type: 'image/png' }),
+      ),
+    )
 
     expect(wrapper.findAll('.attachment-thumb')).toHaveLength(4)
     expect(mockState.showError).toHaveBeenCalledWith('attachmentLimit')

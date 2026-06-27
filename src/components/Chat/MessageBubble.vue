@@ -4,7 +4,12 @@
     <div v-if="message.type === 'user'" class="user-message">
       <div class="user-content">
         <div class="user-bubble">
-          <p v-if="highlightedContent" class="user-text"><template v-for="(part, i) in highlightedContent" :key="i"><mark v-if="part.isMatch" class="search-highlight">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></p>
+          <p v-if="highlightedContent" class="user-text">
+            <template v-for="(part, i) in highlightedContent" :key="i"
+              ><mark v-if="part.isMatch" class="search-highlight">{{ part.text }}</mark
+              ><template v-else>{{ part.text }}</template></template
+            >
+          </p>
           <p v-else class="user-text">{{ message.content }}</p>
           <div v-if="message.isFavorite" class="favorite-badge">
             <Star :size="12" fill="currentColor" />
@@ -20,11 +25,7 @@
             :key="attachment.id"
             class="user-attachment"
           >
-            <img
-              :src="attachment.url"
-              :alt="attachment.name"
-              class="user-attachment-image"
-            />
+            <img :src="attachment.url" :alt="attachment.name" class="user-attachment-image" />
           </div>
         </div>
       </div>
@@ -65,12 +66,8 @@
             <AlertCircle :size="16" />
             <span>{{ message.error || t('generationFailed') }}</span>
           </p>
-          <button
-            @click="handleRetry"
-            class="retry-btn"
-            :disabled="isRetrying"
-          >
-            <RefreshCw :size="14" :class="{ 'spin': isRetrying }" />
+          <button class="retry-btn" :disabled="isRetrying" @click="handleRetry">
+            <RefreshCw :size="14" :class="{ spin: isRetrying }" />
             <span>{{ isRetrying ? t('retrying') : t('retry') }}</span>
           </button>
         </div>
@@ -155,7 +152,12 @@
 import { ref, computed } from 'vue'
 import { Star, AlertCircle, RefreshCw, X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
-import type { ChatAttachment, ChatMessage, GeneratedImage, ImageGenerationResponse } from '../../types'
+import type {
+  ChatAttachment,
+  ChatMessage,
+  GeneratedImage,
+  ImageGenerationResponse,
+} from '../../types'
 import { highlightText } from '../../utils/highlight'
 import ImagePreview from './ImagePreview.vue'
 import MessageActions from './MessageActions.vue'
@@ -206,7 +208,9 @@ const highlightedContent = computed(() => {
 })
 
 const hasImages = computed(() => !!props.message.images && props.message.images.length > 0)
-const hasAttachments = computed(() => !!props.message.attachments && props.message.attachments.length > 0)
+const hasAttachments = computed(
+  () => !!props.message.attachments && props.message.attachments.length > 0,
+)
 
 const placeholderAspectRatio = computed(() => {
   switch (props.message.generationSize) {
@@ -243,7 +247,7 @@ async function handleRetry() {
   try {
     // 找到前面的用户消息
     const messages = chatStore.messages
-    const currentIndex = messages.findIndex(m => m.id === props.message.id)
+    const currentIndex = messages.findIndex((m) => m.id === props.message.id)
     let userPrompt = ''
     let attachments: ChatAttachment[] = []
 
@@ -273,9 +277,11 @@ async function handleRetry() {
       attachments,
     )
   } catch (err) {
-    showError(t('retryFailed', {
-      message: err instanceof Error ? err.message : t('unknownError'),
-    }))
+    showError(
+      t('retryFailed', {
+        message: err instanceof Error ? err.message : t('unknownError'),
+      }),
+    )
   } finally {
     isRetrying.value = false
   }
@@ -495,7 +501,11 @@ async function handleEditResult(response: ImageGenerationResponse) {
   border: 1px solid color-mix(in srgb, var(--color-border) 62%, transparent);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--color-bg-secondary) 78%, transparent), transparent 58%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--color-bg-secondary) 78%, transparent),
+      transparent 58%
+    ),
     color-mix(in srgb, var(--color-bg-primary) 74%, transparent);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(18px) saturate(1.2);
@@ -506,7 +516,12 @@ async function handleEditResult(response: ImageGenerationResponse) {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.04) 36%, transparent 64%),
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.28),
+      rgba(255, 255, 255, 0.04) 36%,
+      transparent 64%
+    ),
     repeating-linear-gradient(
       135deg,
       color-mix(in srgb, var(--color-border) 18%, transparent) 0,

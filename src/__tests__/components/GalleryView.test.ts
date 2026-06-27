@@ -69,7 +69,11 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   }
 }
 
-function message(id: string, images: GeneratedImage[], overrides: Partial<ChatMessage> = {}): ChatMessage {
+function message(
+  id: string,
+  images: GeneratedImage[],
+  overrides: Partial<ChatMessage> = {},
+): ChatMessage {
   return {
     id,
     type: 'assistant',
@@ -105,40 +109,46 @@ async function mountGallery() {
   await router.push('/gallery')
   await router.isReady()
 
-  await useChatStore().importMessages([
-    message('current-message', [
-      image({
-        id: 'current-image',
-        url: 'blob:current-image',
-        sourcePrompt: 'silver moon over water',
-        timestamp: now,
-      }),
-    ]),
-  ], 'replace')
+  await useChatStore().importMessages(
+    [
+      message('current-message', [
+        image({
+          id: 'current-image',
+          url: 'blob:current-image',
+          sourcePrompt: 'silver moon over water',
+          timestamp: now,
+        }),
+      ]),
+    ],
+    'replace',
+  )
 
   const savedHistory = history('history-1', {
     title: 'Saved red city',
     isFavorite: true,
   })
   localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-  localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify([
-    message('duplicate-history-message', [
-      image({
-        id: 'current-image',
-        url: 'blob:duplicate',
-        sourcePrompt: 'duplicate image',
-        timestamp: now - 1000,
-      }),
+  localStorage.setItem(
+    HISTORY_MESSAGES_PREFIX + savedHistory.id,
+    JSON.stringify([
+      message('duplicate-history-message', [
+        image({
+          id: 'current-image',
+          url: 'blob:duplicate',
+          sourcePrompt: 'duplicate image',
+          timestamp: now - 1000,
+        }),
+      ]),
+      message('history-message', [
+        image({
+          id: 'history-image',
+          url: 'https://images.example.test/red-city.png',
+          sourcePrompt: 'red city at night',
+          timestamp: oldTimestamp,
+        }),
+      ]),
     ]),
-    message('history-message', [
-      image({
-        id: 'history-image',
-        url: 'https://images.example.test/red-city.png',
-        sourcePrompt: 'red city at night',
-        timestamp: oldTimestamp,
-      }),
-    ]),
-  ]))
+  )
 
   const wrapper = mount(GalleryView, {
     attachTo: document.body,
@@ -200,8 +210,9 @@ describe('GalleryView', () => {
     expect(wrapper.text()).not.toContain('red city at night')
 
     await wrapper.get('.clear-filters-btn').trigger('click')
-    const favoriteButton = wrapper.findAll('.filter-btn')
-      .find(button => button.text().includes('收藏'))
+    const favoriteButton = wrapper
+      .findAll('.filter-btn')
+      .find((button) => button.text().includes('收藏'))
     if (!favoriteButton) throw new Error('Missing favorite filter')
     await favoriteButton.trigger('click')
     expect(wrapper.findAll('.gallery-card')).toHaveLength(1)
@@ -247,9 +258,11 @@ describe('GalleryView', () => {
     const { wrapper } = await mountGallery()
 
     await wrapper.get('button[aria-label="下载"]').trigger('click')
-    expect(mockState.downloadSingleImage).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'current-image',
-    }))
+    expect(mockState.downloadSingleImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'current-image',
+      }),
+    )
 
     await wrapper.get('button[aria-label="分享"]').trigger('click')
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('blob:current-image')

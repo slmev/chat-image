@@ -39,7 +39,8 @@ export function useTheme() {
 
     // 取当前背景色
     const oldBg = getComputedStyle(document.documentElement)
-      .getPropertyValue('--color-bg-primary').trim()
+      .getPropertyValue('--color-bg-primary')
+      .trim()
 
     // 创建遮罩（完全覆盖，与当前背景色一致）
     const overlay = document.createElement('div')

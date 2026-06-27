@@ -29,11 +29,7 @@ function promptTemplateTitle(template: PromptTemplate): string {
 </script>
 
 <template>
-  <button
-    @click="handleClick"
-    class="prompt-card"
-    :title="template.prompt"
-  >
+  <button class="prompt-card" :title="template.prompt" @click="handleClick">
     <span class="card-title">{{ promptTemplateTitle(template) }}</span>
     <p class="card-preview">{{ template.prompt }}</p>
   </button>

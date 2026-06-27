@@ -25,28 +25,27 @@ export function useImageGeneration() {
     currentService = createImageGenerationService(configStore.apiConfig)
 
     // 如果有风格模板，添加到提示词
-    const finalPrompt = options.style
-      ? `${prompt}, ${options.style.promptSuffix}`
-      : prompt
+    const finalPrompt = options.style ? `${prompt}, ${options.style.promptSuffix}` : prompt
 
     try {
       const repository = getImageRepository()
-      const response = attachments.length > 0
-        ? await currentService.editImage({
-            image: await Promise.all(
-              attachments.map(attachment => repository.readImageBlob(attachment)),
-            ),
-            prompt: finalPrompt,
-            size: options.size,
-            quality: options.quality,
-            n: options.n,
-            response_format: 'b64_json',
-          })
-        : await currentService.generateImage(finalPrompt, {
-            size: options.size,
-            quality: options.quality,
-            n: options.n,
-          })
+      const response =
+        attachments.length > 0
+          ? await currentService.editImage({
+              image: await Promise.all(
+                attachments.map((attachment) => repository.readImageBlob(attachment)),
+              ),
+              prompt: finalPrompt,
+              size: options.size,
+              quality: options.quality,
+              n: options.n,
+              response_format: 'b64_json',
+            })
+          : await currentService.generateImage(finalPrompt, {
+              size: options.size,
+              quality: options.quality,
+              n: options.n,
+            })
 
       const images: GeneratedImage[] = await persistGeneratedImagesFromResponse(response, {
         sourcePrompt: finalPrompt,

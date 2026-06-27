@@ -2,8 +2,8 @@
   <div class="chat-container">
     <!-- Search Bar -->
     <SearchBar
-      v-model:searchQuery="searchQuery"
-      v-model:showFavoritesOnly="showFavoritesOnly"
+      v-model:search-query="searchQuery"
+      v-model:show-favorites-only="showFavoritesOnly"
       @clear="clearSearch"
     />
 
@@ -30,8 +30,8 @@
           <button
             v-for="template in quickStartTemplates"
             :key="template.id"
-            @click="handleQuickStart(template.prompt)"
             class="quick-start-card"
+            @click="handleQuickStart(template.prompt)"
           >
             <div class="quick-start-icon">
               <component :is="getTemplateIcon(template.category)" :size="20" />
@@ -64,14 +64,16 @@
 
     <!-- Input Area -->
     <ChatInput
-      @send="handleSend"
+      ref="chatInputRef"
       :disabled="chatStore.isLoading || !isConfigured"
+      @send="handleSend"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import type { Component } from 'vue'
 import { ImageIcon, Search, Users, Mountain, Cat, Layers, Sparkles } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useChat } from '../../composables/useChat'
@@ -86,7 +88,14 @@ import type { GenerationOptions, PromptTemplate } from '../../types'
 
 const { t } = useI18n()
 const { chatStore, sendMessage, cancelCurrentGeneration, startNewChat } = useChat()
-const { searchQuery, showFavoritesOnly, filteredMessages, deleteMessage, toggleFavorite, clearSearch } = useHistory()
+const {
+  searchQuery,
+  showFavoritesOnly,
+  filteredMessages,
+  deleteMessage,
+  toggleFavorite,
+  clearSearch,
+} = useHistory()
 const { templates } = usePromptSuggestions()
 const configStore = useConfigStore()
 
@@ -105,6 +114,7 @@ useKeyboardShortcuts([
 ])
 
 const messagesContainer = ref<HTMLElement>()
+const chatInputRef = ref<{ addAttachmentFiles: (files: File[]) => void } | null>(null)
 
 const isConfigured = computed(() => configStore.isConfigured)
 
@@ -112,13 +122,13 @@ const isConfigured = computed(() => configStore.isConfigured)
 const quickStartTemplates = computed(() => {
   const categories = ['people', 'landscape', 'animals', 'abstract'] as const
   return categories
-    .map(cat => templates.value.find(t => t.category === cat))
+    .map((cat) => templates.value.find((t) => t.category === cat))
     .filter((t): t is NonNullable<typeof t> => t !== undefined)
     .slice(0, 4)
 })
 
 function getTemplateIcon(category: string) {
-  const icons: Record<string, any> = {
+  const icons: Record<string, Component> = {
     people: Users,
     landscape: Mountain,
     animals: Cat,
@@ -182,10 +192,48 @@ function scrollToBottom() {
   }
 }
 
+function clipboardFiles(event: ClipboardEvent): File[] {
+  const data = event.clipboardData
+  if (!data) return []
+
+  const files = Array.from(data.files || [])
+  if (files.length > 0) return files
+
+  return Array.from(data.items || [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file))
+}
+
+function hasPlainText(event: ClipboardEvent): boolean {
+  return Array.from(event.clipboardData?.types || []).includes('text/plain')
+}
+
+function isInsideDialog(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('[role="dialog"]'))
+}
+
+function handlePaste(event: ClipboardEvent) {
+  if (isInsideDialog(event.target)) return
+
+  const files = clipboardFiles(event)
+  if (files.length === 0) return
+
+  chatInputRef.value?.addAttachmentFiles(files)
+  if (!hasPlainText(event)) {
+    event.preventDefault()
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('paste', handlePaste)
   if (messagesContainer.value && chatStore.messages.length > 0) {
     scrollToBottom()
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('paste', handlePaste)
 })
 </script>
 

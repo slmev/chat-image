@@ -4,21 +4,16 @@
     <div class="header-content">
       <div class="header-left">
         <button
-          @click="$emit('toggle-sidebar')"
           class="btn-icon"
           :aria-label="t('history')"
           :title="t('history')"
+          @click="$emit('toggle-sidebar')"
         >
           <Menu :size="20" />
         </button>
 
         <div class="logo-section">
-          <img
-            :src="appLogo"
-            class="logo-mark"
-            alt=""
-            aria-hidden="true"
-          />
+          <img :src="appLogo" class="logo-mark" alt="" aria-hidden="true" />
           <h1 class="logo-text">
             <span class="logo-text-primary">{{ t('imageGen') }}</span>
             <span class="logo-text-secondary">Workspace</span>
@@ -28,29 +23,29 @@
 
       <nav class="header-right" :aria-label="t('mainNav')">
         <button
-          @click="handleNewChat"
           class="btn-secondary header-action"
           :aria-label="t('newChat')"
           :title="t('newChat')"
+          @click="handleNewChat"
         >
           <Plus :size="18" />
           <span class="btn-label">{{ t('newChat') }}</span>
         </button>
 
         <button
-          @click="openGallery"
           class="btn-icon"
           :aria-label="t('gallery')"
           :title="t('gallery')"
+          @click="openGallery"
         >
           <ImageIcon :size="20" />
         </button>
 
         <button
-          @click="$emit('toggle-config')"
           class="btn-icon"
           :aria-label="t('apiConfig')"
           :title="t('apiConfig')"
+          @click="$emit('toggle-config')"
         >
           <Settings :size="20" />
         </button>
@@ -59,10 +54,10 @@
         <ExportImportPanel />
         <button
           v-if="chatStore.messageCount > 0"
-          @click="handleClearChat"
           class="btn-icon danger"
           :aria-label="t('clearChat')"
           :title="t('clearChat')"
+          @click="handleClearChat"
         >
           <Trash2 :size="20" />
         </button>

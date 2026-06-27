@@ -23,24 +23,16 @@ const showSidebar = ref(false)
 const isChatRoute = computed(() => route.name === 'chat')
 
 function syncConfigGuide() {
-  showConfigGuide.value = !dismissedConfigGuide.value &&
-    !configStore.isConfigured &&
-    isChatRoute.value
+  showConfigGuide.value =
+    !dismissedConfigGuide.value && !configStore.isConfigured && isChatRoute.value
 }
 
-watch(
-  [() => configStore.isConfigured, () => route.name],
-  syncConfigGuide,
-  { immediate: true },
-)
+watch([() => configStore.isConfigured, () => route.name], syncConfigGuide, { immediate: true })
 
 onMounted(async () => {
   if (isTauriRuntime()) {
     await initializeDesktopPersistence()
-    await Promise.all([
-      configStore.hydrateFromPersistence(),
-      chatStore.hydrateFromPersistence(),
-    ])
+    await Promise.all([configStore.hydrateFromPersistence(), chatStore.hydrateFromPersistence()])
   }
   syncConfigGuide()
 })
@@ -67,16 +59,12 @@ async function toggleSidebar() {
 function closeSidebar() {
   showSidebar.value = false
 }
-
 </script>
 
 <template>
   <div class="app-container">
     <!-- Header -->
-    <Header
-      @toggle-config="toggleConfig"
-      @toggle-sidebar="toggleSidebar"
-    />
+    <Header @toggle-config="toggleConfig" @toggle-sidebar="toggleSidebar" />
 
     <!-- Main Content -->
     <main class="main-content">
@@ -98,10 +86,7 @@ function closeSidebar() {
     <!-- Config Modal -->
     <Suspense>
       <Transition name="modal">
-        <ConfigModal
-          v-if="showConfigGuide"
-          @close="closeConfigGuide"
-        />
+        <ConfigModal v-if="showConfigGuide" @close="closeConfigGuide" />
       </Transition>
     </Suspense>
 

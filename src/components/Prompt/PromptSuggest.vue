@@ -2,18 +2,14 @@
   <div v-if="visible" class="suggest-panel">
     <!-- Enhancement Suggestions -->
     <div v-if="enhancers.length > 0" class="suggest-section">
-      <div
-        v-for="group in enhancers"
-        :key="group.category"
-        class="enhancer-group"
-      >
+      <div v-for="group in enhancers" :key="group.category" class="enhancer-group">
         <span class="group-label">{{ enhancerLabel(group.category, group.label) }}</span>
         <div class="group-chips">
           <button
             v-for="keyword in group.suggestions"
             :key="keyword"
-            @click="$emit('add', keyword)"
             class="chip"
+            @click="$emit('add', keyword)"
           >
             + {{ keyword }}
           </button>
@@ -27,11 +23,13 @@
       <button
         v-for="tmpl in templateMatches"
         :key="tmpl.id"
-        @click="$emit('use-template', tmpl.prompt)"
         class="template-item"
+        @click="$emit('use-template', tmpl.prompt)"
       >
         <span class="template-title">{{ promptTemplateTitle(tmpl) }}</span>
-        <span class="template-preview">{{ tmpl.prompt.length > 60 ? tmpl.prompt.slice(0, 60) + '...' : tmpl.prompt }}</span>
+        <span class="template-preview">{{
+          tmpl.prompt.length > 60 ? tmpl.prompt.slice(0, 60) + '...' : tmpl.prompt
+        }}</span>
       </button>
     </div>
   </div>

@@ -1,6 +1,11 @@
 <template>
   <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-content scale-in" role="dialog" aria-modal="true" :aria-label="t('apiConfig')">
+    <div
+      class="modal-content scale-in"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="t('apiConfig')"
+    >
       <!-- Header -->
       <div class="modal-header">
         <div class="modal-title-section">
@@ -9,7 +14,7 @@
           </div>
           <h2 class="modal-title">{{ t('apiConfig') }}</h2>
         </div>
-        <button @click="$emit('close')" class="btn-icon" :aria-label="t('close')">
+        <button class="btn-icon" :aria-label="t('close')" @click="$emit('close')">
           <X :size="20" />
         </button>
       </div>
@@ -39,10 +44,10 @@
               class="input-field"
             />
             <button
-              @click="showApiKey = !showApiKey"
               class="toggle-visibility"
               type="button"
               :aria-label="showApiKey ? t('hideApiKey') : t('showApiKey')"
+              @click="showApiKey = !showApiKey"
             >
               <EyeOff v-if="showApiKey" :size="16" />
               <Eye v-else :size="16" />
@@ -64,7 +69,11 @@
 
         <!-- Test Result -->
         <Transition name="slide-up">
-          <div v-if="testResult" :class="['test-result', testResult.success ? 'success' : 'error']" role="alert">
+          <div
+            v-if="testResult"
+            :class="['test-result', testResult.success ? 'success' : 'error']"
+            role="alert"
+          >
             <component :is="testResult.success ? CheckCircle : AlertCircle" :size="18" />
             <span>{{ testResult.message }}</span>
           </div>
@@ -74,26 +83,17 @@
       <!-- Footer -->
       <div class="modal-footer">
         <div class="footer-spacer"></div>
-        <button
-          @click="handleTest"
-          class="btn-secondary"
-          :disabled="!isFormValid || isTesting"
-        >
+        <button class="btn-secondary" :disabled="!isFormValid || isTesting" @click="handleTest">
           <Loader2 v-if="isTesting" :size="16" class="spin" />
           <Zap v-else :size="16" />
           <span>{{ isTesting ? t('testing') : t('testConnection') }}</span>
         </button>
-        <button
-          @click="handleSave"
-          class="btn-primary"
-          :disabled="!isFormValid"
-        >
+        <button class="btn-primary" :disabled="!isFormValid" @click="handleSave">
           <Save :size="16" />
           <span>{{ t('saveConfig') }}</span>
         </button>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -148,7 +148,6 @@ const isFormValid = computed(() => {
     localConfig.value.model.trim() !== ''
   )
 })
-
 
 async function handleSave() {
   if (isFormValid.value) {

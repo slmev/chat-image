@@ -114,20 +114,19 @@ describe('useImageGeneration', () => {
     const firstBlob = new Blob(['first'], { type: 'image/png' })
     const secondBlob = new Blob(['second'], { type: 'image/webp' })
     const apiResponse = response()
-    mockState.readImageBlob
-      .mockResolvedValueOnce(firstBlob)
-      .mockResolvedValueOnce(secondBlob)
+    mockState.readImageBlob.mockResolvedValueOnce(firstBlob).mockResolvedValueOnce(secondBlob)
     mockState.service.editImage.mockResolvedValueOnce(apiResponse)
     mockState.persistGeneratedImagesFromResponse.mockResolvedValueOnce([generatedImage()])
 
-    await useImageGeneration().generateImage('draw a product photo', {
-      size: '1792x1024',
-      quality: 'hd',
-      n: 2,
-    }, [
-      attachment('reference-1'),
-      attachment('reference-2'),
-    ])
+    await useImageGeneration().generateImage(
+      'draw a product photo',
+      {
+        size: '1792x1024',
+        quality: 'hd',
+        n: 2,
+      },
+      [attachment('reference-1'), attachment('reference-2')],
+    )
 
     expect(mockState.service.generateImage).not.toHaveBeenCalled()
     expect(mockState.service.editImage).toHaveBeenCalledWith({

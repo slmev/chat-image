@@ -19,9 +19,12 @@ export const useConfigStore = defineStore('config', () => {
 
   const configs = computed(() => configState.value.configs)
   const activeConfigId = computed(() => configState.value.activeConfigId)
-  const activeConfigProfile = computed(() => (
-    configState.value.configs.find(profile => profile.id === configState.value.activeConfigId) || null
-  ))
+  const activeConfigProfile = computed(
+    () =>
+      configState.value.configs.find(
+        (profile) => profile.id === configState.value.activeConfigId,
+      ) || null,
+  )
   const apiConfig = computed<ApiConfig | null>(() => {
     const active = activeConfigProfile.value
     if (!active) return null
@@ -32,13 +35,15 @@ export const useConfigStore = defineStore('config', () => {
     }
   })
   const isConfigured = computed(() => {
-    return apiConfig.value !== null &&
-           apiConfig.value.endpoint.trim() !== '' &&
-           apiConfig.value.apiKey.trim() !== ''
+    return (
+      apiConfig.value !== null &&
+      apiConfig.value.endpoint.trim() !== '' &&
+      apiConfig.value.apiKey.trim() !== ''
+    )
   })
 
   function nextConfigName(): string {
-    const existingNames = new Set(configState.value.configs.map(profile => profile.name.trim()))
+    const existingNames = new Set(configState.value.configs.map((profile) => profile.name.trim()))
     let index = 1
     while (existingNames.has(`配置 ${index}`)) {
       index += 1
@@ -58,7 +63,7 @@ export const useConfigStore = defineStore('config', () => {
 
   async function persist(): Promise<void> {
     const snapshot: ApiConfigState = {
-      configs: configState.value.configs.map(profile => ({ ...profile })),
+      configs: configState.value.configs.map((profile) => ({ ...profile })),
       activeConfigId: configState.value.activeConfigId,
     }
 
@@ -83,7 +88,7 @@ export const useConfigStore = defineStore('config', () => {
   async function updateConfig(id: string, updates: Partial<ConfigInput>): Promise<void> {
     configState.value = {
       ...configState.value,
-      configs: configState.value.configs.map(profile => (
+      configs: configState.value.configs.map((profile) =>
         profile.id === id
           ? {
               ...profile,
@@ -91,14 +96,14 @@ export const useConfigStore = defineStore('config', () => {
               name: updates.name !== undefined ? updates.name.trim() || profile.name : profile.name,
               model: updates.model !== undefined ? updates.model || DEFAULT_MODEL : profile.model,
             }
-          : profile
-      )),
+          : profile,
+      ),
     }
     await persist()
   }
 
   async function activateConfig(id: string): Promise<void> {
-    if (!configState.value.configs.some(profile => profile.id === id)) return
+    if (!configState.value.configs.some((profile) => profile.id === id)) return
     configState.value = {
       ...configState.value,
       activeConfigId: id,
@@ -107,12 +112,12 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function deleteConfig(id: string): Promise<void> {
-    const configsAfterDelete = configState.value.configs.filter(profile => profile.id !== id)
+    const configsAfterDelete = configState.value.configs.filter((profile) => profile.id !== id)
     const activeWasDeleted = configState.value.activeConfigId === id
     configState.value = {
       configs: configsAfterDelete,
       activeConfigId: activeWasDeleted
-        ? configsAfterDelete[0]?.id ?? null
+        ? (configsAfterDelete[0]?.id ?? null)
         : configState.value.activeConfigId,
     }
     await persist()

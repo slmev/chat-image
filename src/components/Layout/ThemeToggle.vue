@@ -1,17 +1,17 @@
 <template>
   <button
-    @click="toggleLocale"
     class="btn-icon lang-btn"
     :aria-label="t('switchLanguage')"
     :title="locale === 'zh-CN' ? 'English' : '中文'"
+    @click="toggleLocale"
   >
     <Languages :size="20" />
   </button>
   <button
-    @click="toggleTheme"
     class="btn-icon"
     :aria-label="t('switchTheme')"
     :title="t('switchTheme')"
+    @click="toggleTheme"
   >
     <Sun v-if="currentTheme === 'light'" :size="20" />
     <Moon v-else-if="currentTheme === 'dark'" :size="20" />

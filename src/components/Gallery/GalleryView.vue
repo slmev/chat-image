@@ -1,8 +1,5 @@
 <template>
-  <section
-    id="main-content"
-    :class="['gallery-workbench', `density-${density}`]"
-  >
+  <section id="main-content" :class="['gallery-workbench', `density-${density}`]">
     <aside class="gallery-sidebar" :aria-label="t('galleryFilters')">
       <div class="sidebar-section">
         <label for="gallery-search" class="filter-label">{{ t('promptLabel') }}</label>
@@ -62,11 +59,7 @@
             class="time-range-select"
             :aria-label="t('galleryTimeRange')"
           >
-            <option
-              v-for="option in timeRangeOptions"
-              :key="option.id"
-              :value="option.id"
-            >
+            <option v-for="option in timeRangeOptions" :key="option.id" :value="option.id">
               {{ option.label }}
             </option>
           </select>
@@ -133,11 +126,7 @@
       </div>
 
       <div v-else-if="filteredItems.length > 0" class="gallery-grid">
-        <article
-          v-for="item in filteredItems"
-          :key="item.id"
-          class="gallery-card"
-        >
+        <article v-for="item in filteredItems" :key="item.id" class="gallery-card">
           <button
             type="button"
             class="image-frame"
@@ -246,19 +235,11 @@
             </dl>
 
             <div class="preview-actions">
-              <button
-                type="button"
-                class="btn-secondary"
-                @click="downloadImage(previewItem)"
-              >
+              <button type="button" class="btn-secondary" @click="downloadImage(previewItem)">
                 <Download :size="16" />
                 <span>{{ t('download') }}</span>
               </button>
-              <button
-                type="button"
-                class="btn-secondary"
-                @click="shareImage(previewItem)"
-              >
+              <button type="button" class="btn-secondary" @click="shareImage(previewItem)">
                 <Share2 :size="16" />
                 <span>{{ t('share') }}</span>
               </button>
@@ -317,20 +298,18 @@ const density = ref<Density>('comfortable')
 const previewItem = ref<GalleryImageItem | null>(null)
 const ownedObjectUrls = new Set<string>()
 
-const currentImageCount = computed(() =>
-  galleryItems.value.filter(item => item.sourceType === 'current').length,
+const currentImageCount = computed(
+  () => galleryItems.value.filter((item) => item.sourceType === 'current').length,
 )
 
-const historyImageCount = computed(() =>
-  galleryItems.value.filter(item => item.sourceType === 'history').length,
+const historyImageCount = computed(
+  () => galleryItems.value.filter((item) => item.sourceType === 'history').length,
 )
 
-const favoriteCount = computed(() =>
-  galleryItems.value.filter(item => item.isFavorite).length,
-)
+const favoriteCount = computed(() => galleryItems.value.filter((item) => item.isFavorite).length)
 
-const recentCount = computed(() =>
-  galleryItems.value.filter(item => isRecent(item.timestamp)).length,
+const recentCount = computed(
+  () => galleryItems.value.filter((item) => isRecent(item.timestamp)).length,
 )
 
 const scopeFilters = computed(() => [
@@ -366,7 +345,7 @@ const filteredItems = computed(() => {
   const cutoff = timeRangeCutoff(timeRange.value)
 
   return galleryItems.value
-    .filter(item => {
+    .filter((item) => {
       if (activeScope.value === 'recent' && !isRecent(item.timestamp)) return false
       if (activeScope.value === 'favorite' && !item.isFavorite) return false
       if (cutoff !== null && item.timestamp < cutoff) return false
@@ -377,10 +356,9 @@ const filteredItems = computed(() => {
     .sort((a, b) => b.timestamp - a.timestamp)
 })
 
-const hasActiveFilters = computed(() =>
-  Boolean(searchQuery.value.trim()) ||
-  activeScope.value !== 'all' ||
-  timeRange.value !== 'all',
+const hasActiveFilters = computed(
+  () =>
+    Boolean(searchQuery.value.trim()) || activeScope.value !== 'all' || timeRange.value !== 'all',
 )
 
 const emptyTitle = computed(() =>
@@ -415,24 +393,26 @@ async function refreshGalleryImages() {
 
 async function resolveDisplayImages(items: GalleryImageItem[]) {
   revokeOwnedObjectUrls()
-  const entries = await Promise.all(items.map(async item => {
-    try {
-      const resolved = await getImageRepository().resolveDisplayUrl(item.image)
-      if (resolved.url.startsWith('blob:') && resolved.url !== item.image.url) {
-        ownedObjectUrls.add(resolved.url)
+  const entries = await Promise.all(
+    items.map(async (item) => {
+      try {
+        const resolved = await getImageRepository().resolveDisplayUrl(item.image)
+        if (resolved.url.startsWith('blob:') && resolved.url !== item.image.url) {
+          ownedObjectUrls.add(resolved.url)
+        }
+        return [item.id, resolved] as const
+      } catch (err) {
+        console.warn('Failed to resolve gallery image URL:', err)
+        return [item.id, item.image] as const
       }
-      return [item.id, resolved] as const
-    } catch (err) {
-      console.warn('Failed to resolve gallery image URL:', err)
-      return [item.id, item.image] as const
-    }
-  }))
+    }),
+  )
 
   displayImages.value = Object.fromEntries(entries)
 }
 
 function revokeOwnedObjectUrls() {
-  ownedObjectUrls.forEach(url => {
+  ownedObjectUrls.forEach((url) => {
     if (typeof URL.revokeObjectURL === 'function') {
       URL.revokeObjectURL(url)
     }
@@ -551,7 +531,11 @@ async function shareImage(item: GalleryImageItem) {
   height: 100%;
   min-height: 0;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-bg-secondary) 88%, transparent), transparent 45%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-bg-secondary) 88%, transparent),
+      transparent 45%
+    ),
     var(--color-bg-primary);
   overflow: hidden;
 }

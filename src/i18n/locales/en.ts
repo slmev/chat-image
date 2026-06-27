@@ -12,7 +12,8 @@ export default {
   switchTheme: 'Switch theme',
   switchLanguage: 'Switch language',
   clearChat: 'Clear Chat',
-  clearChatConfirm: 'Are you sure you want to clear all conversations? This action cannot be undone.',
+  clearChatConfirm:
+    'Are you sure you want to clear all conversations? This action cannot be undone.',
   clear: 'Clear',
   confirm: 'Confirm',
 
@@ -87,9 +88,11 @@ export default {
   setActive: 'Set Active',
   configName: 'Config Name',
   configNamePlaceholder: 'e.g.: OpenAI primary',
-  multiConfigHint: 'Save multiple API configurations and manually choose the one used for generation and editing',
+  multiConfigHint:
+    'Save multiple API configurations and manually choose the one used for generation and editing',
   deleteConfig: 'Delete Selected',
-  deleteConfigConfirm: 'Delete the selected configuration? If it is active, the first remaining configuration will become active.',
+  deleteConfigConfirm:
+    'Delete the selected configuration? If it is active, the first remaining configuration will become active.',
   clearAllConfigs: 'Clear All Configs',
   clearAllConfigsConfirm: 'Clear all API configurations? This cannot be undone.',
   notConfigured: 'Not configured',
@@ -105,7 +108,8 @@ export default {
   openDirectory: 'Open Directory',
   openDataDirectoryFailed: 'Failed to open data directory',
   cleanupOrphans: 'Clean Orphans',
-  cleanupOrphansConfirm: 'Clean {count} local images no longer referenced by history and reclaim {size}. This cannot be undone.',
+  cleanupOrphansConfirm:
+    'Clean {count} local images no longer referenced by history and reclaim {size}. This cannot be undone.',
   cleanupComplete: 'Cleaned {count} images and reclaimed {size}',
   cleanupPartial: '{count} files could not be cleaned; the rest were processed',
   cleanupFailed: 'Cleanup failed. Please try again later.',
@@ -297,12 +301,14 @@ export default {
   editImageTitle: 'Edit Image',
   editPromptLabel: 'Describe what to change',
   editPromptPlaceholder: 'Example: change the background to a beach scene',
-  editMaskHint: 'Paint white areas on the image as a mask. AI will only modify masked areas. If no mask is drawn, the whole image will be edited.',
+  editMaskHint:
+    'Paint white areas on the image as a mask. AI will only modify masked areas. If no mask is drawn, the whole image will be edited.',
   processing: 'Processing...',
   applyEdit: 'Apply Edit',
   createVariationFailed: 'Failed to create variation',
   editImageFailed: 'Failed to edit image',
-  imageReadNotAllowed: 'This image link cannot be read by the frontend. Use a base64 response or regenerate it.',
+  imageReadNotAllowed:
+    'This image link cannot be read by the frontend. Use a base64 response or regenerate it.',
   brush: 'Brush',
   eraser: 'Eraser',
   brushSize: 'Size',

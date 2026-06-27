@@ -22,10 +22,12 @@ describe('ImageGenerationService', () => {
   })
 
   it('sends image generation requests through the runtime HTTP client', async () => {
-    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
-      created: 1,
-      data: [{ b64_json: 'image-bytes' }],
-    }))
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse({
+        created: 1,
+        data: [{ b64_json: 'image-bytes' }],
+      }),
+    )
     const service = new ImageGenerationService({
       endpoint: 'https://api.example.test',
       apiKey: 'sk-test',
@@ -45,7 +47,7 @@ describe('ImageGenerationService', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer sk-test',
+          Authorization: 'Bearer sk-test',
         },
         signal: expect.any(AbortSignal),
       }),
@@ -62,10 +64,12 @@ describe('ImageGenerationService', () => {
   })
 
   it('sends image edit requests as form data through the runtime HTTP client', async () => {
-    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
-      created: 1,
-      data: [{ b64_json: 'edited-image' }],
-    }))
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse({
+        created: 1,
+        data: [{ b64_json: 'edited-image' }],
+      }),
+    )
     const image = new Blob(['image'], { type: 'image/png' })
     const mask = new Blob(['mask'], { type: 'image/png' })
     const service = new ImageGenerationService({
@@ -89,7 +93,7 @@ describe('ImageGenerationService', () => {
       expect.objectContaining({
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer sk-test',
+          Authorization: 'Bearer sk-test',
         },
         signal: expect.any(AbortSignal),
       }),
@@ -104,10 +108,12 @@ describe('ImageGenerationService', () => {
   })
 
   it('sends multiple image edit inputs as repeated form data fields', async () => {
-    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
-      created: 1,
-      data: [{ b64_json: 'edited-image' }],
-    }))
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse({
+        created: 1,
+        data: [{ b64_json: 'edited-image' }],
+      }),
+    )
     const firstImage = new Blob(['first'], { type: 'image/png' })
     const secondImage = new Blob(['second'], { type: 'image/webp' })
     const service = new ImageGenerationService({
@@ -151,9 +157,14 @@ describe('ImageGenerationService', () => {
   })
 
   it('maps API status errors as before', async () => {
-    mockState.runtimeFetch.mockResolvedValueOnce(jsonResponse({
-      error: { message: 'invalid key' },
-    }, 401))
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: { message: 'invalid key' },
+        },
+        401,
+      ),
+    )
     const service = new ImageGenerationService({
       endpoint: 'https://api.example.test',
       apiKey: 'bad-key',
@@ -161,5 +172,23 @@ describe('ImageGenerationService', () => {
     })
 
     await expect(service.generateImage('draw')).rejects.toThrow('API Key 无效，请检查您的密钥')
+  })
+
+  it('uses API error messages for unhandled status codes', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: { message: 'unsupported image size' },
+        },
+        400,
+      ),
+    )
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    await expect(service.generateImage('draw')).rejects.toThrow('unsupported image size')
   })
 })

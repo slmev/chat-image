@@ -14,8 +14,8 @@ export function highlightText(text: string, query: string): HighlightSegment[] {
   const parts = text.split(regex)
 
   return parts
-    .filter(part => part !== '')
-    .map(part => ({
+    .filter((part) => part !== '')
+    .map((part) => ({
       text: part,
       isMatch: part.toLowerCase() === query.toLowerCase(),
     }))

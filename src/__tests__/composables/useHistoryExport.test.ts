@@ -7,9 +7,10 @@ const HISTORY_LIST_KEY = 'chat-image-history-list'
 const metadata = new Map<string, unknown>()
 const initializeDesktopPersistence = vi.fn<() => Promise<void>>()
 const getDesktopChatHistory = vi.fn<() => Promise<ChatMessage[]>>()
-const getMetadataValue = vi.fn(async <T>(key: string, defaultValue: T): Promise<T> => (
-  metadata.has(key) ? metadata.get(key) as T : defaultValue
-))
+const getMetadataValue = vi.fn(
+  async <T>(key: string, defaultValue: T): Promise<T> =>
+    metadata.has(key) ? (metadata.get(key) as T) : defaultValue,
+)
 const setMetadataValue = vi.fn<(...args: [string, unknown]) => Promise<void>>()
 const removeMetadataValue = vi.fn<(...args: [string]) => Promise<void>>()
 const exportDesktopHistoryZip = vi.fn()
@@ -44,12 +45,14 @@ function currentMessage(): ChatMessage {
     content: 'hydrated current chat',
     timestamp: 1,
     status: 'success',
-    images: [{
-      id: 'image-1',
-      url: 'blob:image-1',
-      localPath: 'images/image-1.png',
-      timestamp: 1,
-    }],
+    images: [
+      {
+        id: 'image-1',
+        url: 'blob:image-1',
+        localPath: 'images/image-1.png',
+        timestamp: 1,
+      },
+    ],
   }
 }
 
@@ -87,13 +90,17 @@ describe('useHistory desktop export', () => {
     expect(initializeDesktopPersistence).toHaveBeenCalledOnce()
     expect(getDesktopChatHistory).toHaveBeenCalledOnce()
     expect(chatStore.hasHydratedDesktopHistory).toBe(true)
-    expect(exportDesktopHistoryZip).toHaveBeenCalledWith(expect.objectContaining({
-      currentMessages: [expect.objectContaining({
-        id: 'current-message',
-        images: [expect.objectContaining({ localPath: 'images/image-1.png' })],
-      })],
-      historyList: [],
-      historyMessages: {},
-    }))
+    expect(exportDesktopHistoryZip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentMessages: [
+          expect.objectContaining({
+            id: 'current-message',
+            images: [expect.objectContaining({ localPath: 'images/image-1.png' })],
+          }),
+        ],
+        historyList: [],
+        historyMessages: {},
+      }),
+    )
   })
 })

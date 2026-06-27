@@ -2,7 +2,12 @@
   <Teleport to="body">
     <Transition name="confirm">
       <div v-if="isOpen" class="confirm-overlay" @click.self="handleCancel">
-        <div class="confirm-content scale-in" role="dialog" aria-modal="true" :aria-labelledby="titleId">
+        <div
+          class="confirm-content scale-in"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="titleId"
+        >
           <!-- Icon -->
           <div :class="['confirm-icon', type]">
             <AlertTriangle v-if="type === 'danger'" :size="24" />
@@ -18,17 +23,10 @@
 
           <!-- Actions -->
           <div class="confirm-actions">
-            <button
-              @click="handleCancel"
-              class="btn-secondary"
-              ref="cancelBtn"
-            >
+            <button ref="cancelBtn" class="btn-secondary" @click="handleCancel">
               {{ displayCancelText }}
             </button>
-            <button
-              @click="handleConfirm"
-              :class="['btn-primary', type]"
-            >
+            <button :class="['btn-primary', type]" @click="handleConfirm">
               {{ displayConfirmText }}
             </button>
           </div>

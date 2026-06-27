@@ -8,14 +8,14 @@
             <Scale :size="20" />
             <span>{{ t('imageCompare') }}</span>
           </h2>
-          <button @click="$emit('close')" class="btn-icon">
+          <button class="btn-icon" @click="$emit('close')">
             <X :size="20" />
           </button>
         </div>
 
         <!-- Compare View -->
         <div class="compare-body">
-          <div class="compare-view" ref="compareRef">
+          <div ref="compareRef" class="compare-view">
             <!-- Left Image -->
             <div class="compare-left">
               <img :src="leftUrl" :alt="t('originalImage')" class="compare-image" />
@@ -92,9 +92,9 @@ let resolveRun = 0
 function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
   const validUrl = isValidImageUrl(image.url)
   return Boolean(
-    (image.localPath && !validUrl)
-    || (image.base64 && !validUrl)
-    || (isTauriRuntime() && isExternalImageUrl(image.url)),
+    (image.localPath && !validUrl) ||
+    (image.base64 && !validUrl) ||
+    (isTauriRuntime() && isExternalImageUrl(image.url)),
   )
 }
 

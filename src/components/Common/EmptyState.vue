@@ -20,6 +20,7 @@ interface Props {
 }
 
 withDefaults(defineProps<Props>(), {
+  description: '',
   iconSize: 48,
 })
 </script>

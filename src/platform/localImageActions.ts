@@ -64,9 +64,9 @@ export async function revealLocalImage(image: GeneratedImage): Promise<void> {
 export async function copyLocalImageToClipboard(image: GeneratedImage): Promise<void> {
   await copyLocalImageToClipboardWithDependencies(image, {
     isTauriRuntime,
-    readImageBlob: image => getImageRepository().readImageBlob(image),
-    createImageFromBytes: bytes => Image.fromBytes(bytes),
-    writeImage: async image => {
+    readImageBlob: (image) => getImageRepository().readImageBlob(image),
+    createImageFromBytes: (bytes) => Image.fromBytes(bytes),
+    writeImage: async (image) => {
       const { writeImage } = await import('@tauri-apps/plugin-clipboard-manager')
       await writeImage(image as Image)
     },
@@ -84,7 +84,9 @@ export async function revealLocalImageWithDependencies(
   image: GeneratedImage,
   dependencies: Pick<LocalImageActionDependencies, 'appDataDir' | 'join' | 'revealItemInDir'>,
 ): Promise<void> {
-  await dependencies.revealItemInDir(await absoluteLocalImagePathWithDependencies(image, dependencies))
+  await dependencies.revealItemInDir(
+    await absoluteLocalImagePathWithDependencies(image, dependencies),
+  )
 }
 
 export async function copyLocalImageToClipboardWithDependencies(
@@ -158,7 +160,7 @@ async function blobToPngBytes(blob: Blob): Promise<Uint8Array> {
 
     context.drawImage(bitmap, 0, 0)
     const pngBlob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(result => {
+      canvas.toBlob((result) => {
         if (result) {
           resolve(result)
         } else {

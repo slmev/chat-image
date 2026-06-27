@@ -242,15 +242,18 @@ function handleClose() {
   emit('close')
 }
 
-watch(() => props.isOpen, (newVal) => {
-  if (newVal) {
-    prompt.value = ''
-    brushSize.value = 20
-    isEraser.value = false
-    drawHistory = []
-    setupCanvas()
-  }
-})
+watch(
+  () => props.isOpen,
+  (newVal) => {
+    if (newVal) {
+      prompt.value = ''
+      brushSize.value = 20
+      isEraser.value = false
+      drawHistory = []
+      setupCanvas()
+    }
+  },
+)
 
 onMounted(() => {
   if (props.isOpen) {
@@ -308,17 +311,11 @@ onMounted(() => {
               >
                 <ZoomOut :size="16" />
               </button>
-              <button
-                class="zoom-fit-btn"
-                :title="t('fitToView')"
-                @click="fitToView"
-              >
+              <button class="zoom-fit-btn" :title="t('fitToView')" @click="fitToView">
                 <Maximize2 :size="15" />
                 <span>{{ t('fitToView') }}</span>
               </button>
-              <span class="zoom-value" :aria-label="t('zoomLevel')">
-                {{ zoomPercent }}%
-              </span>
+              <span class="zoom-value" :aria-label="t('zoomLevel')"> {{ zoomPercent }}% </span>
               <button
                 class="zoom-btn"
                 :disabled="zoomLevel >= MAX_ZOOM"

@@ -5,10 +5,10 @@
         <Download :size="18" />
         <span>{{ t('updateAvailable') }}</span>
       </div>
-      <button @click="handleUpdate" class="btn-primary update-btn">
+      <button class="btn-primary update-btn" @click="handleUpdate">
         {{ t('update') }}
       </button>
-      <button @click="close" class="btn-icon" :aria-label="t('close')">
+      <button class="btn-icon" :aria-label="t('close')" @click="close">
         <X :size="16" />
       </button>
     </div>

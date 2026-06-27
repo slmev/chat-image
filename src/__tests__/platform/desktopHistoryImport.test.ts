@@ -1,6 +1,12 @@
 import JSZip from 'jszip'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../../types'
+import type {
+  ChatAttachment,
+  ChatHistory,
+  ChatMessage,
+  DesktopHistoryExportData,
+  GeneratedImage,
+} from '../../types'
 
 const mkdir = vi.fn()
 const writeFile = vi.fn()
@@ -99,23 +105,33 @@ describe('desktop history ZIP import', () => {
 
   it('imports a valid ZIP and rewrites image paths for current and saved history', async () => {
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
-    const historyList: ChatHistory[] = [{
-      id: 'history-1',
-      title: 'saved',
-      timestamp: 1,
-      messageCount: 1,
-      isFavorite: false,
-    }]
-
-    const result = await importDesktopHistoryZip(await zipFile(exportData({
-      historyList,
-      historyMessages: {
-        'history-1': [message('history-message', [image('history-image', 'images/history.png')])],
+    const historyList: ChatHistory[] = [
+      {
+        id: 'history-1',
+        title: 'saved',
+        timestamp: 1,
+        messageCount: 1,
+        isFavorite: false,
       },
-    }), {
-      'images/current.png': 'current-bytes',
-      'images/history.png': 'history-bytes',
-    }), { now: 1000 })
+    ]
+
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          historyList,
+          historyMessages: {
+            'history-1': [
+              message('history-message', [image('history-image', 'images/history.png')]),
+            ],
+          },
+        }),
+        {
+          'images/current.png': 'current-bytes',
+          'images/history.png': 'history-bytes',
+        },
+      ),
+      { now: 1000 },
+    )
 
     expect(result.success).toBe(true)
     if (!result.success) throw new Error(result.message)
@@ -140,15 +156,23 @@ describe('desktop history ZIP import', () => {
   it('imports attachment image files and preserves attachment metadata', async () => {
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
 
-    const result = await importDesktopHistoryZip(await zipFile(exportData({
-      currentMessages: [
-        message('current-message', [], [
-          attachment('reference-image', 'images/reference.webp'),
-        ]),
-      ],
-    }), {
-      'images/reference.webp': 'reference-bytes',
-    }), { now: 1000 })
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          currentMessages: [
+            message(
+              'current-message',
+              [],
+              [attachment('reference-image', 'images/reference.webp')],
+            ),
+          ],
+        }),
+        {
+          'images/reference.webp': 'reference-bytes',
+        },
+      ),
+      { now: 1000 },
+    )
 
     expect(result.success).toBe(true)
     if (!result.success) throw new Error(result.message)
@@ -160,9 +184,7 @@ describe('desktop history ZIP import', () => {
       localPath: 'images/import-1000-0-reference.webp',
       byteSize: 15,
     })
-    expect(result.data.writtenImagePaths).toEqual([
-      'images/import-1000-0-reference.webp',
-    ])
+    expect(result.data.writtenImagePaths).toEqual(['images/import-1000-0-reference.webp'])
   })
 
   it('fails without writing when history.json is missing', async () => {
@@ -188,11 +210,20 @@ describe('desktop history ZIP import', () => {
   it('rejects unsafe image paths before writing files', async () => {
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
 
-    await expect(importDesktopHistoryZip(await zipFile(exportData({
-      currentMessages: [message('current-message', [image('bad-image', 'images/../secret.png')])],
-    }), {
-      'images/../secret.png': 'bad',
-    }))).resolves.toEqual({
+    await expect(
+      importDesktopHistoryZip(
+        await zipFile(
+          exportData({
+            currentMessages: [
+              message('current-message', [image('bad-image', 'images/../secret.png')]),
+            ],
+          }),
+          {
+            'images/../secret.png': 'bad',
+          },
+        ),
+      ),
+    ).resolves.toEqual({
       success: false,
       message: 'ZIP 包包含不安全的图片路径：images/../secret.png',
     })
@@ -203,9 +234,12 @@ describe('desktop history ZIP import', () => {
     exists.mockImplementation(async (path: string) => path === 'images/import-1000-0-current.png')
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
 
-    const result = await importDesktopHistoryZip(await zipFile(exportData(), {
-      'images/current.png': 'current-bytes',
-    }), { now: 1000 })
+    const result = await importDesktopHistoryZip(
+      await zipFile(exportData(), {
+        'images/current.png': 'current-bytes',
+      }),
+      { now: 1000 },
+    )
 
     expect(result.success).toBe(true)
     if (!result.success) throw new Error(result.message)
@@ -221,33 +255,31 @@ describe('desktop history ZIP import', () => {
 
   it('cleans up already written images when a later image write fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    exists
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true)
-    writeFile
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('write failed'))
+    exists.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    writeFile.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('write failed'))
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
 
-    const result = await importDesktopHistoryZip(await zipFile(exportData({
-      currentMessages: [
-        message('message-1', [image('image-1', 'images/one.png')]),
-        message('message-2', [image('image-2', 'images/two.png')]),
-      ],
-    }), {
-      'images/one.png': 'one',
-      'images/two.png': 'two',
-    }), { now: 1000 })
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          currentMessages: [
+            message('message-1', [image('image-1', 'images/one.png')]),
+            message('message-2', [image('image-2', 'images/two.png')]),
+          ],
+        }),
+        {
+          'images/one.png': 'one',
+          'images/two.png': 'two',
+        },
+      ),
+      { now: 1000 },
+    )
 
     expect(result).toEqual({
       success: false,
       message: '导入图片写入失败',
     })
-    expect(remove).toHaveBeenCalledWith(
-      'images/import-1000-0-one.png',
-      { baseDir: 'AppData' },
-    )
+    expect(remove).toHaveBeenCalledWith('images/import-1000-0-one.png', { baseDir: 'AppData' })
     warn.mockRestore()
   })
 })

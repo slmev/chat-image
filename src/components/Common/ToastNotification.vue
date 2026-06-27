@@ -2,11 +2,7 @@
   <Teleport to="body">
     <div class="toast-container">
       <TransitionGroup name="toast">
-        <div
-          v-for="toast in toasts"
-          :key="toast.id"
-          :class="['toast', toast.type]"
-        >
+        <div v-for="toast in toasts" :key="toast.id" :class="['toast', toast.type]">
           <div class="toast-icon">
             <CheckCircle v-if="toast.type === 'success'" :size="18" />
             <AlertCircle v-else-if="toast.type === 'error'" :size="18" />
@@ -14,7 +10,7 @@
             <Info v-else :size="18" />
           </div>
           <p class="toast-message">{{ toast.message }}</p>
-          <button @click="removeToast(toast.id)" class="toast-close">
+          <button class="toast-close" @click="removeToast(toast.id)">
             <X :size="14" />
           </button>
         </div>

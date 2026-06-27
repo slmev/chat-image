@@ -29,18 +29,10 @@ function handleBrushSizeChange(event: Event) {
 
 <template>
   <div class="edit-toolbar">
-    <button
-      @click="toggleEraser"
-      :class="['tool-btn', { active: !isEraser }]"
-      :title="t('brush')"
-    >
+    <button :class="['tool-btn', { active: !isEraser }]" :title="t('brush')" @click="toggleEraser">
       <Brush :size="16" />
     </button>
-    <button
-      @click="toggleEraser"
-      :class="['tool-btn', { active: isEraser }]"
-      :title="t('eraser')"
-    >
+    <button :class="['tool-btn', { active: isEraser }]" :title="t('eraser')" @click="toggleEraser">
       <Eraser :size="16" />
     </button>
 
@@ -51,20 +43,20 @@ function handleBrushSizeChange(event: Event) {
       <input
         type="range"
         :value="brushSize"
-        @input="handleBrushSizeChange"
         min="5"
         max="50"
         class="size-slider"
+        @input="handleBrushSizeChange"
       />
       <span class="size-value">{{ brushSize }}px</span>
     </div>
 
     <div class="divider"></div>
 
-    <button @click="$emit('undo')" class="tool-btn" :title="t('undo')">
+    <button class="tool-btn" :title="t('undo')" @click="$emit('undo')">
       <Undo2 :size="16" />
     </button>
-    <button @click="$emit('clear')" class="tool-btn danger" :title="t('clearMask')">
+    <button class="tool-btn danger" :title="t('clearMask')" @click="$emit('clear')">
       <Trash2 :size="16" />
     </button>
   </div>

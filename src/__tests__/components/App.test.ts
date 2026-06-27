@@ -36,7 +36,8 @@ vi.mock('../../components/Config/ConfigModal.vue', () => ({
   default: {
     name: 'ConfigModalStub',
     emits: ['close'],
-    template: '<div class="config-guide-stub"><button @click="$emit(\'close\')">close</button></div>',
+    template:
+      '<div class="config-guide-stub"><button @click="$emit(\'close\')">close</button></div>',
   },
 }))
 
@@ -88,11 +89,7 @@ async function mountApp(initialPath = '/') {
   const wrapper = mount(App, {
     attachTo: document.body,
     global: {
-      plugins: [
-        createPinia(),
-        router,
-        i18n,
-      ],
+      plugins: [createPinia(), router, i18n],
     },
   })
   await router.isReady()

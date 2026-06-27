@@ -8,7 +8,8 @@ import type { PromptCategory, PromptTemplate } from '../../types'
 
 const { t } = useI18n()
 
-const { categories, templatesByCategory, recentlyUsed, useTemplate, searchTemplates } = usePromptSuggestions()
+const { categories, templatesByCategory, recentlyUsed, useTemplate, searchTemplates } =
+  usePromptSuggestions()
 
 const activeCategory = ref<PromptCategory | 'recent' | 'search'>('people')
 const searchQuery = ref('')
@@ -64,7 +65,7 @@ function categoryLabel(category: PromptCategory): string {
     <!-- Header -->
     <div class="panel-header">
       <h3 class="panel-title">{{ t('promptTemplatesTitle') }}</h3>
-      <button @click="$emit('close')" class="btn-icon" :aria-label="t('close')">
+      <button class="btn-icon" :aria-label="t('close')" @click="$emit('close')">
         <X :size="18" />
       </button>
     </div>
@@ -74,12 +75,17 @@ function categoryLabel(category: PromptCategory): string {
       <input
         type="text"
         :value="searchQuery"
-        @input="handleSearch"
         :placeholder="t('searchPrompts')"
         :aria-label="t('searchPrompts')"
         class="search-input"
+        @input="handleSearch"
       />
-      <button v-if="searchQuery" @click="clearSearch" class="clear-search-btn" :aria-label="t('close')">
+      <button
+        v-if="searchQuery"
+        class="clear-search-btn"
+        :aria-label="t('close')"
+        @click="clearSearch"
+      >
         <X :size="14" />
       </button>
     </div>
@@ -88,8 +94,8 @@ function categoryLabel(category: PromptCategory): string {
     <div class="category-tabs no-scrollbar">
       <button
         v-if="recentlyUsed.length > 0 && !searchQuery"
-        @click="activeCategory = 'recent'"
         :class="['tab-btn', { active: activeCategory === 'recent' }]"
+        @click="activeCategory = 'recent'"
       >
         <Clock :size="14" />
         <span>{{ t('recentUsed') }}</span>
@@ -97,8 +103,8 @@ function categoryLabel(category: PromptCategory): string {
       <button
         v-for="cat in categories"
         :key="cat.id"
-        @click="activeCategory = cat.id"
         :class="['tab-btn', { active: activeCategory === cat.id && !searchQuery }]"
+        @click="activeCategory = cat.id"
       >
         <span>{{ categoryLabel(cat.id) }}</span>
       </button>

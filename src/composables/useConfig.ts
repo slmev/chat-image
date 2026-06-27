@@ -38,7 +38,9 @@ export function localizeApiTestResult(
 export function useConfig() {
   const configStore = useConfigStore()
 
-  function testApiConnection(config: ApiConfig | null = configStore.apiConfig): Promise<ApiTestResult> {
+  function testApiConnection(
+    config: ApiConfig | null = configStore.apiConfig,
+  ): Promise<ApiTestResult> {
     if (!config) {
       return Promise.resolve({ success: false, code: 'apiConfigRequired' })
     }
@@ -56,7 +58,7 @@ export function useConfig() {
     return runtimeFetch(`${normalizedEndpoint}/v1/models`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
     })
       .then(async (response): Promise<ApiTestResult> => {

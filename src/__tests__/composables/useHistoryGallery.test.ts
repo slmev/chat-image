@@ -45,7 +45,11 @@ function attachment(overrides: Partial<ChatAttachment> = {}): ChatAttachment {
   }
 }
 
-function message(id: string, images: GeneratedImage[], overrides: Partial<ChatMessage> = {}): ChatMessage {
+function message(
+  id: string,
+  images: GeneratedImage[],
+  overrides: Partial<ChatMessage> = {},
+): ChatMessage {
   return {
     id,
     type: 'assistant',
@@ -87,42 +91,48 @@ describe('useHistory gallery images', () => {
       isFavorite: true,
     })
 
-    await useChatStore().importMessages([
-      {
-        id: 'user-reference-message',
-        type: 'user',
-        content: 'use this reference',
-        timestamp: 1,
-        status: 'success',
-        attachments: [attachment({ id: 'reference-only' })],
-      },
-      message('current-message', [sharedImage], { isFavorite: true }),
-    ], 'replace')
+    await useChatStore().importMessages(
+      [
+        {
+          id: 'user-reference-message',
+          type: 'user',
+          content: 'use this reference',
+          timestamp: 1,
+          status: 'success',
+          attachments: [attachment({ id: 'reference-only' })],
+        },
+        message('current-message', [sharedImage], { isFavorite: true }),
+      ],
+      'replace',
+    )
 
     localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify([
-      message('duplicate-history-message', [
-        image({
-          id: 'shared-image',
-          url: 'blob:shared-history',
-          timestamp: 90,
-          sourcePrompt: 'duplicate prompt',
-        }),
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + savedHistory.id,
+      JSON.stringify([
+        message('duplicate-history-message', [
+          image({
+            id: 'shared-image',
+            url: 'blob:shared-history',
+            timestamp: 90,
+            sourcePrompt: 'duplicate prompt',
+          }),
+        ]),
+        message('unique-history-message', [
+          image({
+            id: 'history-image',
+            url: 'blob:history-image',
+            timestamp: 80,
+            sourcePrompt: 'saved prompt',
+          }),
+        ]),
       ]),
-      message('unique-history-message', [
-        image({
-          id: 'history-image',
-          url: 'blob:history-image',
-          timestamp: 80,
-          sourcePrompt: 'saved prompt',
-        }),
-      ]),
-    ]))
+    )
 
     const items = await useHistory().loadGalleryImages()
 
     expect(items).toHaveLength(2)
-    expect(items.map(item => item.image.id)).toEqual(['shared-image', 'history-image'])
+    expect(items.map((item) => item.image.id)).toEqual(['shared-image', 'history-image'])
     expect(items[0]).toMatchObject({
       sourceType: 'current',
       prompt: 'current prompt',

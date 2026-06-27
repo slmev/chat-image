@@ -41,7 +41,7 @@ describe('chat store', () => {
       throw new Error('First save was not started')
     }
     setMetadataValue.mockImplementationOnce(async () => {
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         releaseFirstSave = resolve
       })
     })
@@ -66,9 +66,7 @@ describe('chat store', () => {
 
     expect(setMetadataValue).toHaveBeenCalledTimes(1)
     expect(setMetadataValue.mock.calls[0][0]).toBe(STORAGE_KEYS.CHAT_HISTORY)
-    expect(setMetadataValue.mock.calls[0][1]).toMatchObject([
-      { content: 'first prompt' },
-    ])
+    expect(setMetadataValue.mock.calls[0][1]).toMatchObject([{ content: 'first prompt' }])
 
     releaseFirstSave()
     await store.flushHistorySave()
@@ -89,12 +87,14 @@ describe('chat store', () => {
       type: 'assistant',
       content: 'generated',
       status: 'success',
-      images: [{
-        id: 'image-1',
-        url: '',
-        localPath: 'images/image-1.png',
-        timestamp: 1,
-      }],
+      images: [
+        {
+          id: 'image-1',
+          url: '',
+          localPath: 'images/image-1.png',
+          timestamp: 1,
+        },
+      ],
     })
     await store.flushHistorySave()
 
@@ -114,29 +114,38 @@ describe('chat store', () => {
       type: 'assistant',
       content: 'old generated',
       status: 'success',
-      images: [{
-        id: 'old-image',
-        url: '',
-        localPath: 'images/old-image.png',
-        timestamp: 1,
-      }],
+      images: [
+        {
+          id: 'old-image',
+          url: '',
+          localPath: 'images/old-image.png',
+          timestamp: 1,
+        },
+      ],
     })
     await store.flushHistorySave()
     deleteUnreferencedLocalImages.mockClear()
 
-    await store.importMessages([{
-      id: 'new-message',
-      type: 'assistant',
-      content: 'new generated',
-      timestamp: 2,
-      status: 'success',
-      images: [{
-        id: 'new-image',
-        url: '',
-        localPath: 'images/new-image.png',
-        timestamp: 2,
-      }],
-    }], 'replace')
+    await store.importMessages(
+      [
+        {
+          id: 'new-message',
+          type: 'assistant',
+          content: 'new generated',
+          timestamp: 2,
+          status: 'success',
+          images: [
+            {
+              id: 'new-image',
+              url: '',
+              localPath: 'images/new-image.png',
+              timestamp: 2,
+            },
+          ],
+        },
+      ],
+      'replace',
+    )
 
     expect(deleteUnreferencedLocalImages).toHaveBeenCalledWith([
       expect.objectContaining({ localPath: 'images/old-image.png' }),

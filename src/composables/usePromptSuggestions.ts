@@ -17,7 +17,7 @@ export function usePromptSuggestions() {
 
   // Get templates by category
   function templatesByCategory(category: PromptCategory): PromptTemplate[] {
-    return PROMPT_TEMPLATES.filter(t => t.category === category)
+    return PROMPT_TEMPLATES.filter((t) => t.category === category)
   }
 
   // Search templates by query
@@ -25,18 +25,19 @@ export function usePromptSuggestions() {
     const q = query.trim().toLowerCase()
     if (!q) return []
 
-    return PROMPT_TEMPLATES.filter(t =>
-      t.title.toLowerCase().includes(q) ||
-      t.prompt.toLowerCase().includes(q) ||
-      t.description?.toLowerCase().includes(q) ||
-      t.tags?.some(tag => tag.toLowerCase().includes(q))
+    return PROMPT_TEMPLATES.filter(
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.prompt.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        t.tags?.some((tag) => tag.toLowerCase().includes(q)),
     )
   }
 
   // Recently used templates
   const recentlyUsed = computed<PromptTemplate[]>(() => {
     return recentIds.value
-      .map(id => PROMPT_TEMPLATES.find(t => t.id === id))
+      .map((id) => PROMPT_TEMPLATES.find((t) => t.id === id))
       .filter((t): t is PromptTemplate => t !== undefined)
   })
 

@@ -117,7 +117,7 @@ describe('useChat', () => {
     })
 
     expect(chatStore.messages).toHaveLength(2)
-    expect(chatStore.messages.map(message => message.id)).toEqual([
+    expect(chatStore.messages.map((message) => message.id)).toEqual([
       userMessage.id,
       assistantMessage.id,
     ])
@@ -157,11 +157,7 @@ describe('useChat', () => {
 
     await retryMessage(assistantMessage.id, 'use this reference', options, [reference])
 
-    expect(mockState.generateImage).toHaveBeenCalledWith(
-      'use this reference',
-      options,
-      [reference],
-    )
+    expect(mockState.generateImage).toHaveBeenCalledWith('use this reference', options, [reference])
   })
 
   it('stores the requested generation options on pending assistant messages', async () => {
@@ -228,10 +224,8 @@ describe('useChat', () => {
       content: 'use this as a reference',
       attachments: [expect.objectContaining({ id: 'attachment-1', name: 'reference.png' })],
     })
-    expect(mockState.generateImage).toHaveBeenCalledWith(
-      'use this as a reference',
-      options,
-      [reference],
-    )
+    expect(mockState.generateImage).toHaveBeenCalledWith('use this as a reference', options, [
+      reference,
+    ])
   })
 })

@@ -6,7 +6,7 @@
           <!-- Header -->
           <div class="dialog-header">
             <h2 class="dialog-title">{{ isEditing ? t('editStyle') : t('createStyle') }}</h2>
-            <button @click="$emit('close')" class="btn-icon" :aria-label="t('close')">
+            <button class="btn-icon" :aria-label="t('close')" @click="$emit('close')">
               <X :size="20" />
             </button>
           </div>
@@ -50,17 +50,17 @@
 
           <!-- Footer -->
           <div class="dialog-footer">
-            <button v-if="isEditing" @click="handleDelete" class="btn-ghost danger">
+            <button v-if="isEditing" class="btn-ghost danger" @click="handleDelete">
               {{ t('delete') }}
             </button>
             <div class="footer-spacer"></div>
-            <button @click="$emit('close')" class="btn-secondary">
+            <button class="btn-secondary" @click="$emit('close')">
               {{ t('cancel') }}
             </button>
             <button
-              @click="handleSave"
               :disabled="!form.name.trim() || !form.promptSuffix.trim()"
               class="btn-primary"
+              @click="handleSave"
             >
               {{ t('save') }}
             </button>
@@ -103,20 +103,23 @@ const form = ref({
   icon: 'sparkles',
 })
 
-watch(() => props.isOpen, (open) => {
-  if (open && props.editingStyle) {
-    isEditing.value = true
-    form.value = {
-      name: props.editingStyle.name,
-      description: props.editingStyle.description,
-      promptSuffix: props.editingStyle.promptSuffix,
-      icon: props.editingStyle.icon,
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open && props.editingStyle) {
+      isEditing.value = true
+      form.value = {
+        name: props.editingStyle.name,
+        description: props.editingStyle.description,
+        promptSuffix: props.editingStyle.promptSuffix,
+        icon: props.editingStyle.icon,
+      }
+    } else {
+      isEditing.value = false
+      form.value = { name: '', description: '', promptSuffix: '', icon: 'sparkles' }
     }
-  } else {
-    isEditing.value = false
-    form.value = { name: '', description: '', promptSuffix: '', icon: 'sparkles' }
-  }
-})
+  },
+)
 
 function handleSave() {
   if (!form.value.name.trim() || !form.value.promptSuffix.trim()) return

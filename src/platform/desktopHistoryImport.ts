@@ -1,5 +1,11 @@
 import JSZip from 'jszip'
-import type { ChatAttachment, ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../types'
+import type {
+  ChatAttachment,
+  ChatHistory,
+  ChatMessage,
+  DesktopHistoryExportData,
+  GeneratedImage,
+} from '../types'
 import { isTauriRuntime } from './runtime'
 
 const ZIP_HISTORY_FILE = 'history.json'
@@ -27,13 +33,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map(message => ({
+  return messages.map((message) => ({
     ...message,
-    attachments: message.attachments?.map(attachment => ({
+    attachments: message.attachments?.map((attachment) => ({
       ...attachment,
       base64: undefined,
     })),
-    images: message.images?.map(image => ({
+    images: message.images?.map((image) => ({
       ...image,
       base64: undefined,
     })),
@@ -46,9 +52,9 @@ function validateImage(value: unknown): GeneratedImage {
   }
 
   if (
-    typeof value.id !== 'string'
-    || typeof value.url !== 'string'
-    || typeof value.timestamp !== 'number'
+    typeof value.id !== 'string' ||
+    typeof value.url !== 'string' ||
+    typeof value.timestamp !== 'number'
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
@@ -78,13 +84,13 @@ function validateMessage(value: unknown): ChatMessage {
   }
 
   if (
-    typeof value.id !== 'string'
-    || value.id.length > 100
-    || (value.type !== 'user' && value.type !== 'assistant')
-    || typeof value.content !== 'string'
-    || value.content.length > 10000
-    || typeof value.timestamp !== 'number'
-    || (value.status !== 'pending' && value.status !== 'success' && value.status !== 'error')
+    typeof value.id !== 'string' ||
+    value.id.length > 100 ||
+    (value.type !== 'user' && value.type !== 'assistant') ||
+    typeof value.content !== 'string' ||
+    value.content.length > 10000 ||
+    typeof value.timestamp !== 'number' ||
+    (value.status !== 'pending' && value.status !== 'success' && value.status !== 'error')
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
@@ -128,12 +134,12 @@ function validateHistory(value: unknown): ChatHistory {
   }
 
   if (
-    typeof value.id !== 'string'
-    || value.id.length > 100
-    || typeof value.title !== 'string'
-    || typeof value.timestamp !== 'number'
-    || typeof value.messageCount !== 'number'
-    || typeof value.isFavorite !== 'boolean'
+    typeof value.id !== 'string' ||
+    value.id.length > 100 ||
+    typeof value.title !== 'string' ||
+    typeof value.timestamp !== 'number' ||
+    typeof value.messageCount !== 'number' ||
+    typeof value.isFavorite !== 'boolean'
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
@@ -145,7 +151,10 @@ function validateHistory(value: unknown): ChatHistory {
   return value as unknown as ChatHistory
 }
 
-function validateExportData(value: unknown): Omit<DesktopHistoryExportData, 'currentMessages' | 'historyList' | 'historyMessages'> & {
+function validateExportData(value: unknown): Omit<
+  DesktopHistoryExportData,
+  'currentMessages' | 'historyList' | 'historyMessages'
+> & {
   currentMessages: ChatMessage[]
   historyList: ChatHistory[]
   historyMessages: Record<string, ChatMessage[]>
@@ -155,16 +164,16 @@ function validateExportData(value: unknown): Omit<DesktopHistoryExportData, 'cur
   }
 
   if (
-    typeof value.exportedAt !== 'number'
-    || !Array.isArray(value.historyList)
-    || !isRecord(value.historyMessages)
+    typeof value.exportedAt !== 'number' ||
+    !Array.isArray(value.historyList) ||
+    !isRecord(value.historyMessages)
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
   const currentMessages = validateMessages(value.currentMessages)
   const historyList = value.historyList.map(validateHistory)
-  const historyIds = new Set(historyList.map(history => history.id))
+  const historyIds = new Set(historyList.map((history) => history.id))
   const historyMessages = Object.fromEntries(
     Object.entries(value.historyMessages).map(([historyId, messages]) => {
       if (!historyIds.has(historyId)) {
@@ -192,10 +201,11 @@ function validateExportData(value: unknown): Omit<DesktopHistoryExportData, 'cur
 
 function assertSafeZipImagePath(path: string): void {
   const segments = path.split('/')
-  const isUnsafe = path.includes('\\')
-    || path.startsWith('/')
-    || !path.startsWith(`${ZIP_IMAGE_DIR}/`)
-    || segments.some(segment => !segment || segment === '.' || segment === '..')
+  const isUnsafe =
+    path.includes('\\') ||
+    path.startsWith('/') ||
+    !path.startsWith(`${ZIP_IMAGE_DIR}/`) ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..')
 
   if (isUnsafe) {
     throw new DesktopHistoryImportError(`ZIP 包包含不安全的图片路径：${path}`)
@@ -203,13 +213,13 @@ function assertSafeZipImagePath(path: string): void {
 }
 
 function collectImagePaths(messages: ChatMessage[], paths: Set<string>): void {
-  messages.forEach(message => {
-    message.attachments?.forEach(attachment => {
+  messages.forEach((message) => {
+    message.attachments?.forEach((attachment) => {
       if (!attachment.localPath) return
       assertSafeZipImagePath(attachment.localPath)
       paths.add(attachment.localPath)
     })
-    message.images?.forEach(image => {
+    message.images?.forEach((image) => {
       if (!image.localPath) return
       assertSafeZipImagePath(image.localPath)
       paths.add(image.localPath)
@@ -269,22 +279,24 @@ export async function cleanupDesktopImportedImages(paths: string[]): Promise<voi
   if (!isTauriRuntime()) return
   const { remove, exists, BaseDirectory } = await import('@tauri-apps/plugin-fs')
 
-  await Promise.all(paths.map(async path => {
-    try {
-      if (await exists(path, { baseDir: BaseDirectory.AppData })) {
-        await remove(path, { baseDir: BaseDirectory.AppData })
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        if (await exists(path, { baseDir: BaseDirectory.AppData })) {
+          await remove(path, { baseDir: BaseDirectory.AppData })
+        }
+      } catch (error) {
+        console.warn('Failed to clean up imported image file:', error)
       }
-    } catch (error) {
-      console.warn('Failed to clean up imported image file:', error)
-    }
-  }))
+    }),
+  )
 }
 
 function rewriteImageList<T extends GeneratedImage>(
   images: T[] | undefined,
   pathMap: Map<string, { localPath: string; byteSize: number }>,
 ): T[] | undefined {
-  return images?.map(image => {
+  return images?.map((image) => {
     if (!image.localPath) return image
 
     const imported = pathMap.get(image.localPath)
@@ -304,7 +316,7 @@ function rewriteMessages(
   messages: ChatMessage[],
   pathMap: Map<string, { localPath: string; byteSize: number }>,
 ): ChatMessage[] {
-  return cloneMessages(messages).map(message => {
+  return cloneMessages(messages).map((message) => {
     if (!message.images && !message.attachments) return message
 
     return {
@@ -348,7 +360,9 @@ export async function importDesktopHistoryZip(
     const data = validateExportData(parsedData)
     const imagePaths = new Set<string>()
     collectImagePaths(data.currentMessages, imagePaths)
-    Object.values(data.historyMessages).forEach(messages => collectImagePaths(messages, imagePaths))
+    Object.values(data.historyMessages).forEach((messages) =>
+      collectImagePaths(messages, imagePaths),
+    )
 
     const imageFiles = new Map<string, JSZip.JSZipObject>()
     for (const imagePath of imagePaths) {
@@ -381,7 +395,7 @@ export async function importDesktopHistoryZip(
       success: true,
       data: {
         currentMessages: rewriteMessages(data.currentMessages, pathMap),
-        historyList: data.historyList.map(history => ({ ...history })),
+        historyList: data.historyList.map((history) => ({ ...history })),
         historyMessages: Object.fromEntries(
           Object.entries(data.historyMessages).map(([historyId, messages]) => [
             historyId,

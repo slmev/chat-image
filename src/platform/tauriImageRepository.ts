@@ -71,7 +71,9 @@ async function writeLocalBytes(localPath: string, bytes: Uint8Array): Promise<vo
   await writeFile(localPath, bytes, { baseDir: BaseDirectory.AppData })
 }
 
-async function downloadExternalImage(url: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
+async function downloadExternalImage(
+  url: string,
+): Promise<{ bytes: Uint8Array; mimeType: string }> {
   const { fetch } = await import('@tauri-apps/plugin-http')
   const response = await fetch(url)
   if (!response.ok) {

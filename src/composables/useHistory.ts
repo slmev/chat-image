@@ -1,6 +1,12 @@
 import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
-import type { ChatExportData, ChatHistory, ChatMessage, GalleryImageItem, GeneratedImage } from '../types'
+import type {
+  ChatExportData,
+  ChatHistory,
+  ChatMessage,
+  GalleryImageItem,
+  GeneratedImage,
+} from '../types'
 import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
 import { generateId } from '../utils/storage'
 import { stripBase64FromMessages } from '../utils/imagePersistence'
@@ -60,10 +66,7 @@ async function readHistoryMessages(historyId: string): Promise<ChatMessage[]> {
 }
 
 function collectImages(messages: ChatMessage[]) {
-  return messages.flatMap(message => [
-    ...(message.attachments || []),
-    ...(message.images || []),
-  ])
+  return messages.flatMap((message) => [...(message.attachments || []), ...(message.images || [])])
 }
 
 function galleryImageDedupeKey(image: GeneratedImage): string {
@@ -81,7 +84,7 @@ function promptForGalleryImage(
   if (image.sourcePrompt?.trim()) return image.sourcePrompt
 
   if (image.sourceMessageId) {
-    const sourceMessage = messages.find(item => item.id === image.sourceMessageId)
+    const sourceMessage = messages.find((item) => item.id === image.sourceMessageId)
     if (sourceMessage?.content.trim()) return sourceMessage.content
   }
 
@@ -130,9 +133,11 @@ function collectGalleryImageItems(
 }
 
 function collectLocalImagePaths(messages: ChatMessage[]): Set<string> {
-  return new Set(collectImages(messages)
-    .map(image => image.localPath)
-    .filter((localPath): localPath is string => Boolean(localPath)))
+  return new Set(
+    collectImages(messages)
+      .map((image) => image.localPath)
+      .filter((localPath): localPath is string => Boolean(localPath)),
+  )
 }
 
 function cloneData<T>(value: T): T {
@@ -142,7 +147,7 @@ function cloneData<T>(value: T): T {
 const historyList = ref<ChatHistory[]>(getHistoryList())
 
 function messageIds(messages: ChatMessage[]): string[] {
-  return messages.map(message => message.id)
+  return messages.map((message) => message.id)
 }
 
 function isPrefixSequence(shorter: string[], longer: string[]): boolean {
@@ -161,26 +166,32 @@ interface HistorySnapshot {
 }
 
 function chooseMergedHistory(items: HistorySnapshot[]): HistorySnapshot {
-  return [...items].sort((a, b) => {
-    if (a.messages.length !== b.messages.length) {
-      return b.messages.length - a.messages.length
-    }
-    return b.item.timestamp - a.item.timestamp
-  })[0] ?? items[0]
+  return (
+    [...items].sort((a, b) => {
+      if (a.messages.length !== b.messages.length) {
+        return b.messages.length - a.messages.length
+      }
+      return b.item.timestamp - a.item.timestamp
+    })[0] ?? items[0]
+  )
 }
 
 async function removeDuplicateHistories(
   list: ChatHistory[],
   defaultHistoryTitle: (messages: ChatMessage[]) => string,
 ): Promise<ChatHistory[]> {
-  const snapshots = (await Promise.all(list.map(async item => {
-    const messages = await readHistoryMessages(item.id)
-    return {
-      item,
-      messages,
-      ids: messageIds(messages),
-    }
-  }))).filter(snapshot => snapshot.messages.length > 0)
+  const snapshots = (
+    await Promise.all(
+      list.map(async (item) => {
+        const messages = await readHistoryMessages(item.id)
+        return {
+          item,
+          messages,
+          ids: messageIds(messages),
+        }
+      }),
+    )
+  ).filter((snapshot) => snapshot.messages.length > 0)
 
   if (snapshots.length <= 1) return list
 
@@ -243,7 +254,7 @@ async function removeDuplicateHistories(
       timestamp: Math.max(...group.map(({ item }) => item.timestamp)),
       messageCount: merged.messages.length,
       isFavorite: group.some(({ item }) => item.isFavorite),
-      preview: merged.messages.find(message => message.type === 'user')?.content.slice(0, 100),
+      preview: merged.messages.find((message) => message.type === 'user')?.content.slice(0, 100),
     }
 
     mergedSnapshots.set(keep.id, {
@@ -261,35 +272,41 @@ async function removeDuplicateHistories(
 
   if (idsToRemove.size === 0) return list
 
-  await Promise.all(Array.from(mergedSnapshots.values()).map(async ({ item, messages }) => {
-    await setHistoryMessages(item.id, messages)
-  }))
+  await Promise.all(
+    Array.from(mergedSnapshots.values()).map(async ({ item, messages }) => {
+      await setHistoryMessages(item.id, messages)
+    }),
+  )
 
-  await Promise.all(Array.from(idsToRemove).map(id => deleteHistoryMessages(id)))
+  await Promise.all(Array.from(idsToRemove).map((id) => deleteHistoryMessages(id)))
   const deduped = list
-    .filter(item => !idsToRemove.has(item.id))
-    .map(item => mergedSnapshots.get(item.id)?.item || item)
+    .filter((item) => !idsToRemove.has(item.id))
+    .map((item) => mergedSnapshots.get(item.id)?.item || item)
   await setHistoryList(deduped)
   return deduped
 }
 
 function refreshHistoryList(defaultHistoryTitle: (messages: ChatMessage[]) => string): void {
   if (isTauriRuntime()) {
-    void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, []).then(async list => {
-      historyList.value = await removeDuplicateHistories(list, defaultHistoryTitle)
-    }).catch(error => {
-      console.error('Failed to load history list:', error)
-    })
+    void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
+      .then(async (list) => {
+        historyList.value = await removeDuplicateHistories(list, defaultHistoryTitle)
+      })
+      .catch((error) => {
+        console.error('Failed to load history list:', error)
+      })
     return
   }
 
   const list = getHistoryList()
   historyList.value = list
-  void removeDuplicateHistories(list, defaultHistoryTitle).then(deduped => {
-    historyList.value = deduped
-  }).catch(error => {
-    console.error('Failed to clean duplicate histories:', error)
-  })
+  void removeDuplicateHistories(list, defaultHistoryTitle)
+    .then((deduped) => {
+      historyList.value = deduped
+    })
+    .catch((error) => {
+      console.error('Failed to clean duplicate histories:', error)
+    })
 }
 
 // 保存历史对话消息
@@ -331,7 +348,7 @@ function trimOldHistories(): void {
     const sorted = list.sort((a, b) => b.timestamp - a.timestamp)
     const toRemove = sorted.slice(5)
 
-    toRemove.forEach(h => {
+    toRemove.forEach((h) => {
       localStorage.removeItem(HISTORY_MESSAGES_PREFIX + h.id)
     })
 
@@ -359,7 +376,7 @@ export function useHistory() {
   const showFavoritesOnly = ref(false)
   const t = i18n.global.t
   const defaultHistoryTitle = (messages: ChatMessage[]): string => {
-    const firstUserMessage = messages.find(message => message.type === 'user')
+    const firstUserMessage = messages.find((message) => message.type === 'user')
     return firstUserMessage?.content.slice(0, 50) || t('newChat')
   }
   refreshHistoryList(defaultHistoryTitle)
@@ -374,14 +391,18 @@ export function useHistory() {
 
   async function findMatchingHistory(messages: ChatMessage[]): Promise<ChatHistory | undefined> {
     const currentIds = messageIds(messages)
-    const candidates = await Promise.all(historyList.value.map(async item => ({
-      item,
-      messages: await readHistoryMessages(item.id),
-    })))
+    const candidates = await Promise.all(
+      historyList.value.map(async (item) => ({
+        item,
+        messages: await readHistoryMessages(item.id),
+      })),
+    )
 
     return candidates
       .filter(({ messages: candidateMessages }) => candidateMessages.length > 0)
-      .filter(({ messages: candidateMessages }) => hasSnapshotRelation(currentIds, messageIds(candidateMessages)))
+      .filter(({ messages: candidateMessages }) =>
+        hasSnapshotRelation(currentIds, messageIds(candidateMessages)),
+      )
       .sort((a, b) => {
         const leftLength = a.messages.length
         const rightLength = b.messages.length
@@ -392,13 +413,12 @@ export function useHistory() {
       })[0]?.item
   }
 
-  async function readHistoryMessageMap(list: ChatHistory[]): Promise<Record<string, ChatMessage[]>> {
+  async function readHistoryMessageMap(
+    list: ChatHistory[],
+  ): Promise<Record<string, ChatMessage[]>> {
     return Object.fromEntries(
       await Promise.all(
-        list.map(async item => [
-          item.id,
-          await readHistoryMessages(item.id),
-        ] as const),
+        list.map(async (item) => [item.id, await readHistoryMessages(item.id)] as const),
       ),
     )
   }
@@ -410,21 +430,21 @@ export function useHistory() {
     }
 
     const seenKeys = new Set<string>()
-    const items = collectGalleryImageItems(
-      chatStore.messages,
-      { type: 'current' },
-      seenKeys,
-    )
+    const items = collectGalleryImageItems(chatStore.messages, { type: 'current' }, seenKeys)
 
     const savedHistories = [...historyList.value].sort((a, b) => b.timestamp - a.timestamp)
-    const savedMessages = await Promise.all(savedHistories.map(history => readHistoryMessages(history.id)))
+    const savedMessages = await Promise.all(
+      savedHistories.map((history) => readHistoryMessages(history.id)),
+    )
 
     savedMessages.forEach((messages, index) => {
-      items.push(...collectGalleryImageItems(
-        messages,
-        { type: 'history', history: savedHistories[index] },
-        seenKeys,
-      ))
+      items.push(
+        ...collectGalleryImageItems(
+          messages,
+          { type: 'history', history: savedHistories[index] },
+          seenKeys,
+        ),
+      )
     })
 
     return items.sort((a, b) => b.timestamp - a.timestamp)
@@ -441,12 +461,16 @@ export function useHistory() {
     knownHistoryIds: Set<string>
   }): Promise<void> {
     await setHistoryList(snapshot.historyList)
-    await Promise.all(snapshot.historyList.map(item =>
-      setHistoryMessages(item.id, snapshot.historyMessages[item.id] || []),
-    ))
-    await Promise.all(Array.from(snapshot.knownHistoryIds)
-      .filter(historyId => !snapshot.historyMessages[historyId])
-      .map(historyId => deleteHistoryMessages(historyId)))
+    await Promise.all(
+      snapshot.historyList.map((item) =>
+        setHistoryMessages(item.id, snapshot.historyMessages[item.id] || []),
+      ),
+    )
+    await Promise.all(
+      Array.from(snapshot.knownHistoryIds)
+        .filter((historyId) => !snapshot.historyMessages[historyId])
+        .map((historyId) => deleteHistoryMessages(historyId)),
+    )
     historyList.value = snapshot.historyList
     await chatStore.importMessages(snapshot.currentMessages, 'replace')
   }
@@ -465,42 +489,48 @@ export function useHistory() {
       historyList: cloneData(currentHistoryList),
       historyMessages: cloneData(currentHistoryMessages),
       knownHistoryIds: new Set([
-        ...currentHistoryList.map(item => item.id),
-        ...data.historyList.map(item => item.id),
+        ...currentHistoryList.map((item) => item.id),
+        ...data.historyList.map((item) => item.id),
       ]),
     }
 
     try {
       if (mode === 'replace') {
-        await Promise.all(currentHistoryList.map(item => deleteHistoryMessages(item.id)))
+        await Promise.all(currentHistoryList.map((item) => deleteHistoryMessages(item.id)))
         await setHistoryList(data.historyList)
-        await Promise.all(data.historyList.map(item =>
-          setHistoryMessages(item.id, data.historyMessages[item.id] || []),
-        ))
+        await Promise.all(
+          data.historyList.map((item) =>
+            setHistoryMessages(item.id, data.historyMessages[item.id] || []),
+          ),
+        )
         historyList.value = data.historyList
         await chatStore.importMessages(data.currentMessages, 'replace')
         return []
       }
 
-      const existingMessageIds = new Set(chatStore.messages.map(message => message.id))
-      const existingHistoryIds = new Set(currentHistoryList.map(item => item.id))
-      const uniqueCurrentMessages = data.currentMessages.filter(message => !existingMessageIds.has(message.id))
-      const newHistoryItems = data.historyList.filter(item => !existingHistoryIds.has(item.id))
+      const existingMessageIds = new Set(chatStore.messages.map((message) => message.id))
+      const existingHistoryIds = new Set(currentHistoryList.map((item) => item.id))
+      const uniqueCurrentMessages = data.currentMessages.filter(
+        (message) => !existingMessageIds.has(message.id),
+      )
+      const newHistoryItems = data.historyList.filter((item) => !existingHistoryIds.has(item.id))
       const mergedHistoryList = [...currentHistoryList, ...newHistoryItems]
       const usedImportedImagePaths = collectLocalImagePaths(uniqueCurrentMessages)
-      newHistoryItems.forEach(item => {
-        collectLocalImagePaths(data.historyMessages[item.id] || []).forEach(path => {
+      newHistoryItems.forEach((item) => {
+        collectLocalImagePaths(data.historyMessages[item.id] || []).forEach((path) => {
           usedImportedImagePaths.add(path)
         })
       })
 
       await setHistoryList(mergedHistoryList)
-      await Promise.all(newHistoryItems.map(item =>
-        setHistoryMessages(item.id, data.historyMessages[item.id] || []),
-      ))
+      await Promise.all(
+        newHistoryItems.map((item) =>
+          setHistoryMessages(item.id, data.historyMessages[item.id] || []),
+        ),
+      )
       historyList.value = mergedHistoryList
       await chatStore.importMessages(data.currentMessages, 'merge')
-      return data.writtenImagePaths.filter(path => !usedImportedImagePaths.has(path))
+      return data.writtenImagePaths.filter((path) => !usedImportedImagePaths.has(path))
     } catch (error) {
       try {
         await restoreDesktopSnapshot(snapshot)
@@ -516,16 +546,17 @@ export function useHistory() {
     let result = chatStore.messages
 
     if (showFavoritesOnly.value) {
-      result = result.filter(msg => msg.isFavorite)
+      result = result.filter((msg) => msg.isFavorite)
     }
 
     const query = searchQuery.value.trim().toLowerCase()
     if (query) {
-      result = result.filter(msg => {
+      result = result.filter((msg) => {
         if (msg.content.toLowerCase().includes(query)) return true
         if (msg.error?.toLowerCase().includes(query)) return true
-        if (msg.images?.some(img => img.sourcePrompt?.toLowerCase().includes(query))) return true
-        if (msg.attachments?.some(att => att.sourcePrompt?.toLowerCase().includes(query))) return true
+        if (msg.images?.some((img) => img.sourcePrompt?.toLowerCase().includes(query))) return true
+        if (msg.attachments?.some((att) => att.sourcePrompt?.toLowerCase().includes(query)))
+          return true
         return false
       })
     }
@@ -535,24 +566,22 @@ export function useHistory() {
 
   // 收藏的消息
   const favoriteMessages = computed(() => {
-    return chatStore.messages.filter(msg => msg.isFavorite)
+    return chatStore.messages.filter((msg) => msg.isFavorite)
   })
 
   // 搜索历史记录
   function searchHistory(query: string): ChatHistory[] {
     const lowerQuery = query.toLowerCase()
-    return historyList.value.filter(h =>
-      h.title.toLowerCase().includes(lowerQuery)
-    )
+    return historyList.value.filter((h) => h.title.toLowerCase().includes(lowerQuery))
   }
 
   // 保存当前对话到历史记录
   async function saveCurrentChat(existingHistoryId?: string | null): Promise<string | null> {
     if (chatStore.messages.length === 0) return null
 
-    const firstUserMessage = chatStore.messages.find(m => m.type === 'user')
+    const firstUserMessage = chatStore.messages.find((m) => m.type === 'user')
     const existingHistory = existingHistoryId
-      ? historyList.value.find(item => item.id === existingHistoryId)
+      ? historyList.value.find((item) => item.id === existingHistoryId)
       : undefined
     const historyCandidate = existingHistory ?? (await findMatchingHistory(chatStore.messages))
     const title = historyCandidate?.title || firstUserMessage?.content.slice(0, 50) || t('newChat')
@@ -573,16 +602,14 @@ export function useHistory() {
 
     // 更新历史列表
     if (historyCandidate) {
-      historyList.value = historyList.value.map(item =>
-        item.id === historyId ? history : item
-      )
+      historyList.value = historyList.value.map((item) => (item.id === historyId ? history : item))
     } else {
       historyList.value.unshift(history)
     }
     await setHistoryList(historyList.value)
     historyList.value = await removeDuplicateHistories(historyList.value, defaultHistoryTitle)
 
-    if (historyList.value.some(item => item.id === historyId)) {
+    if (historyList.value.some((item) => item.id === historyId)) {
       return historyId
     }
 
@@ -604,7 +631,7 @@ export function useHistory() {
   // 删除历史记录
   async function deleteHistoryItem(id: string): Promise<void> {
     const removedMessages = await readHistoryMessages(id)
-    historyList.value = historyList.value.filter(h => h.id !== id)
+    historyList.value = historyList.value.filter((h) => h.id !== id)
     await setHistoryList(historyList.value)
     await deleteHistoryMessages(id)
     await deleteUnreferencedLocalImages(collectImages(removedMessages))
@@ -612,11 +639,11 @@ export function useHistory() {
 
   // 清空所有历史记录
   async function clearHistory(): Promise<void> {
-    const removedMessages = (await Promise.all(
-      historyList.value.map(h => readHistoryMessages(h.id)),
-    )).flat()
+    const removedMessages = (
+      await Promise.all(historyList.value.map((h) => readHistoryMessages(h.id)))
+    ).flat()
     // 删除所有历史消息
-    await Promise.all(historyList.value.map(h => deleteHistoryMessages(h.id)))
+    await Promise.all(historyList.value.map((h) => deleteHistoryMessages(h.id)))
     historyList.value = []
     await setHistoryList([])
     await deleteUnreferencedLocalImages(collectImages(removedMessages))
@@ -624,7 +651,7 @@ export function useHistory() {
 
   // 切换收藏状态
   async function toggleHistoryFavorite(id: string): Promise<void> {
-    const item = historyList.value.find(h => h.id === id)
+    const item = historyList.value.find((h) => h.id === id)
     if (item) {
       const previousValue = item.isFavorite
       item.isFavorite = !previousValue
@@ -641,7 +668,7 @@ export function useHistory() {
     const trimmedTitle = title.trim()
     if (!trimmedTitle) return
 
-    const item = historyList.value.find(h => h.id === id)
+    const item = historyList.value.find((h) => h.id === id)
     if (!item || item.title === trimmedTitle) return
 
     const previousTitle = item.title
@@ -705,11 +732,15 @@ export function useHistory() {
   }
 
   // 导入历史记录
-  async function importHistory(file: File, mode: 'replace' | 'merge'): Promise<{ success: boolean; message: string }> {
+  async function importHistory(
+    file: File,
+    mode: 'replace' | 'merge',
+  ): Promise<{ success: boolean; message: string }> {
     try {
       if (isTauriRuntime() && isZipHistoryFile(file)) {
         await ensureDesktopHistoryHydrated()
-        const { importDesktopHistoryZip, cleanupDesktopImportedImages } = await import('../platform/desktopHistoryImport')
+        const { importDesktopHistoryZip, cleanupDesktopImportedImages } =
+          await import('../platform/desktopHistoryImport')
         const result = await importDesktopHistoryZip(file)
         if (!result.success) {
           return result
@@ -742,7 +773,7 @@ export function useHistory() {
       }
 
       // 验证每条消息
-      const isValid = data.messages.every(msg => {
+      const isValid = data.messages.every((msg) => {
         if (!msg.id || !msg.type || !msg.content || !msg.timestamp || !msg.status) {
           return false
         }

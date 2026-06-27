@@ -22,7 +22,7 @@ export function useToast() {
   }
 
   function removeToast(id: string) {
-    toasts.value = toasts.value.filter(t => t.id !== id)
+    toasts.value = toasts.value.filter((t) => t.id !== id)
   }
 
   function success(message: string, duration?: number) {

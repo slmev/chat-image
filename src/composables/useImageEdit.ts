@@ -1,7 +1,12 @@
 import { ref } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { ImageGenerationService } from '../services/api'
-import type { GeneratedImage, ImageEditRequest, VariationOptions, ImageGenerationResponse } from '../types'
+import type {
+  GeneratedImage,
+  ImageEditRequest,
+  VariationOptions,
+  ImageGenerationResponse,
+} from '../types'
 import { isExternalImageUrl } from '../utils/images'
 import { getImageRepository } from '../platform/imageRepository'
 import i18n from '../i18n'
@@ -50,7 +55,7 @@ export function useImageEdit() {
    */
   async function createVariation(
     image: GeneratedImage,
-    options: VariationOptions
+    options: VariationOptions,
   ): Promise<ImageGenerationResponse> {
     isLoading.value = true
     error.value = null
@@ -90,7 +95,7 @@ export function useImageEdit() {
     image: GeneratedImage,
     mask: Blob | undefined,
     prompt: string,
-    size?: '1024x1024' | '1792x1024' | '1024x1792'
+    size?: '1024x1024' | '1792x1024' | '1024x1792',
   ): Promise<ImageGenerationResponse> {
     isLoading.value = true
     error.value = null

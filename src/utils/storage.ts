@@ -1,5 +1,12 @@
 import { STORAGE_KEYS } from './constants'
-import type { ApiConfig, ApiConfigProfile, ApiConfigState, ChatMessage, Theme, GenerationOptions } from '../types'
+import type {
+  ApiConfig,
+  ApiConfigProfile,
+  ApiConfigState,
+  ChatMessage,
+  Theme,
+  GenerationOptions,
+} from '../types'
 import { reviveStoredImageUrls, stripBase64FromMessages } from './imagePersistence'
 
 // 通用的本地存储工具函数
@@ -54,35 +61,35 @@ function encodeApiKey<T extends ApiConfig>(config: T): T {
 }
 
 function isApiConfig(value: unknown): value is ApiConfig {
-  return Boolean(value)
-    && typeof value === 'object'
-    && typeof (value as ApiConfig).endpoint === 'string'
-    && typeof (value as ApiConfig).apiKey === 'string'
-    && typeof (value as ApiConfig).model === 'string'
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as ApiConfig).endpoint === 'string' &&
+    typeof (value as ApiConfig).apiKey === 'string' &&
+    typeof (value as ApiConfig).model === 'string'
+  )
 }
 
 function isApiConfigProfile(value: unknown): value is ApiConfigProfile {
-  return isApiConfig(value)
-    && typeof (value as ApiConfigProfile).id === 'string'
-    && typeof (value as ApiConfigProfile).name === 'string'
+  return (
+    isApiConfig(value) &&
+    typeof (value as ApiConfigProfile).id === 'string' &&
+    typeof (value as ApiConfigProfile).name === 'string'
+  )
 }
 
 export function normalizeApiConfigState(value: unknown, decodeKeys = true): ApiConfigState {
-  if (
-    value
-    && typeof value === 'object'
-    && Array.isArray((value as ApiConfigState).configs)
-  ) {
-    const configs = (value as ApiConfigState).configs
-      .filter(isApiConfigProfile)
-      .map(profile => ({
-        ...(decodeKeys ? decodeApiKey(profile) : profile),
-        id: profile.id,
-        name: profile.name.trim() || '配置 1',
-      }))
-    const activeConfigId = configs.some(profile => profile.id === (value as ApiConfigState).activeConfigId)
+  if (value && typeof value === 'object' && Array.isArray((value as ApiConfigState).configs)) {
+    const configs = (value as ApiConfigState).configs.filter(isApiConfigProfile).map((profile) => ({
+      ...(decodeKeys ? decodeApiKey(profile) : profile),
+      id: profile.id,
+      name: profile.name.trim() || '配置 1',
+    }))
+    const activeConfigId = configs.some(
+      (profile) => profile.id === (value as ApiConfigState).activeConfigId,
+    )
       ? (value as ApiConfigState).activeConfigId
-      : configs[0]?.id ?? null
+      : (configs[0]?.id ?? null)
     return { configs, activeConfigId }
   }
 
@@ -90,11 +97,13 @@ export function normalizeApiConfigState(value: unknown, decodeKeys = true): ApiC
     const config = decodeKeys ? decodeApiKey(value) : value
     const id = generateId()
     return {
-      configs: [{
-        ...config,
-        id,
-        name: '配置 1',
-      }],
+      configs: [
+        {
+          ...config,
+          id,
+          name: '配置 1',
+        },
+      ],
       activeConfigId: id,
     }
   }
@@ -114,7 +123,7 @@ export function getApiConfigState(): ApiConfigState {
 export function setApiConfigState(state: ApiConfigState): void {
   setToStorage(STORAGE_KEYS.API_CONFIG, {
     activeConfigId: state.activeConfigId,
-    configs: state.configs.map(profile => encodeApiKey(profile)),
+    configs: state.configs.map((profile) => encodeApiKey(profile)),
   })
 }
 
@@ -124,7 +133,7 @@ export function clearApiConfigState(): void {
 
 export function getApiConfig(): ApiConfig | null {
   const state = getApiConfigState()
-  const activeProfile = state.configs.find(profile => profile.id === state.activeConfigId) || null
+  const activeProfile = state.configs.find((profile) => profile.id === state.activeConfigId) || null
   if (!activeProfile) return null
   return {
     endpoint: activeProfile.endpoint,
@@ -153,7 +162,7 @@ export function clearApiConfig(): void {
 export function getChatHistory(): ChatMessage[] {
   const messages = getFromStorage<ChatMessage[]>(STORAGE_KEYS.CHAT_HISTORY, [])
   // Migration: ensure all messages have isFavorite field and revive persisted image data.
-  const migrated = messages.map(msg => ({
+  const migrated = messages.map((msg) => ({
     ...msg,
     isFavorite: msg.isFavorite ?? false,
   }))

@@ -4,10 +4,11 @@ import ConfirmModal from '../../components/Common/ConfirmModal.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => ({
-      confirm: '确认',
-      cancel: '取消',
-    }[key] ?? key),
+    t: (key: string) =>
+      ({
+        confirm: '确认',
+        cancel: '取消',
+      })[key] ?? key,
   }),
 }))
 

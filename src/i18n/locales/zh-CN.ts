@@ -105,7 +105,8 @@ export default {
   openDirectory: '打开目录',
   openDataDirectoryFailed: '打开数据目录失败',
   cleanupOrphans: '清理孤儿图片',
-  cleanupOrphansConfirm: '将清理 {count} 张未被历史记录引用的本地图片，预计释放 {size}。此操作不可恢复。',
+  cleanupOrphansConfirm:
+    '将清理 {count} 张未被历史记录引用的本地图片，预计释放 {size}。此操作不可恢复。',
   cleanupComplete: '已清理 {count} 张图片，释放 {size}',
   cleanupPartial: '{count} 个文件清理失败，其余文件已处理',
   cleanupFailed: '清理失败，请稍后重试',
@@ -297,7 +298,8 @@ export default {
   editImageTitle: '编辑图片',
   editPromptLabel: '描述要修改的内容',
   editPromptPlaceholder: '例如：将背景改为海滩场景',
-  editMaskHint: '在图片上绘制白色区域作为遮罩，AI 将只修改遮罩覆盖的区域。不绘制遮罩则修改整张图片。',
+  editMaskHint:
+    '在图片上绘制白色区域作为遮罩，AI 将只修改遮罩覆盖的区域。不绘制遮罩则修改整张图片。',
   processing: '处理中...',
   applyEdit: '应用编辑',
   createVariationFailed: '创建变体失败',

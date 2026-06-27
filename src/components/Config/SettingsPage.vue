@@ -30,14 +30,19 @@
             v-for="profile in configStore.configs"
             :key="profile.id"
             type="button"
-            :class="['config-list-item', {
-              selected: profile.id === selectedConfigId && !isCreating,
-              active: profile.id === configStore.activeConfigId,
-            }]"
+            :class="[
+              'config-list-item',
+              {
+                selected: profile.id === selectedConfigId && !isCreating,
+                active: profile.id === configStore.activeConfigId,
+              },
+            ]"
             @click="selectConfig(profile.id)"
           >
             <span class="config-name">{{ profile.name }}</span>
-            <span class="config-meta">{{ profile.model }} · {{ displayEndpoint(profile.endpoint) }}</span>
+            <span class="config-meta"
+              >{{ profile.model }} · {{ displayEndpoint(profile.endpoint) }}</span
+            >
             <span v-if="profile.id === configStore.activeConfigId" class="active-badge">
               {{ t('activeConfig') }}
             </span>
@@ -53,7 +58,9 @@
               <p class="section-description">{{ t('multiConfigHint') }}</p>
             </div>
             <button
-              v-if="selectedConfigId && selectedConfigId !== configStore.activeConfigId && !isCreating"
+              v-if="
+                selectedConfigId && selectedConfigId !== configStore.activeConfigId && !isCreating
+              "
               type="button"
               class="btn-primary compact"
               @click="handleActivate"
@@ -123,7 +130,11 @@
           </div>
 
           <Transition name="slide-up">
-            <div v-if="testResult" :class="['test-result', testResult.success ? 'success' : 'error']" role="alert">
+            <div
+              v-if="testResult"
+              :class="['test-result', testResult.success ? 'success' : 'error']"
+              role="alert"
+            >
               <component :is="testResult.success ? CheckCircle : AlertCircle" :size="18" />
               <span>{{ testResult.message }}</span>
             </div>
@@ -140,12 +151,7 @@
               <Zap v-else :size="16" />
               <span>{{ isTesting ? t('testing') : t('testConnection') }}</span>
             </button>
-            <button
-              type="button"
-              class="btn-primary"
-              :disabled="!isFormValid"
-              @click="handleSave"
-            >
+            <button type="button" class="btn-primary" :disabled="!isFormValid" @click="handleSave">
               <Save :size="16" />
               <span>{{ t('saveConfig') }}</span>
             </button>
@@ -261,10 +267,12 @@
     <ConfirmModal
       :is-open="showCleanupConfirm"
       :title="t('cleanupOrphans')"
-      :message="t('cleanupOrphansConfirm', {
-        count: storageStats.orphanCount,
-        size: formatBytes(storageStats.orphanBytes),
-      })"
+      :message="
+        t('cleanupOrphansConfirm', {
+          count: storageStats.orphanCount,
+          size: formatBytes(storageStats.orphanBytes),
+        })
+      "
       :confirm-text="t('clear')"
       type="warning"
       @confirm="handleCleanupOrphans"
@@ -339,11 +347,12 @@ const storageStats = ref<LocalImageStorageStats>({
   orphanBytes: 0,
 })
 
-const isFormValid = computed(() => (
-  draft.value.endpoint.trim() !== '' &&
-  draft.value.apiKey.trim() !== '' &&
-  draft.value.model.trim() !== ''
-))
+const isFormValid = computed(
+  () =>
+    draft.value.endpoint.trim() !== '' &&
+    draft.value.apiKey.trim() !== '' &&
+    draft.value.model.trim() !== '',
+)
 
 function resetTestResult() {
   testResult.value = null
@@ -372,7 +381,7 @@ function startNewConfig() {
 }
 
 function selectConfig(id: string) {
-  const profile = configStore.configs.find(item => item.id === id)
+  const profile = configStore.configs.find((item) => item.id === id)
   if (!profile) return
   selectedConfigId.value = id
   isCreating.value = false
@@ -403,7 +412,6 @@ function formatBytes(bytes: number): string {
   const value = bytes / 1024 ** index
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
 }
-
 
 async function handleSave() {
   if (!isFormValid.value) return
@@ -509,10 +517,12 @@ async function handleCleanupOrphans() {
     if (result.failedCount > 0) {
       warning(t('cleanupPartial', { count: result.failedCount }))
     } else {
-      success(t('cleanupComplete', {
-        count: result.deletedCount,
-        size: formatBytes(result.deletedBytes),
-      }))
+      success(
+        t('cleanupComplete', {
+          count: result.deletedCount,
+          size: formatBytes(result.deletedBytes),
+        }),
+      )
     }
   } catch (error) {
     console.error('Cleanup orphan image files failed:', error)
@@ -536,10 +546,13 @@ async function handleOpenDataDirectory() {
 }
 
 watch(
-  () => configStore.configs.map(item => item.id).join(','),
+  () => configStore.configs.map((item) => item.id).join(','),
   () => {
     if (isCreating.value) return
-    if (selectedConfigId.value && configStore.configs.some(item => item.id === selectedConfigId.value)) {
+    if (
+      selectedConfigId.value &&
+      configStore.configs.some((item) => item.id === selectedConfigId.value)
+    ) {
       return
     }
     selectDefaultConfig()

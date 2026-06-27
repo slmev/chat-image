@@ -1,19 +1,14 @@
 <template>
   <Transition name="sidebar">
-    <aside
-      v-if="isOpen"
-      class="sidebar"
-      role="complementary"
-      :aria-label="t('history')"
-    >
+    <aside v-if="isOpen" class="sidebar" role="complementary" :aria-label="t('history')">
       <!-- Header -->
       <div class="sidebar-header">
         <h2 class="sidebar-title">{{ t('history') }}</h2>
         <button
-          @click="$emit('close')"
           class="btn-icon"
           :aria-label="t('closeSidebar')"
           :title="t('closeSidebar')"
+          @click="$emit('close')"
         >
           <X :size="18" />
         </button>
@@ -38,8 +33,8 @@
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          @click="activeTab = tab.id"
           :class="['tab-btn', { active: activeTab === tab.id }]"
+          @click="activeTab = tab.id"
         >
           <component :is="tab.icon" :size="16" />
           <span>{{ tab.label }}</span>
@@ -59,8 +54,8 @@
             <div
               v-for="item in filteredHistory"
               :key="item.id"
-              @click="handleSelectHistory(item)"
               :class="['history-item', { active: item.id === currentChatId }]"
+              @click="handleSelectHistory(item)"
             >
               <div class="history-item-content">
                 <div class="history-item-icon">
@@ -93,18 +88,18 @@
                   <Pencil :size="14" />
                 </button>
                 <button
-                  @click.stop="toggleFavorite(item.id)"
                   :class="['action-btn', { 'is-favorite': item.isFavorite }]"
                   :aria-label="item.isFavorite ? t('unfavorite') : t('favorite')"
                   :title="item.isFavorite ? t('unfavorite') : t('favorite')"
+                  @click.stop="toggleFavorite(item.id)"
                 >
                   <Star :size="14" :fill="item.isFavorite ? 'currentColor' : 'none'" />
                 </button>
                 <button
-                  @click.stop="deleteHistory(item.id)"
                   class="action-btn delete"
                   :aria-label="t('delete')"
                   :title="t('delete')"
+                  @click.stop="deleteHistory(item.id)"
                 >
                   <Trash2 :size="14" />
                 </button>
@@ -123,8 +118,8 @@
             <div
               v-for="item in filteredFavorites"
               :key="item.id"
-              @click="handleSelectHistory(item)"
               :class="['history-item', { active: item.id === currentChatId }]"
+              @click="handleSelectHistory(item)"
             >
               <div class="history-item-content">
                 <div class="history-item-icon favorite">
@@ -157,18 +152,18 @@
                   <Pencil :size="14" />
                 </button>
                 <button
-                  @click.stop="toggleFavorite(item.id)"
                   class="action-btn is-favorite"
                   :aria-label="t('unfavorite')"
                   :title="t('unfavorite')"
+                  @click.stop="toggleFavorite(item.id)"
                 >
                   <StarOff :size="14" />
                 </button>
                 <button
-                  @click.stop="deleteHistory(item.id)"
                   class="action-btn delete"
                   :aria-label="t('delete')"
                   :title="t('delete')"
+                  @click.stop="deleteHistory(item.id)"
                 >
                   <Trash2 :size="14" />
                 </button>
@@ -180,7 +175,7 @@
 
       <!-- Footer -->
       <div class="sidebar-footer">
-        <button @click="clearAll" class="btn-ghost clear-btn">
+        <button class="btn-ghost clear-btn" @click="clearAll">
           <Trash2 :size="16" />
           <span>{{ t('clearAll') }}</span>
         </button>
@@ -190,11 +185,7 @@
 
   <!-- Overlay for mobile -->
   <Transition name="fade">
-    <div
-      v-if="isOpen"
-      class="sidebar-overlay"
-      @click="$emit('close')"
-    />
+    <div v-if="isOpen" class="sidebar-overlay" @click="$emit('close')" />
   </Transition>
 
   <!-- Clear All Confirm -->
@@ -211,16 +202,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import {
-  X,
-  Search,
-  Clock,
-  Star,
-  StarOff,
-  MessageSquare,
-  Pencil,
-  Trash2,
-} from 'lucide-vue-next'
+import { X, Search, Clock, Star, StarOff, MessageSquare, Pencil, Trash2 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { useChat } from '../../composables/useChat'
@@ -267,7 +249,7 @@ const tabs = computed(() => [
     id: 'favorites' as const,
     label: t('favorites'),
     icon: Star,
-    count: historyList.value.filter(h => h.isFavorite).length,
+    count: historyList.value.filter((h) => h.isFavorite).length,
   },
 ])
 
@@ -280,11 +262,9 @@ const filteredHistory = computed(() => {
 })
 
 const filteredFavorites = computed(() => {
-  let list = historyList.value.filter(h => h.isFavorite)
+  let list = historyList.value.filter((h) => h.isFavorite)
   if (searchQuery.value) {
-    list = list.filter(h =>
-      h.title.toLowerCase().includes(searchQuery.value.toLowerCase())
-    )
+    list = list.filter((h) => h.title.toLowerCase().includes(searchQuery.value.toLowerCase()))
   }
   return list.sort((a, b) => b.timestamp - a.timestamp)
 })

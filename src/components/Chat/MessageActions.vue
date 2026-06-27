@@ -41,36 +41,32 @@ function handleDownloadAll() {
 <template>
   <div class="message-actions">
     <button
-      @click.stop="handleToggleFavorite"
       :class="['action-btn', { 'is-favorite': isFavorite }]"
       :title="isFavorite ? t('unfavorite') : t('favorite')"
+      @click.stop="handleToggleFavorite"
     >
       <Star :size="14" :fill="isFavorite ? 'currentColor' : 'none'" />
     </button>
 
     <button
       v-if="hasImages"
-      @click.stop="handleCreateVariation"
       class="action-btn"
       :title="t('createVariation')"
+      @click.stop="handleCreateVariation"
     >
       <RefreshCw :size="14" />
     </button>
 
     <button
       v-if="hasImages"
-      @click.stop="handleDownloadAll"
       class="action-btn"
       :title="t('downloadAll')"
+      @click.stop="handleDownloadAll"
     >
       <Download :size="14" />
     </button>
 
-    <button
-      @click.stop="handleDelete"
-      class="action-btn danger"
-      :title="t('delete')"
-    >
+    <button class="action-btn danger" :title="t('delete')" @click.stop="handleDelete">
       <Trash2 :size="14" />
     </button>
   </div>

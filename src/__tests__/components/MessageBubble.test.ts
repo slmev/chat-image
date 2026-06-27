@@ -18,7 +18,7 @@ vi.mock('vue-i18n', () => ({
     },
   }),
   useI18n: () => ({
-    t: (key: string) => key === 'generating' ? '正在生成图片' : key,
+    t: (key: string) => (key === 'generating' ? '正在生成图片' : key),
   }),
 }))
 
@@ -112,9 +112,11 @@ describe('MessageBubble generation display', () => {
   })
 
   it('shows a glass placeholder and cancel action for pending assistant messages', async () => {
-    const wrapper = mountBubble(message({
-      generationSize: '1024x1792',
-    }))
+    const wrapper = mountBubble(
+      message({
+        generationSize: '1024x1792',
+      }),
+    )
 
     const placeholder = wrapper.find('.generation-placeholder')
 
@@ -130,21 +132,29 @@ describe('MessageBubble generation display', () => {
   })
 
   it('uses the requested generation size for placeholder aspect ratio', () => {
-    const wideWrapper = mountBubble(message({
-      generationSize: '1792x1024',
-    }))
+    const wideWrapper = mountBubble(
+      message({
+        generationSize: '1792x1024',
+      }),
+    )
     const defaultWrapper = mountBubble(message())
 
-    expect(wideWrapper.find('.generation-placeholder').attributes('style')).toContain('aspect-ratio: 16 / 9')
-    expect(defaultWrapper.find('.generation-placeholder').attributes('style')).toContain('aspect-ratio: 9 / 16')
+    expect(wideWrapper.find('.generation-placeholder').attributes('style')).toContain(
+      'aspect-ratio: 16 / 9',
+    )
+    expect(defaultWrapper.find('.generation-placeholder').attributes('style')).toContain(
+      'aspect-ratio: 9 / 16',
+    )
   })
 
   it('renders generated images without a success text bubble', () => {
-    const wrapper = mountBubble(message({
-      content: '图片已生成',
-      status: 'success',
-      images: [image()],
-    }))
+    const wrapper = mountBubble(
+      message({
+        content: '图片已生成',
+        status: 'success',
+        images: [image()],
+      }),
+    )
 
     expect(wrapper.text()).not.toContain('图片已生成')
     expect(wrapper.find('.assistant-bubble').exists()).toBe(false)
@@ -152,15 +162,17 @@ describe('MessageBubble generation display', () => {
   })
 
   it('renders user message attachments below the message bubble', () => {
-    const wrapper = mountBubble(message({
-      type: 'user',
-      content: 'use these references',
-      status: 'success',
-      attachments: [
-        attachment({ id: 'attachment-1', name: 'first.png', url: 'blob:first' }),
-        attachment({ id: 'attachment-2', name: 'second.webp', url: 'blob:second' }),
-      ],
-    }))
+    const wrapper = mountBubble(
+      message({
+        type: 'user',
+        content: 'use these references',
+        status: 'success',
+        attachments: [
+          attachment({ id: 'attachment-1', name: 'first.png', url: 'blob:first' }),
+          attachment({ id: 'attachment-2', name: 'second.webp', url: 'blob:second' }),
+        ],
+      }),
+    )
 
     const thumbnails = wrapper.findAll('.user-attachment-image')
     expect(thumbnails).toHaveLength(2)

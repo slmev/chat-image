@@ -62,47 +62,55 @@ describe('local image actions', () => {
   })
 
   it('rejects unavailable runtime or images without localPath', async () => {
-    await expect(copyLocalImageToClipboardWithDependencies(localImage(), {
-      isTauriRuntime: () => false,
-      readImageBlob: vi.fn(),
-      createImageFromBytes: vi.fn(),
-      writeImage: vi.fn(),
-    })).rejects.toMatchObject({
+    await expect(
+      copyLocalImageToClipboardWithDependencies(localImage(), {
+        isTauriRuntime: () => false,
+        readImageBlob: vi.fn(),
+        createImageFromBytes: vi.fn(),
+        writeImage: vi.fn(),
+      }),
+    ).rejects.toMatchObject({
       code: 'not_available',
       message: '当前图片不支持复制到系统剪贴板',
     })
 
-    await expect(copyLocalImageToClipboardWithDependencies(localImage({ localPath: undefined }), {
-      isTauriRuntime: () => true,
-      readImageBlob: vi.fn(),
-      createImageFromBytes: vi.fn(),
-      writeImage: vi.fn(),
-    })).rejects.toBeInstanceOf(LocalImageActionError)
+    await expect(
+      copyLocalImageToClipboardWithDependencies(localImage({ localPath: undefined }), {
+        isTauriRuntime: () => true,
+        readImageBlob: vi.fn(),
+        createImageFromBytes: vi.fn(),
+        writeImage: vi.fn(),
+      }),
+    ).rejects.toBeInstanceOf(LocalImageActionError)
   })
 
   it('reports local read failures with a toast-friendly error', async () => {
-    await expect(copyLocalImageToClipboardWithDependencies(localImage(), {
-      isTauriRuntime: () => true,
-      readImageBlob: vi.fn(async () => {
-        throw new Error('missing')
+    await expect(
+      copyLocalImageToClipboardWithDependencies(localImage(), {
+        isTauriRuntime: () => true,
+        readImageBlob: vi.fn(async () => {
+          throw new Error('missing')
+        }),
+        createImageFromBytes: vi.fn(),
+        writeImage: vi.fn(),
       }),
-      createImageFromBytes: vi.fn(),
-      writeImage: vi.fn(),
-    })).rejects.toMatchObject({
+    ).rejects.toMatchObject({
       code: 'read_failed',
       message: '读取本地图片失败',
     })
   })
 
   it('reports clipboard write failures with a toast-friendly error', async () => {
-    await expect(copyLocalImageToClipboardWithDependencies(localImage(), {
-      isTauriRuntime: () => true,
-      readImageBlob: vi.fn(async () => new Blob(['png-bytes'], { type: 'image/png' })),
-      createImageFromBytes: vi.fn(async () => ({ rid: 1 })),
-      writeImage: vi.fn(async () => {
-        throw new Error('permission denied')
+    await expect(
+      copyLocalImageToClipboardWithDependencies(localImage(), {
+        isTauriRuntime: () => true,
+        readImageBlob: vi.fn(async () => new Blob(['png-bytes'], { type: 'image/png' })),
+        createImageFromBytes: vi.fn(async () => ({ rid: 1 })),
+        writeImage: vi.fn(async () => {
+          throw new Error('permission denied')
+        }),
       }),
-    })).rejects.toMatchObject({
+    ).rejects.toMatchObject({
       code: 'write_failed',
       message: '写入系统剪贴板失败',
     })

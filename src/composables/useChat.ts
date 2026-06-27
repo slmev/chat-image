@@ -29,9 +29,8 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
-    const attachments = files.length > 0
-      ? await persistChatAttachments(files, { sourcePrompt: content })
-      : []
+    const attachments =
+      files.length > 0 ? await persistChatAttachments(files, { sourcePrompt: content }) : []
 
     // 添加用户消息
     chatStore.addMessage({
@@ -115,7 +114,7 @@ export function useChat() {
 
     // 更新最后一个 pending 状态的消息为已取消
     const lastPendingMessage = chatStore.messages.find(
-      msg => msg.type === 'assistant' && msg.status === 'pending'
+      (msg) => msg.type === 'assistant' && msg.status === 'pending',
     )
     if (lastPendingMessage) {
       await chatStore.setMessageError(lastPendingMessage.id, t('canceled'))

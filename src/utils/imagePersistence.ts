@@ -38,22 +38,22 @@ export function revokeCachedBlobUrls(keys: Iterable<string>): void {
 }
 
 export function revokeCachedBlobUrlsForImages(images: GeneratedImage[]): void {
-  revokeCachedBlobUrls(images.map(image => image.id).filter(Boolean))
+  revokeCachedBlobUrls(images.map((image) => image.id).filter(Boolean))
 }
 
 export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map(msg => {
+  return messages.map((msg) => {
     if (!msg.images && !msg.attachments) return msg
 
     return {
       ...msg,
-      attachments: msg.attachments?.map(attachment => ({
+      attachments: msg.attachments?.map((attachment) => ({
         ...attachment,
         url: attachment.base64
           ? getCachedBlobUrl(attachment.id, attachment.base64, attachment.mimeType)
           : attachment.url,
       })),
-      images: msg.images?.map(img => ({
+      images: msg.images?.map((img) => ({
         ...img,
         url: img.base64 ? getCachedBlobUrl(img.id, img.base64, img.mimeType) : img.url,
       })),
@@ -62,16 +62,16 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
 }
 
 export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map(msg => {
+  return messages.map((msg) => {
     if (!msg.images && !msg.attachments) return msg
 
     return {
       ...msg,
-      attachments: msg.attachments?.map(attachment => ({
+      attachments: msg.attachments?.map((attachment) => ({
         ...attachment,
         base64: undefined,
       })),
-      images: msg.images?.map(img => ({
+      images: msg.images?.map((img) => ({
         ...img,
         base64: undefined,
       })),
@@ -82,24 +82,28 @@ export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] 
 export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<ChatMessage[]> {
   const repository = getImageRepository()
 
-  return Promise.all(messages.map(async msg => {
-    if (!msg.images && !msg.attachments) return msg
+  return Promise.all(
+    messages.map(async (msg) => {
+      if (!msg.images && !msg.attachments) return msg
 
-    const attachments = msg.attachments
-      ? await Promise.all(msg.attachments.map(async attachment => ({
-          ...(await repository.resolveDisplayUrl(attachment)),
-          name: attachment.name,
-        })))
-      : undefined
+      const attachments = msg.attachments
+        ? await Promise.all(
+            msg.attachments.map(async (attachment) => ({
+              ...(await repository.resolveDisplayUrl(attachment)),
+              name: attachment.name,
+            })),
+          )
+        : undefined
 
-    const images = msg.images
-      ? await Promise.all(msg.images.map(image => repository.resolveDisplayUrl(image)))
-      : undefined
+      const images = msg.images
+        ? await Promise.all(msg.images.map((image) => repository.resolveDisplayUrl(image)))
+        : undefined
 
-    return {
-      ...msg,
-      attachments,
-      images,
-    }
-  }))
+      return {
+        ...msg,
+        attachments,
+        images,
+      }
+    }),
+  )
 }

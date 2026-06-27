@@ -1,6 +1,25 @@
-import type { ApiConfig, ImageGenerationRequest, ImageGenerationResponse, ImageEditRequest } from '../types'
+import type {
+  ApiConfig,
+  ImageGenerationRequest,
+  ImageGenerationResponse,
+  ImageEditRequest,
+} from '../types'
 import { runtimeFetch } from '../platform/httpClient'
 import { API_ERROR_MESSAGES } from '../utils/constants'
+
+function getApiErrorMessage(errorData: unknown): string | undefined {
+  if (!errorData || typeof errorData !== 'object' || !('error' in errorData)) {
+    return undefined
+  }
+
+  const error = (errorData as { error?: unknown }).error
+  if (!error || typeof error !== 'object' || !('message' in error)) {
+    return undefined
+  }
+
+  const message = (error as { message?: unknown }).message
+  return typeof message === 'string' ? message : undefined
+}
 
 export class ImageGenerationService {
   private config: ApiConfig
@@ -29,7 +48,7 @@ export class ImageGenerationService {
       size?: '1024x1024' | '1792x1024' | '1024x1792'
       quality?: 'standard' | 'hd'
       n?: number
-    } = {}
+    } = {},
   ): Promise<ImageGenerationResponse> {
     // 取消之前的请求
     this.cancelRequest()
@@ -37,11 +56,7 @@ export class ImageGenerationService {
     // 创建新的 AbortController
     this.abortController = new AbortController()
 
-    const {
-      size = '1024x1024',
-      quality = 'standard',
-      n = 1,
-    } = options
+    const { size = '1024x1024', quality = 'standard', n = 1 } = options
 
     const requestBody: ImageGenerationRequest = {
       model: this.config.model,
@@ -57,7 +72,7 @@ export class ImageGenerationService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(requestBody),
         signal: this.abortController.signal,
@@ -94,7 +109,7 @@ export class ImageGenerationService {
 
     const formData = new FormData()
     const images = Array.isArray(request.image) ? request.image : [request.image]
-    images.forEach(image => {
+    images.forEach((image) => {
       formData.append('image', image)
     })
     if (request.mask) {
@@ -115,7 +130,7 @@ export class ImageGenerationService {
       const response = await runtimeFetch(`${this.config.endpoint}/v1/images/edits`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: formData,
         signal: this.abortController.signal,
@@ -143,7 +158,7 @@ export class ImageGenerationService {
   /**
    * 处理 API 错误
    */
-  private handleApiError(status: number, errorData: any): Error {
+  private handleApiError(status: number, errorData: unknown): Error {
     switch (status) {
       case 401:
         return new Error(API_ERROR_MESSAGES.INVALID_KEY)
@@ -154,7 +169,7 @@ export class ImageGenerationService {
       case 503:
         return new Error(API_ERROR_MESSAGES.SERVER_ERROR)
       default: {
-        const errorMessage = errorData?.error?.message || API_ERROR_MESSAGES.UNKNOWN_ERROR
+        const errorMessage = getApiErrorMessage(errorData) || API_ERROR_MESSAGES.UNKNOWN_ERROR
         return new Error(errorMessage)
       }
     }

@@ -19,11 +19,14 @@ describe('config store', () => {
   })
 
   it('migrates a legacy single API config to the first active profile', async () => {
-    localStorage.setItem(STORAGE_KEYS.API_CONFIG, JSON.stringify({
-      endpoint: 'https://api.example.test',
-      apiKey: btoa('sk-legacy'),
-      model: 'gpt-image-2',
-    }))
+    localStorage.setItem(
+      STORAGE_KEYS.API_CONFIG,
+      JSON.stringify({
+        endpoint: 'https://api.example.test',
+        apiKey: btoa('sk-legacy'),
+        model: 'gpt-image-2',
+      }),
+    )
 
     const { useConfigStore } = await import('../../stores/config')
     const store = useConfigStore()

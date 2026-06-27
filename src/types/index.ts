@@ -155,7 +155,13 @@ export interface VariationOptions {
 }
 
 // 提示词建议类型
-export type PromptCategory = 'people' | 'landscape' | 'products' | 'animals' | 'abstract' | 'architecture'
+export type PromptCategory =
+  | 'people'
+  | 'landscape'
+  | 'products'
+  | 'animals'
+  | 'abstract'
+  | 'architecture'
 
 export interface PromptTemplate {
   id: string

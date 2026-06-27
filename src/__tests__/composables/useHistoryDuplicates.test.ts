@@ -188,13 +188,11 @@ describe('history duplicate prevention', () => {
       id: savedHistory.id,
       messageCount: 4,
     })
-    expect(JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + savedHistory.id) || '[]')
-      .map((item: ChatMessage) => item.id)).toEqual([
-      'user-1',
-      'assistant-1',
-      'user-2',
-      'assistant-2',
-    ])
+    expect(
+      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + savedHistory.id) || '[]').map(
+        (item: ChatMessage) => item.id,
+      ),
+    ).toEqual(['user-1', 'assistant-1', 'user-2', 'assistant-2'])
   })
 
   it('removes existing histories with identical message id snapshots and preserves favorites', async () => {
@@ -204,30 +202,27 @@ describe('history duplicate prevention', () => {
       isFavorite: true,
     })
     const unique = history('unique', { timestamp: 5 })
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([
-      newerDuplicate,
-      favoriteDuplicate,
-      unique,
-    ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + newerDuplicate.id, JSON.stringify([
-      message('same-user'),
-      message('same-assistant'),
-    ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id, JSON.stringify([
-      message('same-user'),
-      message('same-assistant'),
-    ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + unique.id, JSON.stringify([
-      message('unique-message'),
-    ]))
+    localStorage.setItem(
+      HISTORY_LIST_KEY,
+      JSON.stringify([newerDuplicate, favoriteDuplicate, unique]),
+    )
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + newerDuplicate.id,
+      JSON.stringify([message('same-user'), message('same-assistant')]),
+    )
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id,
+      JSON.stringify([message('same-user'), message('same-assistant')]),
+    )
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + unique.id,
+      JSON.stringify([message('unique-message')]),
+    )
 
     const { historyList } = useHistory()
     await flushPromises()
 
-    expect(historyList.value.map(item => item.id)).toEqual([
-      newerDuplicate.id,
-      unique.id,
-    ])
+    expect(historyList.value.map((item) => item.id)).toEqual([newerDuplicate.id, unique.id])
     expect(readHistoryList()[0]).toMatchObject({
       id: newerDuplicate.id,
       isFavorite: true,
@@ -257,11 +252,11 @@ describe('history duplicate prevention', () => {
       message('follow-up-user', { type: 'user', content: 'follow up prompt' }),
       message('follow-up-assistant'),
     ]
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([
-      shorterSnapshot,
-      longerSnapshot,
-    ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + shorterSnapshot.id, JSON.stringify(shortMessages))
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([shorterSnapshot, longerSnapshot]))
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + shorterSnapshot.id,
+      JSON.stringify(shortMessages),
+    )
     localStorage.setItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id, JSON.stringify(longMessages))
 
     const { historyList } = useHistory()
@@ -275,35 +270,36 @@ describe('history duplicate prevention', () => {
       isFavorite: true,
     })
     expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + shorterSnapshot.id)).toBeNull()
-    expect(JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id) || '[]')
-      .map((item: ChatMessage) => item.id)).toEqual([
-      'shared-user',
-      'shared-assistant',
-      'follow-up-user',
-      'follow-up-assistant',
-    ])
+    expect(
+      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id) || '[]').map(
+        (item: ChatMessage) => item.id,
+      ),
+    ).toEqual(['shared-user', 'shared-assistant', 'follow-up-user', 'follow-up-assistant'])
   })
 
   it('does not merge separate chats with the same title and prompt', async () => {
     const first = history('first-history', { title: 'same prompt' })
     const second = history('second-history', { title: 'same prompt' })
     localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([first, second]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + first.id, JSON.stringify([
-      message('first-user', { type: 'user', content: 'same prompt' }),
-      message('first-assistant'),
-    ]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + second.id, JSON.stringify([
-      message('second-user', { type: 'user', content: 'same prompt' }),
-      message('second-assistant'),
-    ]))
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + first.id,
+      JSON.stringify([
+        message('first-user', { type: 'user', content: 'same prompt' }),
+        message('first-assistant'),
+      ]),
+    )
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + second.id,
+      JSON.stringify([
+        message('second-user', { type: 'user', content: 'same prompt' }),
+        message('second-assistant'),
+      ]),
+    )
 
     const { historyList } = useHistory()
     await flushPromises()
 
-    expect(historyList.value.map(item => item.id)).toEqual([
-      first.id,
-      second.id,
-    ])
+    expect(historyList.value.map((item) => item.id)).toEqual([first.id, second.id])
   })
 
   it('renames a saved history item and persists the title', async () => {
@@ -321,14 +317,17 @@ describe('history duplicate prevention', () => {
   it('keeps a renamed title when saving the same history again', async () => {
     const savedHistory = history('history-1', { title: 'Renamed title' })
     localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-    await useChatStore().importMessages([
-      {
-        ...message('user-message'),
-        type: 'user',
-        content: 'first generated prompt',
-      },
-      message('assistant-message'),
-    ], 'replace')
+    await useChatStore().importMessages(
+      [
+        {
+          ...message('user-message'),
+          type: 'user',
+          content: 'first generated prompt',
+        },
+        message('assistant-message'),
+      ],
+      'replace',
+    )
 
     await useHistory().saveCurrentChat(savedHistory.id)
 

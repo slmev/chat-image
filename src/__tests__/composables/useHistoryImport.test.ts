@@ -9,9 +9,10 @@ const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
 const metadata = new Map<string, unknown>()
 const initializeDesktopPersistence = vi.fn<() => Promise<void>>()
 const getDesktopChatHistory = vi.fn<() => Promise<ChatMessage[]>>()
-const getMetadataValue = vi.fn(async <T>(key: string, defaultValue: T): Promise<T> => (
-  metadata.has(key) ? metadata.get(key) as T : defaultValue
-))
+const getMetadataValue = vi.fn(
+  async <T>(key: string, defaultValue: T): Promise<T> =>
+    metadata.has(key) ? (metadata.get(key) as T) : defaultValue,
+)
 const setMetadataValue = vi.fn(async (key: string, value: unknown): Promise<void> => {
   metadata.set(key, value)
 })
@@ -65,12 +66,14 @@ function message(id: string, content = id): ChatMessage {
 function messageWithImage(id: string, localPath: string): ChatMessage {
   return {
     ...message(id),
-    images: [{
-      id: `${id}-image`,
-      url: localPath,
-      localPath,
-      timestamp: 1,
-    }],
+    images: [
+      {
+        id: `${id}-image`,
+        url: localPath,
+        localPath,
+        timestamp: 1,
+      },
+    ],
   }
 }
 
@@ -84,19 +87,21 @@ function history(id: string): ChatHistory {
   }
 }
 
-function importedData(options: {
-  currentMessages?: ChatMessage[]
-  historyList?: ChatHistory[]
-  historyMessages?: Record<string, ChatMessage[]>
-  writtenImagePaths?: string[]
-} = {}) {
+function importedData(
+  options: {
+    currentMessages?: ChatMessage[]
+    historyList?: ChatHistory[]
+    historyMessages?: Record<string, ChatMessage[]>
+    writtenImagePaths?: string[]
+  } = {},
+) {
   const importedHistory = options.historyList ?? [history('new-history')]
   return {
     currentMessages: options.currentMessages ?? [message('new-current')],
     historyList: importedHistory,
-    historyMessages: options.historyMessages ?? Object.fromEntries(
-      importedHistory.map(item => [item.id, [message(`${item.id}-message`)]]),
-    ),
+    historyMessages:
+      options.historyMessages ??
+      Object.fromEntries(importedHistory.map((item) => [item.id, [message(`${item.id}-message`)]])),
     writtenImagePaths: options.writtenImagePaths ?? ['images/imported.png'],
   }
 }
@@ -112,9 +117,9 @@ describe('useHistory desktop ZIP import', () => {
     initializeDesktopPersistence.mockReset()
     initializeDesktopPersistence.mockResolvedValue(undefined)
     getDesktopChatHistory.mockReset()
-    getDesktopChatHistory.mockImplementation(async () => (
-      metadata.get(STORAGE_KEYS.CHAT_HISTORY) as ChatMessage[] || []
-    ))
+    getDesktopChatHistory.mockImplementation(
+      async () => (metadata.get(STORAGE_KEYS.CHAT_HISTORY) as ChatMessage[]) || [],
+    )
     getMetadataValue.mockClear()
     setMetadataValue.mockClear()
     removeMetadataValue.mockClear()
@@ -144,7 +149,9 @@ describe('useHistory desktop ZIP import', () => {
 
     expect(result).toEqual({ success: true, message: '历史记录已替换' })
     expect(useChatStore().messages).toEqual([expect.objectContaining({ id: 'new-current' })])
-    expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([expect.objectContaining({ id: 'new-current' })])
+    expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([
+      expect.objectContaining({ id: 'new-current' }),
+    ])
     expect(metadata.get(HISTORY_LIST_KEY)).toEqual([expect.objectContaining({ id: 'new-history' })])
     expect(metadata.get(HISTORY_MESSAGES_PREFIX + 'new-history')).toEqual([
       expect.objectContaining({ id: 'new-history-message' }),
@@ -157,7 +164,9 @@ describe('useHistory desktop ZIP import', () => {
     const newHistory = history('new-history')
     metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('shared-current')])
     metadata.set(HISTORY_LIST_KEY, [existingHistory])
-    metadata.set(HISTORY_MESSAGES_PREFIX + existingHistory.id, [message('existing-history-message')])
+    metadata.set(HISTORY_MESSAGES_PREFIX + existingHistory.id, [
+      message('existing-history-message'),
+    ])
     importDesktopHistoryZip.mockResolvedValue({
       success: true,
       data: importedData({
@@ -175,8 +184,11 @@ describe('useHistory desktop ZIP import', () => {
     const result = await useHistory().importHistory(importFile(), 'merge')
 
     expect(result).toEqual({ success: true, message: '历史记录已合并' })
-    expect(useChatStore().messages.map(item => item.id)).toEqual(['shared-current', 'new-current'])
-    expect((metadata.get(HISTORY_LIST_KEY) as ChatHistory[]).map(item => item.id)).toEqual([
+    expect(useChatStore().messages.map((item) => item.id)).toEqual([
+      'shared-current',
+      'new-current',
+    ])
+    expect((metadata.get(HISTORY_LIST_KEY) as ChatHistory[]).map((item) => item.id)).toEqual([
       'existing-history',
       'new-history',
     ])
@@ -193,7 +205,9 @@ describe('useHistory desktop ZIP import', () => {
     const newHistory = history('new-history')
     metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('shared-current')])
     metadata.set(HISTORY_LIST_KEY, [existingHistory])
-    metadata.set(HISTORY_MESSAGES_PREFIX + existingHistory.id, [message('existing-history-message')])
+    metadata.set(HISTORY_MESSAGES_PREFIX + existingHistory.id, [
+      message('existing-history-message'),
+    ])
     importDesktopHistoryZip.mockResolvedValue({
       success: true,
       data: importedData({
@@ -203,7 +217,9 @@ describe('useHistory desktop ZIP import', () => {
         ],
         historyList: [existingHistory, newHistory],
         historyMessages: {
-          [existingHistory.id]: [messageWithImage('imported-existing-message', 'images/skip-history.png')],
+          [existingHistory.id]: [
+            messageWithImage('imported-existing-message', 'images/skip-history.png'),
+          ],
           [newHistory.id]: [messageWithImage('new-history-message', 'images/use-history.png')],
         },
         writtenImagePaths: [
@@ -250,9 +266,9 @@ describe('useHistory desktop ZIP import', () => {
     importDesktopHistoryZip.mockResolvedValue({ success: true, data })
     setMetadataValue.mockImplementation(async (key: string, value: unknown): Promise<void> => {
       if (
-        key === HISTORY_LIST_KEY
-        && Array.isArray(value)
-        && value.some(item => item.id === 'new-history')
+        key === HISTORY_LIST_KEY &&
+        Array.isArray(value) &&
+        value.some((item) => item.id === 'new-history')
       ) {
         throw new Error('store failed')
       }
@@ -263,7 +279,9 @@ describe('useHistory desktop ZIP import', () => {
     const result = await useHistory().importHistory(importFile(), 'replace')
 
     expect(result).toEqual({ success: false, message: '导入失败，现有数据已保持不变' })
-    expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([expect.objectContaining({ id: 'old-current' })])
+    expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([
+      expect.objectContaining({ id: 'old-current' }),
+    ])
     expect(metadata.get(HISTORY_LIST_KEY)).toEqual([expect.objectContaining({ id: 'old-history' })])
     expect(metadata.get(HISTORY_MESSAGES_PREFIX + 'old-history')).toEqual([
       expect.objectContaining({ id: 'old-history-message' }),

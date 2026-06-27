@@ -5,25 +5,26 @@ import type { GeneratedImage } from '../../types'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => ({
-      editImageTitle: '编辑图片',
-      sourceImageAlt: '源图片',
-      zoomIn: '放大',
-      zoomOut: '缩小',
-      fitToView: '适配',
-      zoomLevel: '缩放级别',
-      brush: '画笔',
-      eraser: '橡皮擦',
-      brushSize: '大小',
-      undo: '撤销',
-      clearMask: '清除遮罩',
-      editPromptLabel: '描述要修改的内容',
-      editPromptPlaceholder: '例如：将背景改为海滩场景',
-      editMaskHint: '在图片上绘制白色区域作为遮罩',
-      cancel: '取消',
-      processing: '处理中...',
-      applyEdit: '应用编辑',
-    }[key] ?? key),
+    t: (key: string) =>
+      ({
+        editImageTitle: '编辑图片',
+        sourceImageAlt: '源图片',
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        fitToView: '适配',
+        zoomLevel: '缩放级别',
+        brush: '画笔',
+        eraser: '橡皮擦',
+        brushSize: '大小',
+        undo: '撤销',
+        clearMask: '清除遮罩',
+        editPromptLabel: '描述要修改的内容',
+        editPromptPlaceholder: '例如：将背景改为海滩场景',
+        editMaskHint: '在图片上绘制白色区域作为遮罩',
+        cancel: '取消',
+        processing: '处理中...',
+        applyEdit: '应用编辑',
+      })[key] ?? key,
   }),
 }))
 

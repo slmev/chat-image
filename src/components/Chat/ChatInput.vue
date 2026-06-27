@@ -3,10 +3,7 @@
     <!-- Prompt Panel -->
     <Transition name="panel">
       <div v-if="showPromptPanel" class="prompt-panel-wrapper">
-        <PromptPanel
-          @select="handlePromptSelect"
-          @close="showPromptPanel = false"
-        />
+        <PromptPanel @select="handlePromptSelect" @close="showPromptPanel = false" />
       </div>
     </Transition>
 
@@ -38,11 +35,7 @@
           :key="attachment.id"
           class="attachment-thumb"
         >
-          <img
-            :src="attachment.url"
-            :alt="attachment.file.name"
-            class="attachment-preview"
-          />
+          <img :src="attachment.url" :alt="attachment.file.name" class="attachment-preview" />
           <span class="attachment-name" :title="attachment.file.name">
             {{ attachment.file.name }}
           </span>
@@ -62,12 +55,12 @@
       <div class="input-row">
         <!-- Prompt Button -->
         <button
-          @click="showPromptPanel = !showPromptPanel"
           :class="['prompt-btn', { active: showPromptPanel }]"
           :aria-label="t('promptTemplates')"
           :aria-expanded="showPromptPanel"
           :title="t('promptTemplates')"
           :disabled="disabled"
+          @click="showPromptPanel = !showPromptPanel"
         >
           <Sparkles :size="20" />
         </button>
@@ -75,11 +68,11 @@
         <!-- Attachment Button -->
         <button
           type="button"
-          @click="openAttachmentPicker"
           class="attachment-btn"
           :aria-label="t('attachImages')"
           :title="t('attachImages')"
           :disabled="disabled || selectedAttachments.length >= MAX_ATTACHMENT_COUNT"
+          @click="openAttachmentPicker"
         >
           <Paperclip :size="20" />
         </button>
@@ -94,26 +87,26 @@
             @use-template="handleUseTemplate"
           />
           <textarea
+            ref="textareaRef"
             v-model="inputContent"
-            @keydown="handleKeydown"
-            @compositionstart="handleCompositionStart"
-            @compositionend="handleCompositionEnd"
-            @focus="showSuggestions = true"
             :placeholder="t('inputPlaceholder')"
             :aria-label="t('imageDescription')"
             rows="1"
             :disabled="disabled"
             class="chat-textarea"
-            ref="textareaRef"
+            @keydown="handleKeydown"
+            @compositionstart="handleCompositionStart"
+            @compositionend="handleCompositionEnd"
+            @focus="showSuggestions = true"
           />
         </div>
 
         <!-- Send Button -->
         <button
-          @click="handleSend"
           :disabled="disabled || !inputContent.trim()"
           class="send-btn"
           :aria-label="t('send')"
+          @click="handleSend"
         >
           <Send :size="20" />
         </button>
@@ -128,11 +121,11 @@
             <button
               v-for="size in IMAGE_SIZES"
               :key="size.value"
-              @click="selectedOptions.size = size.value"
               :class="['option-chip', { active: selectedOptions.size === size.value }]"
               :disabled="disabled"
               role="radio"
               :aria-checked="selectedOptions.size === size.value"
+              @click="selectedOptions.size = size.value"
             >
               {{ imageSizeLabel(size.value) }}
             </button>
@@ -146,11 +139,11 @@
             <button
               v-for="quality in IMAGE_QUALITIES"
               :key="quality.value"
-              @click="selectedOptions.quality = quality.value"
               :class="['option-chip', { active: selectedOptions.quality === quality.value }]"
               :disabled="disabled"
               role="radio"
               :aria-checked="selectedOptions.quality === quality.value"
+              @click="selectedOptions.quality = quality.value"
             >
               {{ imageQualityLabel(quality.value) }}
             </button>
@@ -162,19 +155,19 @@
           <label class="option-label">{{ t('count') }}</label>
           <div class="count-selector">
             <button
-              @click="decrementCount"
               :disabled="disabled || selectedOptions.n <= 1"
               class="count-btn"
               :aria-label="t('decrease')"
+              @click="decrementCount"
             >
               <Minus :size="14" />
             </button>
             <span class="count-value" aria-live="polite">{{ selectedOptions.n }}</span>
             <button
-              @click="incrementCount"
               :disabled="disabled || selectedOptions.n >= 4"
               class="count-btn"
               :aria-label="t('increase')"
+              @click="incrementCount"
             >
               <Plus :size="14" />
             </button>
@@ -186,30 +179,30 @@
           <label class="option-label">{{ t('style') }}</label>
           <div class="style-chips" role="radiogroup" :aria-label="t('style')">
             <button
-              @click="selectedStyleId = ''"
               :class="['style-chip', { active: !selectedStyleId }]"
               :disabled="disabled"
               role="radio"
               :aria-checked="!selectedStyleId"
+              @click="selectedStyleId = ''"
             >
               {{ t('none') }}
             </button>
             <button
               v-for="style in allStyles"
               :key="style.id"
-              @click="selectedStyleId = style.id"
               :class="['style-chip', { active: selectedStyleId === style.id }]"
               :disabled="disabled"
               role="radio"
               :aria-checked="selectedStyleId === style.id"
+              @click="selectedStyleId = style.id"
             >
               {{ styleLabel(style) }}
             </button>
             <button
-              @click="openCreateStyle"
               class="style-chip add-style"
               :disabled="disabled"
               :title="t('createStyle')"
+              @click="openCreateStyle"
             >
               <Plus :size="12" />
             </button>
@@ -369,12 +362,12 @@ function handleDeleteStyle() {
 
 const selectedStyle = computed<StyleTemplate | undefined>(() => {
   if (!selectedStyleId.value) return undefined
-  return allStyles.value.find(style => style.id === selectedStyleId.value)
+  return allStyles.value.find((style) => style.id === selectedStyleId.value)
 })
 
 function saveGenerationOptions(options: GenerationOptions): void {
   if (isTauriRuntime()) {
-    void setMetadataValue(STORAGE_KEYS.GENERATION_OPTIONS, options).catch(error => {
+    void setMetadataValue(STORAGE_KEYS.GENERATION_OPTIONS, options).catch((error) => {
       console.error('Save generation options failed:', error)
     })
   } else {
@@ -385,7 +378,10 @@ function saveGenerationOptions(options: GenerationOptions): void {
 // 读取上次的生成参数
 onMounted(async () => {
   const savedOptions = isTauriRuntime()
-    ? await getMetadataValue<GenerationOptions>(STORAGE_KEYS.GENERATION_OPTIONS, getGenerationOptions())
+    ? await getMetadataValue<GenerationOptions>(
+        STORAGE_KEYS.GENERATION_OPTIONS,
+        getGenerationOptions(),
+      )
     : getGenerationOptions()
   selectedOptions.value = {
     size: savedOptions.size,
@@ -393,19 +389,23 @@ onMounted(async () => {
     n: savedOptions.n,
   }
   // 恢复上次选择的风格（若该风格仍存在）
-  if (savedOptions.style && allStyles.value.some(style => style.id === savedOptions.style!.id)) {
+  if (savedOptions.style && allStyles.value.some((style) => style.id === savedOptions.style!.id)) {
     selectedStyleId.value = savedOptions.style.id
   }
 })
 
 // 保存生成参数
-watch(selectedOptions, (newOptions) => {
-  const options = {
-    ...newOptions,
-    style: selectedStyle.value,
-  }
-  saveGenerationOptions(options)
-}, { deep: true })
+watch(
+  selectedOptions,
+  (newOptions) => {
+    const options = {
+      ...newOptions,
+      style: selectedStyle.value,
+    }
+    saveGenerationOptions(options)
+  },
+  { deep: true },
+)
 
 watch(selectedStyleId, () => {
   const options = {
@@ -491,6 +491,10 @@ function addAttachmentFiles(files: File[]): void {
   }
 }
 
+defineExpose({
+  addAttachmentFiles,
+})
+
 function handleAttachmentSelect(event: Event) {
   const input = event.target as HTMLInputElement
   addAttachmentFiles(Array.from(input.files || []))
@@ -498,7 +502,7 @@ function handleAttachmentSelect(event: Event) {
 }
 
 function removeAttachment(id: string) {
-  const index = selectedAttachments.value.findIndex(attachment => attachment.id === id)
+  const index = selectedAttachments.value.findIndex((attachment) => attachment.id === id)
   if (index === -1) return
 
   URL.revokeObjectURL(selectedAttachments.value[index].url)
@@ -506,7 +510,7 @@ function removeAttachment(id: string) {
 }
 
 function clearAttachments() {
-  selectedAttachments.value.forEach(attachment => {
+  selectedAttachments.value.forEach((attachment) => {
     URL.revokeObjectURL(attachment.url)
   })
   selectedAttachments.value = []
@@ -552,7 +556,7 @@ function handleSend() {
     ...selectedOptions.value,
     style: selectedStyle.value,
   }
-  const files = selectedAttachments.value.map(attachment => attachment.file)
+  const files = selectedAttachments.value.map((attachment) => attachment.file)
 
   emit('send', inputContent.value.trim(), fullOptions, files)
   inputContent.value = ''
@@ -576,7 +580,11 @@ onBeforeUnmount(() => {
 .input-container {
   position: relative;
   padding: 0 20px 20px;
-  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--color-bg-primary) 96%, var(--color-bg-secondary)) 14%);
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-bg-primary) 96%, var(--color-bg-secondary)) 14%
+  );
 }
 
 .prompt-panel-wrapper {
@@ -593,7 +601,9 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border);
   border-radius: 24px;
   box-shadow: var(--shadow-lg);
-  transition: border-color var(--transition-base), background var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base);
 }
 
 .input-main.dragging {
@@ -762,7 +772,7 @@ onBeforeUnmount(() => {
 }
 
 .send-btn:hover:not(:disabled) {
-    box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md);
   background: var(--color-primary-hover);
 }
 

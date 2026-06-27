@@ -5,35 +5,36 @@ import type { GeneratedImage } from '../../types'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => ({
-      createImageVariation: '创建图片变体',
-      originalImage: '原图',
-      zoomIn: '放大',
-      zoomOut: '缩小',
-      fitToView: '适配',
-      zoomLevel: '缩放级别',
-      prompt: '提示词',
-      variationPromptPlaceholder: '输入或修改提示词来生成变体',
-      style: '风格',
-      keepOriginalStyle: '保持原风格',
-      size: '尺寸',
-      quality: '质量',
-      count: '数量',
-      cancel: '取消',
-      generatingDots: '生成中...',
-      generateVariation: '生成变体',
-      imageSizeSquare: '方形 (1024x1024)',
-      imageSizeLandscape: '横向 (1792x1024)',
-      imageSizePortrait: '纵向 (1024x1792)',
-      qualityStandard: '标准',
-      qualityHd: '高清',
-      styleAnime: '动漫',
-      styleRealistic: '写实',
-      styleOilPainting: '油画',
-      styleWatercolor: '水彩',
-      styleSketch: '素描',
-      styleCyberpunk: '赛博朋克',
-    }[key] ?? key),
+    t: (key: string) =>
+      ({
+        createImageVariation: '创建图片变体',
+        originalImage: '原图',
+        zoomIn: '放大',
+        zoomOut: '缩小',
+        fitToView: '适配',
+        zoomLevel: '缩放级别',
+        prompt: '提示词',
+        variationPromptPlaceholder: '输入或修改提示词来生成变体',
+        style: '风格',
+        keepOriginalStyle: '保持原风格',
+        size: '尺寸',
+        quality: '质量',
+        count: '数量',
+        cancel: '取消',
+        generatingDots: '生成中...',
+        generateVariation: '生成变体',
+        imageSizeSquare: '方形 (1024x1024)',
+        imageSizeLandscape: '横向 (1792x1024)',
+        imageSizePortrait: '纵向 (1024x1792)',
+        qualityStandard: '标准',
+        qualityHd: '高清',
+        styleAnime: '动漫',
+        styleRealistic: '写实',
+        styleOilPainting: '油画',
+        styleWatercolor: '水彩',
+        styleSketch: '素描',
+        styleCyberpunk: '赛博朋克',
+      })[key] ?? key,
   }),
 }))
 
@@ -89,7 +90,9 @@ describe('VariationDialog image sizing', () => {
     imageHeight = 1792
     vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
     vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockImplementation(() => imageWidth)
-    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockImplementation(() => imageHeight)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockImplementation(
+      () => imageHeight,
+    )
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
