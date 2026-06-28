@@ -125,59 +125,65 @@
         <p>{{ t('loading') }}</p>
       </div>
 
-      <div v-else-if="filteredItems.length > 0" class="gallery-grid">
-        <article v-for="item in filteredItems" :key="item.id" class="gallery-card">
-          <button
-            type="button"
-            class="image-frame"
-            :aria-label="t('expandImage')"
-            @click="openPreview(item)"
-          >
-            <img
-              :src="imageUrl(item)"
-              :alt="item.prompt || t('generatedImageAlt')"
-              class="gallery-image"
-              loading="lazy"
-            />
-          </button>
+      <div v-else-if="filteredItems.length > 0" ref="galleryGridRef" class="gallery-grid">
+        <div
+          v-for="(column, columnIndex) in masonryColumns"
+          :key="columnIndex"
+          class="masonry-column"
+        >
+          <article v-for="item in column" :key="item.id" class="gallery-card">
+            <button
+              type="button"
+              class="image-frame"
+              :aria-label="t('expandImage')"
+              @click="openPreview(item)"
+            >
+              <img
+                :src="imageUrl(item)"
+                :alt="item.prompt || t('generatedImageAlt')"
+                class="gallery-image"
+                loading="lazy"
+              />
+            </button>
 
-          <div class="card-body">
-            <p class="card-prompt">{{ item.prompt || t('noPrompt') }}</p>
-            <div class="card-meta">
-              <span>{{ sourceLabel(item) }}</span>
-              <span>{{ formatTime(item.timestamp) }}</span>
+            <div class="card-body">
+              <p class="card-prompt">{{ item.prompt || t('noPrompt') }}</p>
+              <div class="card-meta">
+                <span>{{ sourceLabel(item) }}</span>
+                <span>{{ formatTime(item.timestamp) }}</span>
+              </div>
+              <div class="card-actions">
+                <button
+                  type="button"
+                  class="action-btn"
+                  :title="t('download')"
+                  :aria-label="t('download')"
+                  @click="downloadImage(item)"
+                >
+                  <Download :size="15" />
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  :title="t('share')"
+                  :aria-label="t('share')"
+                  @click="shareImage(item)"
+                >
+                  <Share2 :size="15" />
+                </button>
+                <button
+                  type="button"
+                  class="action-btn"
+                  :title="t('expandImage')"
+                  :aria-label="t('expandImage')"
+                  @click="openPreview(item)"
+                >
+                  <Maximize2 :size="15" />
+                </button>
+              </div>
             </div>
-            <div class="card-actions">
-              <button
-                type="button"
-                class="action-btn"
-                :title="t('download')"
-                :aria-label="t('download')"
-                @click="downloadImage(item)"
-              >
-                <Download :size="15" />
-              </button>
-              <button
-                type="button"
-                class="action-btn"
-                :title="t('share')"
-                :aria-label="t('share')"
-                @click="shareImage(item)"
-              >
-                <Share2 :size="15" />
-              </button>
-              <button
-                type="button"
-                class="action-btn"
-                :title="t('expandImage')"
-                :aria-label="t('expandImage')"
-                @click="openPreview(item)"
-              >
-                <Maximize2 :size="15" />
-              </button>
-            </div>
-          </div>
-        </article>
+          </article>
+        </div>
       </div>
 
       <div v-else class="gallery-state">
@@ -252,7 +258,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   ArrowLeft,
@@ -296,7 +302,10 @@ const activeScope = ref<ScopeFilter>('all')
 const timeRange = ref<TimeRange>('all')
 const density = ref<Density>('comfortable')
 const previewItem = ref<GalleryImageItem | null>(null)
+const galleryGridRef = ref<HTMLElement | null>(null)
+const galleryGridWidth = ref(0)
 const ownedObjectUrls = new Set<string>()
+let galleryResizeObserver: ResizeObserver | null = null
 
 const currentImageCount = computed(
   () => galleryItems.value.filter((item) => item.sourceType === 'current').length,
@@ -356,6 +365,29 @@ const filteredItems = computed(() => {
     .sort((a, b) => b.timestamp - a.timestamp)
 })
 
+const masonryColumnCount = computed(() => {
+  const tileSize = density.value === 'compact' ? 188 : 244
+  const gap = 16
+  const width = galleryGridWidth.value
+  if (width <= 0) return 1
+  return Math.max(1, Math.floor((width + gap) / (tileSize + gap)))
+})
+
+const masonryColumns = computed(() => {
+  const columnCount = masonryColumnCount.value
+  const columns = Array.from({ length: columnCount }, () => [] as GalleryImageItem[])
+  const columnHeights = Array.from({ length: columnCount }, () => 0)
+  const tileSize = density.value === 'compact' ? 188 : 244
+
+  filteredItems.value.forEach((item) => {
+    const targetColumn = columnHeights.indexOf(Math.min(...columnHeights))
+    columns[targetColumn].push(item)
+    columnHeights[targetColumn] += estimatedGalleryCardHeight(item, tileSize)
+  })
+
+  return columns
+})
+
 const hasActiveFilters = computed(
   () =>
     Boolean(searchQuery.value.trim()) || activeScope.value !== 'all' || timeRange.value !== 'all',
@@ -371,11 +403,25 @@ const emptyDescription = computed(() =>
 
 onMounted(() => {
   void refreshGalleryImages()
+  window.addEventListener('resize', updateGalleryGridWidth)
 })
 
 onUnmounted(() => {
   revokeOwnedObjectUrls()
+  galleryResizeObserver?.disconnect()
+  window.removeEventListener('resize', updateGalleryGridWidth)
 })
+
+watch(
+  () => filteredItems.value.length,
+  async (count) => {
+    if (count === 0) return
+    await nextTick()
+    setupGalleryResizeObserver()
+    updateGalleryGridWidth()
+  },
+  { flush: 'post' },
+)
 
 async function refreshGalleryImages() {
   isLoading.value = true
@@ -388,6 +434,9 @@ async function refreshGalleryImages() {
     showError(t('unknownError'))
   } finally {
     isLoading.value = false
+    await nextTick()
+    setupGalleryResizeObserver()
+    updateGalleryGridWidth()
   }
 }
 
@@ -434,6 +483,34 @@ function timeRangeCutoff(range: TimeRange): number | null {
 
   const days = range === 'week' ? 7 : 30
   return Date.now() - days * 24 * 60 * 60 * 1000
+}
+
+function updateGalleryGridWidth() {
+  galleryGridWidth.value = galleryGridRef.value?.clientWidth || 0
+}
+
+function setupGalleryResizeObserver() {
+  galleryResizeObserver?.disconnect()
+  galleryResizeObserver = null
+
+  if (typeof ResizeObserver === 'undefined' || !galleryGridRef.value) return
+
+  galleryResizeObserver = new ResizeObserver((entries) => {
+    galleryGridWidth.value = entries[0]?.contentRect.width || 0
+  })
+  galleryResizeObserver.observe(galleryGridRef.value)
+}
+
+function estimatedGalleryCardHeight(item: GalleryImageItem, tileSize: number): number {
+  const size = item.sourceMessage.generationSize
+  const imageHeight =
+    size === '1792x1024'
+      ? tileSize * (1024 / 1792)
+      : size === '1024x1792'
+        ? tileSize * (1792 / 1024)
+        : tileSize
+
+  return imageHeight + 116
 }
 
 function displayImage(item: GalleryImageItem): GeneratedImage {
@@ -774,53 +851,58 @@ async function shareImage(item: GalleryImageItem) {
 }
 
 .gallery-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
   flex: 1;
   min-height: 0;
   padding: 20px;
   overflow-y: auto;
-  columns: var(--gallery-tile-size);
-  column-gap: 16px;
+}
+
+.masonry-column {
+  display: grid;
+  flex: 1 1 0;
+  gap: 16px;
+  min-width: 0;
 }
 
 .gallery-card {
-  display: inline-block;
-  width: 100%;
-  margin: 0 0 16px;
+  display: block;
+  position: relative;
+  min-width: 0;
   overflow: hidden;
-  break-inside: avoid;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
-  transition: all var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .gallery-card:hover {
+  z-index: 1;
   border-color: var(--color-border-hover);
   box-shadow: var(--shadow-lg);
-  transform: translateY(-2px);
 }
 
 .image-frame {
   display: block;
   width: 100%;
+  min-height: 148px;
   padding: 0;
   background: var(--color-bg-tertiary);
   border: 0;
   cursor: zoom-in;
   overflow: hidden;
+  line-height: 0;
 }
 
 .gallery-image {
   display: block;
   width: 100%;
-  min-height: 148px;
-  object-fit: cover;
-  transition: transform var(--transition-slow);
-}
-
-.gallery-card:hover .gallery-image {
-  transform: scale(1.02);
+  height: auto;
 }
 
 .card-body {
@@ -1068,8 +1150,12 @@ async function shareImage(item: GalleryImageItem) {
   }
 
   .gallery-grid {
+    gap: 14px;
     padding: 14px;
-    columns: 1;
+  }
+
+  .masonry-column {
+    gap: 14px;
   }
 
   .preview-overlay {
