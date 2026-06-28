@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from './constants'
+import { DEFAULT_GENERATION_OPTIONS, STORAGE_KEYS, normalizeGenerationOptions } from './constants'
 import type {
   ApiConfig,
   ApiConfigProfile,
@@ -211,15 +211,13 @@ export function setTheme(theme: Theme): void {
 
 // 生成选项存储
 export function getGenerationOptions(): GenerationOptions {
-  return getFromStorage<GenerationOptions>(STORAGE_KEYS.GENERATION_OPTIONS, {
-    size: '1024x1024',
-    quality: 'standard',
-    n: 1,
-  })
+  return normalizeGenerationOptions(
+    getFromStorage<unknown>(STORAGE_KEYS.GENERATION_OPTIONS, DEFAULT_GENERATION_OPTIONS),
+  )
 }
 
 export function setGenerationOptions(options: GenerationOptions): void {
-  setToStorage(STORAGE_KEYS.GENERATION_OPTIONS, options)
+  setToStorage(STORAGE_KEYS.GENERATION_OPTIONS, normalizeGenerationOptions(options))
 }
 
 // 生成唯一 ID

@@ -4,6 +4,7 @@ import { useConfigStore } from '../stores/config'
 import { useHistory } from '../composables/useHistory'
 import type { ChatAttachment, GenerationOptions } from '../types'
 import { persistChatAttachments } from '../utils/images'
+import { normalizeGenerationOptions } from '../utils/constants'
 import i18n from '../i18n'
 
 // 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
@@ -29,6 +30,7 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
+    const generationOptions = normalizeGenerationOptions(options)
     const attachments =
       files.length > 0 ? await persistChatAttachments(files, { sourcePrompt: content }) : []
 
@@ -44,10 +46,10 @@ export function useChat() {
     const assistantMessage = chatStore.addMessage({
       type: 'assistant',
       content: t('generationInProgress'),
-      generationSize: options.size,
-      generationQuality: options.quality,
-      generationCount: options.n,
-      generationStyle: options.style,
+      generationSize: generationOptions.size,
+      generationQuality: generationOptions.quality,
+      generationCount: generationOptions.n,
+      generationStyle: generationOptions.style,
       status: 'pending',
     })
 
@@ -55,7 +57,7 @@ export function useChat() {
 
     try {
       // 生成图片
-      const images = await generateImage(content, options, attachments)
+      const images = await generateImage(content, generationOptions, attachments)
 
       // 更新助手消息
       await chatStore.addImagesToMessage(assistantMessage.id, images)
@@ -85,12 +87,14 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
+    const generationOptions = normalizeGenerationOptions(options)
+
     await chatStore.updateMessage(messageId, {
       content: t('generationInProgress'),
-      generationSize: options.size,
-      generationQuality: options.quality,
-      generationCount: options.n,
-      generationStyle: options.style,
+      generationSize: generationOptions.size,
+      generationQuality: generationOptions.quality,
+      generationCount: generationOptions.n,
+      generationStyle: generationOptions.style,
       status: 'pending',
       error: undefined,
       images: undefined,
@@ -98,7 +102,7 @@ export function useChat() {
     chatStore.setLoading(true)
 
     try {
-      const images = await generateImage(content, options, attachments)
+      const images = await generateImage(content, generationOptions, attachments)
       await chatStore.addImagesToMessage(messageId, images)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')

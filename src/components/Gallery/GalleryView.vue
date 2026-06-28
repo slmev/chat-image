@@ -283,6 +283,7 @@ import { useToast } from '../../composables/useToast'
 import type { GalleryImageItem, GeneratedImage } from '../../types'
 import { getImageRepository } from '../../platform/imageRepository'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
+import { parseImageSize } from '../../utils/constants'
 
 type ScopeFilter = 'all' | 'recent' | 'favorite'
 type TimeRange = 'all' | 'today' | 'week' | 'month'
@@ -502,13 +503,8 @@ function setupGalleryResizeObserver() {
 }
 
 function estimatedGalleryCardHeight(item: GalleryImageItem, tileSize: number): number {
-  const size = item.sourceMessage.generationSize
-  const imageHeight =
-    size === '1792x1024'
-      ? tileSize * (1024 / 1792)
-      : size === '1024x1792'
-        ? tileSize * (1792 / 1024)
-        : tileSize
+  const size = parseImageSize(item.sourceMessage.generationSize)
+  const imageHeight = size ? tileSize * (size.height / size.width) : tileSize
 
   return imageHeight + 116
 }

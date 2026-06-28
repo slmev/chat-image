@@ -169,6 +169,7 @@ import { useChat } from '../../composables/useChat'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
 import { persistGeneratedImagesFromResponse } from '../../utils/images'
+import { normalizeImageQuality, normalizeImageSize, parseImageSize } from '../../utils/constants'
 
 interface Props {
   message: ChatMessage
@@ -213,15 +214,8 @@ const hasAttachments = computed(
 )
 
 const placeholderAspectRatio = computed(() => {
-  switch (props.message.generationSize) {
-    case '1024x1024':
-      return '1 / 1'
-    case '1792x1024':
-      return '16 / 9'
-    case '1024x1792':
-    default:
-      return '9 / 16'
-  }
+  const size = parseImageSize(props.message.generationSize)
+  return size ? `${size.width} / ${size.height}` : '1 / 1'
 })
 
 function handleDelete(messageId: string) {
@@ -269,8 +263,8 @@ async function handleRetry() {
       props.message.id,
       userPrompt,
       {
-        size: props.message.generationSize ?? '1024x1024',
-        quality: props.message.generationQuality ?? 'standard',
+        size: normalizeImageSize(props.message.generationSize),
+        quality: normalizeImageQuality(props.message.generationQuality),
         n: props.message.generationCount ?? 1,
         ...(props.message.generationStyle ? { style: props.message.generationStyle } : {}),
       },

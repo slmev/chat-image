@@ -1,11 +1,12 @@
 import type {
   ApiConfig,
+  GenerationOptions,
   ImageGenerationRequest,
   ImageGenerationResponse,
   ImageEditRequest,
 } from '../types'
 import { runtimeFetch } from '../platform/httpClient'
-import { API_ERROR_MESSAGES } from '../utils/constants'
+import { API_ERROR_MESSAGES, normalizeGenerationOptions } from '../utils/constants'
 
 function getApiErrorMessage(errorData: unknown): string | undefined {
   if (!errorData || typeof errorData !== 'object' || !('error' in errorData)) {
@@ -44,11 +45,7 @@ export class ImageGenerationService {
    */
   async generateImage(
     prompt: string,
-    options: {
-      size?: '1024x1024' | '1792x1024' | '1024x1792'
-      quality?: 'standard' | 'hd'
-      n?: number
-    } = {},
+    options: Partial<Pick<GenerationOptions, 'size' | 'quality' | 'n'>> = {},
   ): Promise<ImageGenerationResponse> {
     // 取消之前的请求
     this.cancelRequest()
@@ -56,7 +53,7 @@ export class ImageGenerationService {
     // 创建新的 AbortController
     this.abortController = new AbortController()
 
-    const { size = '1024x1024', quality = 'standard', n = 1 } = options
+    const { size, quality, n } = normalizeGenerationOptions(options)
 
     const requestBody: ImageGenerationRequest = {
       model: this.config.model,
@@ -115,16 +112,13 @@ export class ImageGenerationService {
     if (request.mask) {
       formData.append('mask', request.mask)
     }
+    const generationOptions = normalizeGenerationOptions(request)
     formData.append('prompt', request.prompt)
     formData.append('model', this.config.model)
-    formData.append('n', String(request.n ?? 1))
+    formData.append('n', String(generationOptions.n))
     formData.append('response_format', request.response_format ?? 'b64_json')
-    if (request.size) {
-      formData.append('size', request.size)
-    }
-    if (request.quality) {
-      formData.append('quality', request.quality)
-    }
+    formData.append('size', generationOptions.size)
+    formData.append('quality', generationOptions.quality)
 
     try {
       const response = await runtimeFetch(`${this.config.endpoint}/v1/images/edits`, {

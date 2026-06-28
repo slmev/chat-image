@@ -12,6 +12,8 @@ import {
   setApiConfigState,
   getChatHistory,
   setChatHistory,
+  getGenerationOptions,
+  setGenerationOptions,
 } from '../../utils/storage'
 import type { ChatMessage } from '../../types'
 
@@ -64,6 +66,41 @@ describe('storage utils', () => {
     it('stores and retrieves theme', () => {
       setTheme('dark')
       expect(getTheme()).toBe('dark')
+    })
+  })
+
+  describe('generation options storage', () => {
+    it('normalizes legacy quality values when reading stored options', () => {
+      localStorage.setItem(
+        'chat-image-generation-options',
+        JSON.stringify({
+          size: '1792x1024',
+          quality: 'hd',
+          n: 2,
+        }),
+      )
+
+      expect(getGenerationOptions()).toMatchObject({
+        size: '1792x1024',
+        quality: 'high',
+        n: 2,
+      })
+    })
+
+    it('stores normalized generation options', () => {
+      setGenerationOptions({
+        size: '1536x1024',
+        quality: 'medium',
+        n: 1,
+      })
+
+      expect(
+        JSON.parse(localStorage.getItem('chat-image-generation-options') || '{}'),
+      ).toMatchObject({
+        size: '1536x1024',
+        quality: 'medium',
+        n: 1,
+      })
     })
   })
 

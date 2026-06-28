@@ -3,6 +3,7 @@ import { createImageGenerationService } from '../services/api'
 import type { ChatAttachment, GenerationOptions, GeneratedImage } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
 import { persistGeneratedImagesFromResponse } from '../utils/images'
+import { normalizeGenerationOptions } from '../utils/constants'
 import i18n from '../i18n'
 
 // 保存当前服务的引用，以便可以取消请求
@@ -24,8 +25,12 @@ export function useImageGeneration() {
     // 创建新的服务实例
     currentService = createImageGenerationService(configStore.apiConfig)
 
+    const generationOptions = normalizeGenerationOptions(options)
+
     // 如果有风格模板，添加到提示词
-    const finalPrompt = options.style ? `${prompt}, ${options.style.promptSuffix}` : prompt
+    const finalPrompt = generationOptions.style
+      ? `${prompt}, ${generationOptions.style.promptSuffix}`
+      : prompt
 
     try {
       const repository = getImageRepository()
@@ -36,15 +41,15 @@ export function useImageGeneration() {
                 attachments.map((attachment) => repository.readImageBlob(attachment)),
               ),
               prompt: finalPrompt,
-              size: options.size,
-              quality: options.quality,
-              n: options.n,
+              size: generationOptions.size,
+              quality: generationOptions.quality,
+              n: generationOptions.n,
               response_format: 'b64_json',
             })
           : await currentService.generateImage(finalPrompt, {
-              size: options.size,
-              quality: options.quality,
-              n: options.n,
+              size: generationOptions.size,
+              quality: generationOptions.quality,
+              n: generationOptions.n,
             })
 
       const images: GeneratedImage[] = await persistGeneratedImagesFromResponse(response, {

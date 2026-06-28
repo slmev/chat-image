@@ -85,6 +85,7 @@ import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
 import type { GenerationOptions, PromptTemplate } from '../../types'
+import { DEFAULT_GENERATION_OPTIONS } from '../../utils/constants'
 
 const { t } = useI18n()
 const { chatStore, sendMessage, cancelCurrentGeneration, startNewChat } = useChat()
@@ -180,9 +181,7 @@ async function handleToggleFavorite(messageId: string) {
 
 function handleQuickStart(prompt: string) {
   handleSend(prompt, {
-    size: '1024x1024',
-    quality: 'standard',
-    n: 1,
+    ...DEFAULT_GENERATION_OPTIONS,
   })
 }
 

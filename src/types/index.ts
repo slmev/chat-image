@@ -19,8 +19,8 @@ export interface ImageGenerationRequest {
   model: string
   prompt: string
   n: number
-  size: '1024x1024' | '1792x1024' | '1024x1792'
-  quality: 'standard' | 'hd'
+  size: GenerationSize
+  quality: GenerationQuality
   response_format: 'b64_json'
 }
 
@@ -99,9 +99,12 @@ export interface StyleTemplate {
 }
 
 // 配置选项类型
+export type GenerationQuality = 'auto' | 'high' | 'medium' | 'low'
+export type GenerationSize = string
+
 export interface GenerationOptions {
-  size: '1024x1024' | '1792x1024' | '1024x1792'
-  quality: 'standard' | 'hd'
+  size: GenerationSize
+  quality: GenerationQuality
   n: number
   style?: StyleTemplate
 }
@@ -140,8 +143,8 @@ export interface ImageEditRequest {
   image: File | Blob | Array<File | Blob>
   mask?: File | Blob
   prompt: string
-  size?: '1024x1024' | '1792x1024' | '1024x1792'
-  quality?: 'standard' | 'hd'
+  size?: GenerationSize
+  quality?: GenerationQuality
   n?: number
   response_format?: 'b64_json'
 }
@@ -149,8 +152,8 @@ export interface ImageEditRequest {
 export interface VariationOptions {
   prompt: string
   style?: StyleTemplate
-  size: '1024x1024' | '1792x1024' | '1024x1792'
-  quality: 'standard' | 'hd'
+  size: GenerationSize
+  quality: GenerationQuality
   n: number
 }
 

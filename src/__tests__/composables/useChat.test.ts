@@ -111,8 +111,8 @@ describe('useChat', () => {
     const { retryMessage } = useChat()
 
     await retryMessage(assistantMessage.id, userMessage.content, {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
 
@@ -124,7 +124,7 @@ describe('useChat', () => {
     expect(chatStore.messages[1]).toMatchObject({
       id: assistantMessage.id,
       type: 'assistant',
-      generationSize: '1024x1024',
+      generationSize: 'auto',
       status: 'success',
       images: [expect.objectContaining({ id: 'image-1' })],
     })
@@ -150,8 +150,8 @@ describe('useChat', () => {
 
     const { retryMessage } = useChat()
     const options = {
-      size: '1024x1024' as const,
-      quality: 'standard' as const,
+      size: '1024x1024',
+      quality: 'medium' as const,
       n: 1,
     }
 
@@ -175,8 +175,8 @@ describe('useChat', () => {
     const chatStore = useChatStore()
 
     await sendMessage('a wide city skyline', {
-      size: '1792x1024',
-      quality: 'hd',
+      size: '4096x2304',
+      quality: 'high',
       n: 2,
       style: selectedStyle,
     })
@@ -184,8 +184,8 @@ describe('useChat', () => {
     expect(chatStore.messages).toHaveLength(2)
     expect(chatStore.messages[1]).toMatchObject({
       type: 'assistant',
-      generationSize: '1792x1024',
-      generationQuality: 'hd',
+      generationSize: '4096x2304',
+      generationQuality: 'high',
       generationCount: 2,
       generationStyle: selectedStyle,
       status: 'success',
@@ -209,8 +209,8 @@ describe('useChat', () => {
     const { sendMessage } = useChat()
     const chatStore = useChatStore()
     const options = {
-      size: '1024x1024' as const,
-      quality: 'standard' as const,
+      size: '1024x1536',
+      quality: 'low' as const,
       n: 1,
     }
 

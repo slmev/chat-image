@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VariationDialog from '../../components/ImageEdit/VariationDialog.vue'
 import type { GeneratedImage } from '../../types'
 
+const mockState = vi.hoisted(() => ({
+  createVariation: vi.fn(),
+}))
+
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string) =>
@@ -19,6 +23,10 @@ vi.mock('vue-i18n', () => ({
         keepOriginalStyle: '保持原风格',
         size: '尺寸',
         quality: '质量',
+        width: '宽度',
+        height: '高度',
+        swapDimensions: '交换宽高',
+        aspectRatio: '宽高比',
         count: '数量',
         cancel: '取消',
         generatingDots: '生成中...',
@@ -26,8 +34,22 @@ vi.mock('vue-i18n', () => ({
         imageSizeSquare: '方形 (1024x1024)',
         imageSizeLandscape: '横向 (1792x1024)',
         imageSizePortrait: '纵向 (1024x1792)',
-        qualityStandard: '标准',
-        qualityHd: '高清',
+        imageSizeAuto: '自动',
+        imageSize1x1: '1:1',
+        imageSize3x2: '3:2',
+        imageSize2x3: '2:3',
+        imageSize4x3: '4:3',
+        imageSize3x4: '3:4',
+        imageSize9x16: '9:16',
+        imageSize1x1_2k: '1:1 2K',
+        imageSize16x9_2k: '16:9 2K',
+        imageSize9x16_2k: '9:16 2K',
+        imageSize16x9_4k: '16:9 4K',
+        imageSize9x16_4k: '9:16 4K',
+        qualityAuto: '自动',
+        qualityHigh: '高',
+        qualityMedium: '中',
+        qualityLow: '低',
         styleAnime: '动漫',
         styleRealistic: '写实',
         styleOilPainting: '油画',
@@ -42,7 +64,7 @@ vi.mock('../../composables/useImageEdit', () => ({
   useImageEdit: () => ({
     isLoading: false,
     error: null,
-    createVariation: vi.fn(),
+    createVariation: mockState.createVariation,
   }),
 }))
 
@@ -86,6 +108,11 @@ async function mountDialog(sourceImage = image()) {
 
 describe('VariationDialog image sizing', () => {
   beforeEach(() => {
+    mockState.createVariation.mockReset()
+    mockState.createVariation.mockResolvedValue({
+      created: 1,
+      data: [{ b64_json: 'variation' }],
+    })
     imageWidth = 1024
     imageHeight = 1792
     vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true)
@@ -185,5 +212,31 @@ describe('VariationDialog image sizing', () => {
     expect(parsePx(stage.style.width)).toBeCloseTo(VIEWPORT_WIDTH)
     expect(wrapper.get('.zoom-value').text()).toBe('100%')
     expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('next prompt')
+  })
+
+  it('submits selected size and quality for variation generation', async () => {
+    const sourceImage = image()
+    const wrapper = await mountDialog(sourceImage)
+
+    const sizePreset = wrapper
+      .findAll('.ratio-card')
+      .find((button) => button.text().includes('16:9 2K'))
+    expect(sizePreset).toBeTruthy()
+    await sizePreset!.trigger('click')
+
+    const highQuality = wrapper.findAll('.quality-segment').find((button) => button.text() === '高')
+    expect(highQuality).toBeTruthy()
+    await highQuality!.trigger('click')
+
+    await wrapper.get('.btn-primary').trigger('click')
+
+    expect(mockState.createVariation).toHaveBeenCalledWith(
+      sourceImage,
+      expect.objectContaining({
+        size: '2048x1152',
+        quality: 'high',
+        n: 1,
+      }),
+    )
   })
 })

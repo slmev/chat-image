@@ -1,10 +1,27 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { X, Loader2, Shuffle, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
+import { ArrowLeftRight, X, Loader2, Shuffle, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useImageEdit } from '../../composables/useImageEdit'
-import { IMAGE_SIZES, IMAGE_QUALITIES, STYLE_TEMPLATES } from '../../utils/constants'
-import type { GeneratedImage, StyleTemplate, ImageGenerationResponse } from '../../types'
+import {
+  DEFAULT_GENERATION_OPTIONS,
+  IMAGE_COUNT_RANGE,
+  IMAGE_QUALITIES,
+  IMAGE_SIZE_PRESETS,
+  STYLE_TEMPLATES,
+  findImageSizePreset,
+  normalizeImageQuality,
+  normalizeImageSize,
+  parseImageSize,
+  type ImageSizePreset,
+} from '../../utils/constants'
+import type {
+  GeneratedImage,
+  GenerationQuality,
+  GenerationSize,
+  StyleTemplate,
+  ImageGenerationResponse,
+} from '../../types'
 import type { CSSProperties } from 'vue'
 
 interface Props {
@@ -55,9 +72,9 @@ watch(
   (newVal) => {
     if (newVal) {
       prompt.value = props.image.sourcePrompt || ''
-      selectedSize.value = '1024x1024'
-      selectedQuality.value = 'standard'
-      selectedCount.value = 1
+      setSizeValue(DEFAULT_GENERATION_OPTIONS.size)
+      selectedQuality.value = DEFAULT_GENERATION_OPTIONS.quality
+      selectedCount.value = DEFAULT_GENERATION_OPTIONS.n
       selectedStyleId.value = ''
       setupImage()
     }
@@ -136,10 +153,14 @@ async function setupImage() {
   updateFitScale()
 }
 
-const selectedSize = ref<'1024x1024' | '1792x1024' | '1024x1792'>('1024x1024')
-const selectedQuality = ref<'standard' | 'hd'>('standard')
-const selectedCount = ref(1)
+const selectedSize = ref<GenerationSize>(DEFAULT_GENERATION_OPTIONS.size)
+const selectedSizePreset = ref<string>(DEFAULT_GENERATION_OPTIONS.size)
+const widthInput = ref('')
+const heightInput = ref('')
+const selectedQuality = ref<GenerationQuality>(DEFAULT_GENERATION_OPTIONS.quality)
+const selectedCount = ref(DEFAULT_GENERATION_OPTIONS.n)
 const selectedStyleId = ref('')
+const isAutoSize = computed(() => selectedSizePreset.value === DEFAULT_GENERATION_OPTIONS.size)
 
 const selectedStyle = computed<StyleTemplate | undefined>(() => {
   if (!selectedStyleId.value) return undefined
@@ -155,7 +176,10 @@ async function handleSubmit() {
       style: selectedStyle.value,
       size: selectedSize.value,
       quality: selectedQuality.value,
-      n: Math.min(4, Math.max(1, Math.round(selectedCount.value) || 1)),
+      n: Math.min(
+        IMAGE_COUNT_RANGE.max,
+        Math.max(IMAGE_COUNT_RANGE.min, Math.round(selectedCount.value) || 1),
+      ),
     })
     emit('result', response)
     emit('close')
@@ -168,21 +192,65 @@ function handleClose() {
   emit('close')
 }
 
-function imageSizeLabel(value: string): string {
-  switch (value) {
-    case '1024x1024':
-      return t('imageSizeSquare')
-    case '1792x1024':
-      return t('imageSizeLandscape')
-    case '1024x1792':
-      return t('imageSizePortrait')
-    default:
-      return value
-  }
+function imageSizeLabel(preset: ImageSizePreset): string {
+  return t(preset.labelKey)
 }
 
 function imageQualityLabel(value: string): string {
-  return value === 'hd' ? t('qualityHd') : t('qualityStandard')
+  switch (normalizeImageQuality(value)) {
+    case 'high':
+      return t('qualityHigh')
+    case 'medium':
+      return t('qualityMedium')
+    case 'low':
+      return t('qualityLow')
+    case 'auto':
+    default:
+      return t('qualityAuto')
+  }
+}
+
+function ratioIconStyle(preset: ImageSizePreset) {
+  if (!preset.width || !preset.height) return {}
+  return { aspectRatio: `${preset.width} / ${preset.height}` }
+}
+
+function toDimension(value: string): number | null {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function setSizeValue(size: string): void {
+  const normalizedSize = normalizeImageSize(size)
+  selectedSize.value = normalizedSize
+
+  const preset = findImageSizePreset(normalizedSize)
+  selectedSizePreset.value = preset?.value ?? 'custom'
+
+  const parsed = parseImageSize(normalizedSize)
+  widthInput.value = parsed ? String(parsed.width) : ''
+  heightInput.value = parsed ? String(parsed.height) : ''
+}
+
+function applySizePreset(preset: ImageSizePreset): void {
+  setSizeValue(preset.value)
+}
+
+function handleDimensionInput(): void {
+  const width = toDimension(widthInput.value)
+  const height = toDimension(heightInput.value)
+
+  selectedSizePreset.value = 'custom'
+  selectedSize.value = width && height ? `${width}x${height}` : DEFAULT_GENERATION_OPTIONS.size
+}
+
+function swapDimensions(): void {
+  if (isAutoSize.value || !widthInput.value || !heightInput.value) return
+
+  const nextWidth = heightInput.value
+  heightInput.value = widthInput.value
+  widthInput.value = nextWidth
+  handleDimensionInput()
 }
 
 function styleLabel(style: StyleTemplate): string {
@@ -287,26 +355,88 @@ function styleLabel(style: StyleTemplate): string {
                 </select>
               </div>
 
-              <div class="form-group">
+              <div class="form-group size-form-group">
                 <label class="form-label">{{ t('size') }}</label>
-                <select v-model="selectedSize" class="select-field">
-                  <option v-for="size in IMAGE_SIZES" :key="size.value" :value="size.value">
-                    {{ imageSizeLabel(size.value) }}
-                  </option>
-                </select>
+                <div class="size-controls">
+                  <div class="dimension-row">
+                    <label class="dimension-field">
+                      <span class="dimension-label">W</span>
+                      <input
+                        v-model="widthInput"
+                        class="dimension-input"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        :disabled="isAutoSize"
+                        :aria-label="t('width')"
+                        @input="handleDimensionInput"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      class="swap-size-btn"
+                      :disabled="isAutoSize || !widthInput || !heightInput"
+                      :aria-label="t('swapDimensions')"
+                      :title="t('swapDimensions')"
+                      @click="swapDimensions"
+                    >
+                      <ArrowLeftRight :size="14" />
+                    </button>
+                    <label class="dimension-field">
+                      <span class="dimension-label">H</span>
+                      <input
+                        v-model="heightInput"
+                        class="dimension-input"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        step="1"
+                        :disabled="isAutoSize"
+                        :aria-label="t('height')"
+                        @input="handleDimensionInput"
+                      />
+                    </label>
+                  </div>
+                  <div class="ratio-grid" role="radiogroup" :aria-label="t('aspectRatio')">
+                    <button
+                      v-for="preset in IMAGE_SIZE_PRESETS"
+                      :key="preset.value"
+                      type="button"
+                      :class="['ratio-card', { active: selectedSizePreset === preset.value }]"
+                      role="radio"
+                      :aria-checked="selectedSizePreset === preset.value"
+                      @click="applySizePreset(preset)"
+                    >
+                      <span
+                        class="ratio-icon"
+                        :class="{ auto: preset.value === 'auto' }"
+                        :style="ratioIconStyle(preset)"
+                        aria-hidden="true"
+                      >
+                        <span v-if="preset.value === 'auto'">A</span>
+                      </span>
+                      <span class="ratio-label">{{ imageSizeLabel(preset) }}</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div class="form-group">
                 <label class="form-label">{{ t('quality') }}</label>
-                <select v-model="selectedQuality" class="select-field">
-                  <option
+                <div class="quality-segmented" role="radiogroup" :aria-label="t('quality')">
+                  <button
                     v-for="quality in IMAGE_QUALITIES"
                     :key="quality.value"
-                    :value="quality.value"
+                    type="button"
+                    :class="['quality-segment', { active: selectedQuality === quality.value }]"
+                    role="radio"
+                    :aria-checked="selectedQuality === quality.value"
+                    @click="selectedQuality = quality.value"
                   >
                     {{ imageQualityLabel(quality.value) }}
-                  </option>
-                </select>
+                  </button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -504,6 +634,184 @@ function styleLabel(style: StyleTemplate): string {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 16px;
+}
+
+.size-form-group {
+  grid-column: 1 / -1;
+}
+
+.size-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dimension-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dimension-field {
+  width: 118px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.dimension-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-tertiary);
+}
+
+.dimension-input {
+  min-width: 0;
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.dimension-input:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+}
+
+.swap-size-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.swap-size-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.swap-size-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ratio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 6px;
+}
+
+.ratio-card {
+  min-height: 54px;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--transition-base);
+}
+
+.ratio-card:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  color: var(--color-text-primary);
+}
+
+.ratio-card.active {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.ratio-icon {
+  width: 24px;
+  max-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+
+.ratio-icon.auto {
+  aspect-ratio: 1;
+  border-style: dashed;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ratio-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quality-segmented {
+  display: inline-flex;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+.quality-segment {
+  min-width: 44px;
+  height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  white-space: nowrap;
+}
+
+.quality-segment:last-child {
+  border-right: 0;
+}
+
+.quality-segment:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.quality-segment.active {
+  background: var(--color-primary);
+  color: white;
 }
 
 .error-message {

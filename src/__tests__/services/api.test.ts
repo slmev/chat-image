@@ -35,8 +35,8 @@ describe('ImageGenerationService', () => {
     })
 
     const result = await service.generateImage('draw a desk', {
-      size: '1024x1024',
-      quality: 'hd',
+      size: '2048x1152',
+      quality: 'high',
       n: 2,
     })
 
@@ -57,8 +57,8 @@ describe('ImageGenerationService', () => {
       model: 'gpt-image-2',
       prompt: 'draw a desk',
       n: 2,
-      size: '1024x1024',
-      quality: 'hd',
+      size: '2048x1152',
+      quality: 'high',
       response_format: 'b64_json',
     })
   })
@@ -82,7 +82,8 @@ describe('ImageGenerationService', () => {
       image,
       mask,
       prompt: 'replace background',
-      size: '1024x1024',
+      size: 'auto',
+      quality: 'medium',
     })
 
     const init = mockState.runtimeFetch.mock.calls[0][1] as RequestInit
@@ -103,7 +104,8 @@ describe('ImageGenerationService', () => {
     expect(body.get('prompt')).toBe('replace background')
     expect(body.get('model')).toBe('gpt-image-2')
     expect(body.get('n')).toBe('1')
-    expect(body.get('size')).toBe('1024x1024')
+    expect(body.get('size')).toBe('auto')
+    expect(body.get('quality')).toBe('medium')
     expect(body.get('response_format')).toBe('b64_json')
   })
 
@@ -125,8 +127,8 @@ describe('ImageGenerationService', () => {
     await service.editImage({
       image: [firstImage, secondImage],
       prompt: 'use both references',
-      size: '1792x1024',
-      quality: 'hd',
+      size: '1536x1024',
+      quality: 'low',
       n: 3,
     })
 
@@ -138,8 +140,8 @@ describe('ImageGenerationService', () => {
     expect(images[0]).toBeInstanceOf(Blob)
     expect(images[1]).toBeInstanceOf(Blob)
     expect(body.get('prompt')).toBe('use both references')
-    expect(body.get('size')).toBe('1792x1024')
-    expect(body.get('quality')).toBe('hd')
+    expect(body.get('size')).toBe('1536x1024')
+    expect(body.get('quality')).toBe('low')
     expect(body.get('n')).toBe('3')
   })
 

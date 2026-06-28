@@ -93,15 +93,15 @@ describe('useImageGeneration', () => {
     mockState.persistGeneratedImagesFromResponse.mockResolvedValueOnce([generatedImage()])
 
     const result = await useImageGeneration().generateImage('draw a lake', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
 
     expect(result).toEqual([generatedImage()])
     expect(mockState.service.generateImage).toHaveBeenCalledWith('draw a lake', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
     expect(mockState.service.editImage).not.toHaveBeenCalled()
@@ -121,8 +121,8 @@ describe('useImageGeneration', () => {
     await useImageGeneration().generateImage(
       'draw a product photo',
       {
-        size: '1792x1024',
-        quality: 'hd',
+        size: '2304x4096',
+        quality: 'high',
         n: 2,
       },
       [attachment('reference-1'), attachment('reference-2')],
@@ -132,8 +132,8 @@ describe('useImageGeneration', () => {
     expect(mockState.service.editImage).toHaveBeenCalledWith({
       image: [firstBlob, secondBlob],
       prompt: 'draw a product photo',
-      size: '1792x1024',
-      quality: 'hd',
+      size: '2304x4096',
+      quality: 'high',
       n: 2,
       response_format: 'b64_json',
     })

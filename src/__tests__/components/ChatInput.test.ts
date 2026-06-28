@@ -67,6 +67,14 @@ async function addFilesFromParent(wrapper: ReturnType<typeof mountInput>, files:
   await wrapper.vm.$nextTick()
 }
 
+function findButtonByText(wrapper: ReturnType<typeof mountInput>, selector: string, text: string) {
+  const button = wrapper.findAll(selector).find((item) => item.text().includes(text))
+  if (!button) {
+    throw new Error(`Button not found: ${text}`)
+  }
+  return button
+}
+
 describe('ChatInput attachments', () => {
   let createObjectURL: ReturnType<typeof vi.fn>
   let revokeObjectURL: ReturnType<typeof vi.fn>
@@ -143,6 +151,90 @@ describe('ChatInput attachments', () => {
     const event = wrapper.emitted('send')?.[0]
     expect(event?.[2]).toEqual([pasted])
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:pasted.png')
+  })
+
+  it('sends auto size and selected quality', async () => {
+    const wrapper = mountInput()
+
+    await findButtonByText(wrapper, '.quality-segment', 'qualityHigh').trigger('click')
+    await wrapper.find('textarea').setValue('render a watch')
+    await wrapper.find('.send-btn').trigger('click')
+
+    const event = wrapper.emitted('send')?.[0]
+    expect(event?.[1]).toMatchObject({
+      size: 'auto',
+      quality: 'high',
+      n: 1,
+    })
+  })
+
+  it('fills width and height from an aspect preset and sends the preset size', async () => {
+    const wrapper = mountInput()
+
+    expect(wrapper.find('.ratio-card').exists()).toBe(false)
+    await wrapper.find('.size-summary-btn').trigger('click')
+    await findButtonByText(wrapper, '.ratio-card', 'imageSize16x9_2k').trigger('click')
+
+    const inputs = wrapper.findAll('.dimension-input')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('2048')
+    expect((inputs[1].element as HTMLInputElement).value).toBe('1152')
+    expect(wrapper.find('.size-summary-btn').text()).toContain('2048x1152')
+
+    await wrapper.find('textarea').setValue('wide city skyline')
+    await wrapper.find('.send-btn').trigger('click')
+
+    expect(wrapper.emitted('send')?.[0]?.[1]).toMatchObject({
+      size: '2048x1152',
+      quality: 'auto',
+    })
+  })
+
+  it('sends custom dimensions after manual width and height edits', async () => {
+    const wrapper = mountInput()
+
+    await wrapper.find('.size-summary-btn').trigger('click')
+    await findButtonByText(wrapper, '.ratio-card', 'imageSize1x1').trigger('click')
+    const inputs = wrapper.findAll('.dimension-input')
+    await inputs[0].setValue('1400')
+    await inputs[1].setValue('900')
+
+    await wrapper.find('textarea').setValue('custom crop')
+    await wrapper.find('.send-btn').trigger('click')
+
+    expect(wrapper.emitted('send')?.[0]?.[1]).toMatchObject({
+      size: '1400x900',
+      quality: 'auto',
+    })
+  })
+
+  it('sends with Enter when IME composition is not active', async () => {
+    const wrapper = mountInput()
+
+    await wrapper.find('textarea').setValue('generate a small cabin')
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted('send')?.[0]?.[0]).toBe('generate a small cabin')
+  })
+
+  it('does not send with Enter while IME composition is active', async () => {
+    const wrapper = mountInput()
+
+    await wrapper.find('textarea').setValue('nihao')
+    await wrapper.find('textarea').trigger('compositionstart')
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter', isComposing: true })
+
+    expect(wrapper.emitted('send')).toBeUndefined()
+  })
+
+  it('does not send on the Enter keydown immediately after IME composition ends', async () => {
+    const wrapper = mountInput()
+
+    await wrapper.find('textarea').setValue('nihao')
+    await wrapper.find('textarea').trigger('compositionstart')
+    await wrapper.find('textarea').trigger('compositionend')
+    await wrapper.find('textarea').trigger('keydown', { key: 'Enter' })
+
+    expect(wrapper.emitted('send')).toBeUndefined()
   })
 
   it('validates attachment type, size, and count', async () => {

@@ -124,7 +124,7 @@ describe('MessageBubble generation display', () => {
     expect(placeholder.exists()).toBe(true)
     expect(placeholder.attributes('role')).toBe('status')
     expect(placeholder.attributes('aria-label')).toBe('正在生成图片')
-    expect(placeholder.attributes('style')).toContain('aspect-ratio: 9 / 16')
+    expect(placeholder.attributes('style')).toContain('aspect-ratio: 1024 / 1792')
 
     await wrapper.find('.placeholder-cancel-btn').trigger('click')
 
@@ -134,16 +134,24 @@ describe('MessageBubble generation display', () => {
   it('uses the requested generation size for placeholder aspect ratio', () => {
     const wideWrapper = mountBubble(
       message({
-        generationSize: '1792x1024',
+        generationSize: '2048x1152',
+      }),
+    )
+    const customWrapper = mountBubble(
+      message({
+        generationSize: '1234x777',
       }),
     )
     const defaultWrapper = mountBubble(message())
 
     expect(wideWrapper.find('.generation-placeholder').attributes('style')).toContain(
-      'aspect-ratio: 16 / 9',
+      'aspect-ratio: 2048 / 1152',
+    )
+    expect(customWrapper.find('.generation-placeholder').attributes('style')).toContain(
+      'aspect-ratio: 1234 / 777',
     )
     expect(defaultWrapper.find('.generation-placeholder').attributes('style')).toContain(
-      'aspect-ratio: 9 / 16',
+      'aspect-ratio: 1 / 1',
     )
   })
 
@@ -197,7 +205,7 @@ describe('MessageBubble generation display', () => {
       status: 'error',
       error: '生成失败',
       generationSize: '1792x1024',
-      generationQuality: 'hd',
+      generationQuality: 'hd' as unknown as ChatMessage['generationQuality'],
       generationCount: 2,
       generationStyle: selectedStyle,
     })
@@ -211,7 +219,7 @@ describe('MessageBubble generation display', () => {
       'redesign this room',
       {
         size: '1792x1024',
-        quality: 'hd',
+        quality: 'high',
         n: 2,
         style: selectedStyle,
       },

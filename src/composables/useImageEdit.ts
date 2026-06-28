@@ -3,12 +3,15 @@ import { useConfigStore } from '../stores/config'
 import { ImageGenerationService } from '../services/api'
 import type {
   GeneratedImage,
+  GenerationQuality,
+  GenerationSize,
   ImageEditRequest,
   VariationOptions,
   ImageGenerationResponse,
 } from '../types'
 import { isExternalImageUrl } from '../utils/images'
 import { getImageRepository } from '../platform/imageRepository'
+import { normalizeGenerationOptions } from '../utils/constants'
 import i18n from '../i18n'
 
 export function useImageEdit() {
@@ -62,20 +65,21 @@ export function useImageEdit() {
 
     try {
       const service = getService()
+      const generationOptions = normalizeGenerationOptions(options)
 
       // Build variation prompt
       const basePrompt = options.prompt?.trim() || image.sourcePrompt || ''
       let variationPrompt = `${basePrompt}, alternative version, different perspective`
 
       // Append style suffix if selected
-      if (options.style) {
-        variationPrompt += `, ${options.style.promptSuffix}`
+      if (generationOptions.style) {
+        variationPrompt += `, ${generationOptions.style.promptSuffix}`
       }
 
       const response = await service.generateImage(variationPrompt, {
-        size: options.size,
-        quality: options.quality,
-        n: options.n,
+        size: generationOptions.size,
+        quality: generationOptions.quality,
+        n: generationOptions.n,
       })
 
       return response
@@ -95,7 +99,8 @@ export function useImageEdit() {
     image: GeneratedImage,
     mask: Blob | undefined,
     prompt: string,
-    size?: '1024x1024' | '1792x1024' | '1024x1792',
+    size?: GenerationSize,
+    quality?: GenerationQuality,
   ): Promise<ImageGenerationResponse> {
     isLoading.value = true
     error.value = null
@@ -109,6 +114,7 @@ export function useImageEdit() {
         mask,
         prompt,
         size,
+        quality,
       }
 
       const response = await service.editImage(request)

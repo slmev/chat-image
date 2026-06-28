@@ -94,8 +94,8 @@ describe('history duplicate prevention', () => {
     const chat = useChat()
 
     await chat.sendMessage('a quiet mountain lake', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
     const firstHistory = readHistoryList()
@@ -114,8 +114,8 @@ describe('history duplicate prevention', () => {
     const chatForInput = useChat()
 
     await chatForInput.sendMessage('a glass greenhouse', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
     const firstHistory = readHistoryList()
@@ -134,8 +134,8 @@ describe('history duplicate prevention', () => {
     const chat = useChat()
 
     await chat.sendMessage('a courtyard with paper lanterns', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
     const firstHistory = readHistoryList()
@@ -147,8 +147,8 @@ describe('history duplicate prevention', () => {
     const reloadedChat = useFreshChat()
 
     await reloadedChat.sendMessage('add rain reflections', {
-      size: '1024x1024',
-      quality: 'standard',
+      size: 'auto',
+      quality: 'auto',
       n: 1,
     })
 
