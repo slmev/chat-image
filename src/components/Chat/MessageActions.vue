@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { Trash2, Star, RefreshCw, Download } from 'lucide-vue-next'
+import { Trash2, Star, RefreshCw, Download, Pencil } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
   messageId: string
   isFavorite?: boolean
   hasImages?: boolean
+  canEditPrompt?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isFavorite: false,
   hasImages: false,
+  canEditPrompt: false,
 })
 const { t } = useI18n()
 
@@ -19,6 +21,7 @@ const emit = defineEmits<{
   toggleFavorite: [messageId: string]
   createVariation: [messageId: string]
   downloadAll: [messageId: string]
+  editPrompt: [messageId: string]
 }>()
 
 function handleDelete() {
@@ -36,6 +39,10 @@ function handleCreateVariation() {
 function handleDownloadAll() {
   emit('downloadAll', props.messageId)
 }
+
+function handleEditPrompt() {
+  emit('editPrompt', props.messageId)
+}
 </script>
 
 <template>
@@ -46,6 +53,15 @@ function handleDownloadAll() {
       @click.stop="handleToggleFavorite"
     >
       <Star :size="14" :fill="isFavorite ? 'currentColor' : 'none'" />
+    </button>
+
+    <button
+      v-if="canEditPrompt"
+      class="action-btn"
+      :title="t('editPrompt')"
+      @click.stop="handleEditPrompt"
+    >
+      <Pencil :size="14" />
     </button>
 
     <button

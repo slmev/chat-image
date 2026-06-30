@@ -24,21 +24,65 @@
         :aria-label="t('attachImages')"
         @change="handleAttachmentSelect"
       />
+      <input
+        ref="replacementInputRef"
+        type="file"
+        class="attachment-input"
+        :accept="ATTACHMENT_ACCEPT"
+        :aria-label="t('replaceAttachment')"
+        @change="handleReplacementSelect"
+      />
 
       <div
         v-if="selectedAttachments.length > 0"
         class="attachment-rail"
         :aria-label="t('selectedAttachments')"
       >
+        <div class="attachment-rail-header">
+          <span>{{ t('selectedAttachments') }} · {{ selectedAttachments.length }}</span>
+          <button
+            type="button"
+            class="attachment-clear"
+            :disabled="disabled"
+            @click="clearAttachments"
+          >
+            <Trash2 :size="13" />
+            <span>{{ t('clear') }}</span>
+          </button>
+        </div>
         <div
           v-for="attachment in selectedAttachments"
           :key="attachment.id"
           class="attachment-thumb"
+          draggable="true"
+          @dragstart="handleAttachmentDragStart(attachment.id)"
+          @dragover.prevent
+          @drop="handleAttachmentDrop(attachment.id)"
+          @dragend="draggingAttachmentId = null"
         >
-          <img :src="attachment.url" :alt="attachment.file.name" class="attachment-preview" />
-          <span class="attachment-name" :title="attachment.file.name">
-            {{ attachment.file.name }}
+          <GripVertical class="attachment-drag-handle" :size="14" aria-hidden="true" />
+          <button
+            type="button"
+            class="attachment-preview-btn"
+            :aria-label="t('previewImage')"
+            :title="t('previewImage')"
+            @click="previewAttachment = attachment"
+          >
+            <img :src="attachment.url" :alt="attachment.name" class="attachment-preview" />
+          </button>
+          <span class="attachment-name" :title="attachment.name">
+            {{ attachment.name }}
           </span>
+          <button
+            type="button"
+            class="attachment-replace"
+            :aria-label="t('replaceAttachment')"
+            :title="t('replaceAttachment')"
+            :disabled="disabled"
+            @click="openReplacementPicker(attachment.id)"
+          >
+            <RefreshCw :size="11" />
+          </button>
           <button
             type="button"
             class="attachment-remove"
@@ -99,6 +143,10 @@
             @compositionend="handleCompositionEnd"
             @focus="showSuggestions = true"
           />
+        </div>
+
+        <div class="request-summary" :title="requestSummary" aria-live="polite">
+          {{ requestSummary }}
         </div>
 
         <!-- Send Button -->
@@ -228,7 +276,7 @@
                 step="1"
                 :disabled="disabled || isAutoSize"
                 :aria-label="t('width')"
-                @input="handleDimensionInput"
+                @input="handleDimensionInput('width')"
               />
             </label>
             <button
@@ -241,6 +289,18 @@
             >
               <ArrowLeftRight :size="14" />
             </button>
+            <button
+              type="button"
+              :class="['lock-ratio-btn', { active: isRatioLocked }]"
+              :disabled="disabled || isAutoSize || !widthInput || !heightInput"
+              :aria-label="isRatioLocked ? t('unlockAspectRatio') : t('lockAspectRatio')"
+              :title="isRatioLocked ? t('unlockAspectRatio') : t('lockAspectRatio')"
+              :aria-pressed="isRatioLocked"
+              @click="toggleRatioLock"
+            >
+              <Lock v-if="isRatioLocked" :size="14" />
+              <Unlock v-else :size="14" />
+            </button>
             <label class="dimension-field">
               <span class="dimension-label">H</span>
               <input
@@ -252,7 +312,7 @@
                 step="1"
                 :disabled="disabled || isAutoSize"
                 :aria-label="t('height')"
-                @input="handleDimensionInput"
+                @input="handleDimensionInput('height')"
               />
             </label>
           </div>
@@ -293,6 +353,36 @@
       @save="handleSaveStyle"
       @delete="handleDeleteStyle"
     />
+
+    <Teleport to="body">
+      <Transition name="preview">
+        <div
+          v-if="previewAttachment"
+          class="attachment-preview-overlay"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('previewImage')"
+          @click.self="previewAttachment = null"
+        >
+          <div class="attachment-preview-modal">
+            <img
+              :src="previewAttachment.url"
+              :alt="previewAttachment.name"
+              class="attachment-preview-large"
+            />
+            <button
+              type="button"
+              class="attachment-preview-close"
+              :aria-label="t('close')"
+              :title="t('close')"
+              @click="previewAttachment = null"
+            >
+              <X :size="18" />
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -301,12 +391,17 @@ import { ref, computed, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   ArrowLeftRight,
   ChevronDown,
+  GripVertical,
+  Lock,
   Ruler,
   Sparkles,
   Send,
   Minus,
   Plus,
   Paperclip,
+  RefreshCw,
+  Trash2,
+  Unlock,
   X,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
@@ -334,7 +429,14 @@ import { useToast } from '../../composables/useToast'
 import PromptPanel from '../Prompt/PromptPanel.vue'
 import PromptSuggest from '../Prompt/PromptSuggest.vue'
 import CustomStyleDialog from '../Style/CustomStyleDialog.vue'
-import type { GenerationOptions, StyleTemplate } from '../../types'
+import type {
+  ChatAttachment,
+  ChatInputAttachment,
+  GeneratedImage,
+  GenerationMetadata,
+  GenerationOptions,
+  StyleTemplate,
+} from '../../types'
 
 const { t } = useI18n()
 const { customStyles, addStyle, deleteStyle } = useCustomStyles()
@@ -344,7 +446,12 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'send', content: string, options: GenerationOptions, attachments: File[]): void
+  (
+    e: 'send',
+    content: string,
+    options: GenerationOptions,
+    attachments: ChatInputAttachment[],
+  ): void
 }
 
 const props = defineProps<Props>()
@@ -353,6 +460,7 @@ const { error: showError } = useToast()
 
 const textareaRef = ref<HTMLTextAreaElement>()
 const fileInputRef = ref<HTMLInputElement>()
+const replacementInputRef = ref<HTMLInputElement>()
 const inputContent = ref('')
 const selectedOptions = ref<Omit<GenerationOptions, 'style'>>({
   ...DEFAULT_GENERATION_OPTIONS,
@@ -361,11 +469,16 @@ const selectedSizePreset = ref<string>(DEFAULT_GENERATION_OPTIONS.size)
 const widthInput = ref('')
 const heightInput = ref('')
 const selectedStyleId = ref<string>('')
+const draftStyle = ref<StyleTemplate | null>(null)
 const showSizePanel = ref(false)
 const showPromptPanel = ref(false)
 const showStyleDialog = ref(false)
 const editingStyle = ref<StyleTemplate | null>(null)
 const isDragging = ref(false)
+const isRatioLocked = ref(false)
+const lockedRatio = ref<number | null>(null)
+const pendingReplacementId = ref<string | null>(null)
+const draggingAttachmentId = ref<string | null>(null)
 
 const ATTACHMENT_ACCEPT = 'image/png,image/jpeg,image/webp'
 const MAX_ATTACHMENT_COUNT = 4
@@ -374,14 +487,24 @@ const ACCEPTED_ATTACHMENT_TYPES = new Set(['image/png', 'image/jpeg', 'image/web
 
 interface SelectedAttachment {
   id: string
-  file: File
+  name: string
   url: string
+  file?: File
+  attachment?: ChatAttachment
+  ownsUrl: boolean
 }
 
 const selectedAttachments = ref<SelectedAttachment[]>([])
+const previewAttachment = ref<SelectedAttachment | null>(null)
 
 // 合并内置和自定义风格
-const allStyles = computed(() => [...STYLE_TEMPLATES, ...customStyles.value])
+const allStyles = computed(() => {
+  const styles = [...STYLE_TEMPLATES, ...customStyles.value]
+  if (draftStyle.value && !styles.some((style) => style.id === draftStyle.value?.id)) {
+    styles.push(draftStyle.value)
+  }
+  return styles
+})
 const isAutoSize = computed(() => selectedSizePreset.value === DEFAULT_GENERATION_OPTIONS.size)
 const sizeSummary = computed(() => {
   const normalizedSize = normalizeImageSize(selectedOptions.value.size)
@@ -395,6 +518,15 @@ const sizeSummary = computed(() => {
     ? `${parsed.width}x${parsed.height} · ${ratio}`
     : `${parsed.width}x${parsed.height}`
 })
+const requestSummary = computed(() =>
+  [
+    imageQualityLabel(selectedOptions.value.quality),
+    sizeSummary.value,
+    `${selectedOptions.value.n} ${t('imagesUnit')}`,
+    selectedStyle.value ? styleLabel(selectedStyle.value) : t('none'),
+    t('referenceCount', { count: selectedAttachments.value.length }),
+  ].join(' · '),
+)
 
 function imageSizeLabel(preset: ImageSizePreset): string {
   return t(preset.labelKey)
@@ -438,15 +570,44 @@ function setSizeValue(size: string): void {
 
 function applySizePreset(preset: ImageSizePreset): void {
   setSizeValue(preset.value)
+  if (isRatioLocked.value) {
+    lockedRatio.value = currentDimensionRatio()
+  }
 }
 
-function handleDimensionInput(): void {
+function currentDimensionRatio(): number | null {
   const width = toDimension(widthInput.value)
   const height = toDimension(heightInput.value)
+  if (!width || !height) return null
+  return width / height
+}
 
+function updateSizeFromInputs(): void {
+  const width = toDimension(widthInput.value)
+  const height = toDimension(heightInput.value)
   selectedSizePreset.value = 'custom'
   selectedOptions.value.size =
     width && height ? `${width}x${height}` : DEFAULT_GENERATION_OPTIONS.size
+}
+
+function handleDimensionInput(changed: 'width' | 'height' = 'width'): void {
+  const ratio = lockedRatio.value || currentDimensionRatio()
+
+  if (isRatioLocked.value && ratio) {
+    if (changed === 'width') {
+      const width = toDimension(widthInput.value)
+      if (width) {
+        heightInput.value = String(Math.max(1, Math.round(width / ratio)))
+      }
+    } else {
+      const height = toDimension(heightInput.value)
+      if (height) {
+        widthInput.value = String(Math.max(1, Math.round(height * ratio)))
+      }
+    }
+  }
+
+  updateSizeFromInputs()
 }
 
 function swapDimensions(): void {
@@ -455,7 +616,22 @@ function swapDimensions(): void {
   const nextWidth = heightInput.value
   heightInput.value = widthInput.value
   widthInput.value = nextWidth
-  handleDimensionInput()
+  lockedRatio.value = currentDimensionRatio()
+  updateSizeFromInputs()
+}
+
+function toggleRatioLock(): void {
+  if (isAutoSize.value) return
+  if (isRatioLocked.value) {
+    isRatioLocked.value = false
+    lockedRatio.value = null
+    return
+  }
+
+  const ratio = currentDimensionRatio()
+  if (!ratio) return
+  lockedRatio.value = ratio
+  isRatioLocked.value = true
 }
 
 function styleLabel(style: StyleTemplate): string {
@@ -523,6 +699,17 @@ const selectedStyle = computed<StyleTemplate | undefined>(() => {
   if (!selectedStyleId.value) return undefined
   return allStyles.value.find((style) => style.id === selectedStyleId.value)
 })
+
+function setSelectedStyle(style?: StyleTemplate): void {
+  if (!style) {
+    selectedStyleId.value = ''
+    draftStyle.value = null
+    return
+  }
+
+  draftStyle.value = style
+  selectedStyleId.value = style.id
+}
 
 function saveGenerationOptions(options: GenerationOptions): void {
   const normalizedOptions = normalizeGenerationOptions(options)
@@ -650,6 +837,12 @@ function openAttachmentPicker() {
   fileInputRef.value?.click()
 }
 
+function openReplacementPicker(id: string) {
+  if (props.disabled) return
+  pendingReplacementId.value = id
+  replacementInputRef.value?.click()
+}
+
 function createAttachmentId(file: File): string {
   return `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`
 }
@@ -663,26 +856,17 @@ function addAttachmentFiles(files: File[]): void {
       break
     }
 
-    if (!ACCEPTED_ATTACHMENT_TYPES.has(file.type)) {
-      showError(t('attachmentInvalidType', { name: file.name }))
-      continue
+    const selected = createSelectedAttachmentFromFile(file)
+    if (selected) {
+      selectedAttachments.value.push(selected)
     }
-
-    if (file.size > MAX_ATTACHMENT_SIZE) {
-      showError(t('attachmentTooLarge', { name: file.name }))
-      continue
-    }
-
-    selectedAttachments.value.push({
-      id: createAttachmentId(file),
-      file,
-      url: URL.createObjectURL(file),
-    })
   }
 }
 
 defineExpose({
   addAttachmentFiles,
+  addReferenceImage,
+  fillDraftFromGeneration,
 })
 
 function handleAttachmentSelect(event: Event) {
@@ -691,19 +875,135 @@ function handleAttachmentSelect(event: Event) {
   input.value = ''
 }
 
+function handleReplacementSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  const [file] = Array.from(input.files || [])
+  input.value = ''
+
+  if (!file || !pendingReplacementId.value) {
+    pendingReplacementId.value = null
+    return
+  }
+
+  const replacement = createSelectedAttachmentFromFile(file)
+  if (!replacement) {
+    pendingReplacementId.value = null
+    return
+  }
+
+  const index = selectedAttachments.value.findIndex(
+    (attachment) => attachment.id === pendingReplacementId.value,
+  )
+  pendingReplacementId.value = null
+
+  if (index === -1) {
+    revokeSelectedAttachment(replacement)
+    return
+  }
+
+  revokeSelectedAttachment(selectedAttachments.value[index])
+  selectedAttachments.value[index] = replacement
+}
+
 function removeAttachment(id: string) {
   const index = selectedAttachments.value.findIndex((attachment) => attachment.id === id)
   if (index === -1) return
 
-  URL.revokeObjectURL(selectedAttachments.value[index].url)
+  revokeSelectedAttachment(selectedAttachments.value[index])
   selectedAttachments.value.splice(index, 1)
 }
 
 function clearAttachments() {
-  selectedAttachments.value.forEach((attachment) => {
-    URL.revokeObjectURL(attachment.url)
-  })
+  selectedAttachments.value.forEach(revokeSelectedAttachment)
   selectedAttachments.value = []
+  previewAttachment.value = null
+}
+
+function validateAttachmentFile(file: File): boolean {
+  if (!ACCEPTED_ATTACHMENT_TYPES.has(file.type)) {
+    showError(t('attachmentInvalidType', { name: file.name }))
+    return false
+  }
+
+  if (file.size > MAX_ATTACHMENT_SIZE) {
+    showError(t('attachmentTooLarge', { name: file.name }))
+    return false
+  }
+
+  return true
+}
+
+function createSelectedAttachmentFromFile(file: File): SelectedAttachment | null {
+  if (!validateAttachmentFile(file)) return null
+
+  return {
+    id: createAttachmentId(file),
+    name: file.name,
+    file,
+    url: URL.createObjectURL(file),
+    ownsUrl: true,
+  }
+}
+
+function addReferenceImage(image: GeneratedImage | ChatAttachment): void {
+  if (props.disabled) return
+
+  if (selectedAttachments.value.length >= MAX_ATTACHMENT_COUNT) {
+    showError(t('attachmentLimit', { count: MAX_ATTACHMENT_COUNT }))
+    return
+  }
+
+  if (selectedAttachments.value.some((attachment) => attachment.attachment?.id === image.id)) {
+    return
+  }
+
+  const name = 'name' in image && image.name ? image.name : `reference-${image.id}.png`
+  selectedAttachments.value.push({
+    id: `reference-${image.id}`,
+    name,
+    url: image.url,
+    attachment: { ...image, name },
+    ownsUrl: false,
+  })
+}
+
+function fillDraftFromGeneration(generation: GenerationMetadata): void {
+  inputContent.value = generation.prompt
+  selectedOptions.value = {
+    size: generation.size,
+    quality: generation.quality,
+    n: generation.n,
+  }
+  setSizeValue(generation.size)
+  setSelectedStyle(generation.style)
+  clearAttachments()
+  generation.attachments?.forEach(addReferenceImage)
+  showSuggestions.value = false
+  showSizePanel.value = false
+  nextTick(resizeTextarea)
+}
+
+function revokeSelectedAttachment(attachment: SelectedAttachment): void {
+  if (attachment.ownsUrl) {
+    URL.revokeObjectURL(attachment.url)
+  }
+}
+
+function handleAttachmentDragStart(id: string): void {
+  draggingAttachmentId.value = id
+}
+
+function handleAttachmentDrop(targetId: string): void {
+  const sourceId = draggingAttachmentId.value
+  draggingAttachmentId.value = null
+  if (!sourceId || sourceId === targetId) return
+
+  const sourceIndex = selectedAttachments.value.findIndex((attachment) => attachment.id === sourceId)
+  const targetIndex = selectedAttachments.value.findIndex((attachment) => attachment.id === targetId)
+  if (sourceIndex === -1 || targetIndex === -1) return
+
+  const [source] = selectedAttachments.value.splice(sourceIndex, 1)
+  selectedAttachments.value.splice(targetIndex, 0, source)
 }
 
 function handleDragOver(event: DragEvent) {
@@ -746,9 +1046,11 @@ function handleSend() {
     ...normalizeGenerationOptions(selectedOptions.value),
     style: selectedStyle.value,
   }
-  const files = selectedAttachments.value.map((attachment) => attachment.file)
+  const attachments = selectedAttachments.value
+    .map((attachment) => attachment.file || attachment.attachment)
+    .filter((attachment): attachment is ChatInputAttachment => Boolean(attachment))
 
-  emit('send', inputContent.value.trim(), fullOptions, files)
+  emit('send', inputContent.value.trim(), fullOptions, attachments)
   inputContent.value = ''
   clearAttachments()
   showSuggestions.value = false
@@ -808,10 +1110,40 @@ onBeforeUnmount(() => {
 }
 
 .attachment-rail {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 72px));
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.attachment-rail-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+
+.attachment-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all var(--transition-base);
+}
+
+.attachment-clear:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
 }
 
 .attachment-thumb {
@@ -824,11 +1156,35 @@ onBeforeUnmount(() => {
   border-radius: 12px;
 }
 
+.attachment-thumb[draggable='true'] {
+  cursor: grab;
+}
+
+.attachment-preview-btn {
+  width: 100%;
+  height: 100%;
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+}
+
 .attachment-preview {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.attachment-drag-handle {
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  z-index: 1;
+  color: white;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
 }
 
 .attachment-name {
@@ -846,10 +1202,10 @@ onBeforeUnmount(() => {
   background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.68));
 }
 
+.attachment-replace,
 .attachment-remove {
   position: absolute;
   top: 5px;
-  right: 5px;
   width: 22px;
   height: 22px;
   display: flex;
@@ -863,6 +1219,15 @@ onBeforeUnmount(() => {
   transition: all var(--transition-base);
 }
 
+.attachment-replace {
+  right: 31px;
+}
+
+.attachment-remove {
+  right: 5px;
+}
+
+.attachment-replace:hover:not(:disabled),
 .attachment-remove:hover:not(:disabled) {
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
@@ -915,6 +1280,26 @@ onBeforeUnmount(() => {
 .textarea-wrapper {
   flex: 1;
   min-width: 0;
+}
+
+.request-summary {
+  flex: 0 1 260px;
+  max-width: 32vw;
+  min-width: 150px;
+  height: 32px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-textarea {
@@ -1101,7 +1486,8 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.swap-size-btn {
+.swap-size-btn,
+.lock-ratio-btn {
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -1115,14 +1501,60 @@ onBeforeUnmount(() => {
   transition: all var(--transition-base);
 }
 
-.swap-size-btn:hover:not(:disabled) {
+.swap-size-btn:hover:not(:disabled),
+.lock-ratio-btn:hover:not(:disabled),
+.lock-ratio-btn.active {
   background: var(--color-bg-hover);
   color: var(--color-primary);
 }
 
-.swap-size-btn:disabled {
+.swap-size-btn:disabled,
+.lock-ratio-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.attachment-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.attachment-preview-modal {
+  position: relative;
+  max-width: min(92vw, 980px);
+  max-height: 86vh;
+}
+
+.attachment-preview-large {
+  max-width: 100%;
+  max-height: 86vh;
+  display: block;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+.attachment-preview-close {
+  position: absolute;
+  top: -46px;
+  right: 0;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: white;
+  cursor: pointer;
 }
 
 .ratio-grid {
@@ -1372,6 +1804,21 @@ onBeforeUnmount(() => {
     gap: 8px;
   }
 
+  .input-row {
+    flex-wrap: wrap;
+  }
+
+  .textarea-wrapper {
+    order: 1;
+    flex-basis: calc(100% - 108px);
+  }
+
+  .request-summary {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
   .ratio-grid {
     grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   }
@@ -1390,7 +1837,7 @@ onBeforeUnmount(() => {
   }
 
   .dimension-field {
-    width: calc((100% - 38px) / 2);
+    width: calc((100% - 76px) / 2);
   }
 
   .ratio-grid {

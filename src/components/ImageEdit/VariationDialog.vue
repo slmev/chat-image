@@ -21,6 +21,7 @@ import type {
   GenerationSize,
   StyleTemplate,
   ImageGenerationResponse,
+  VariationOptions,
 } from '../../types'
 import type { CSSProperties } from 'vue'
 
@@ -33,7 +34,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   close: []
-  result: [response: ImageGenerationResponse]
+  result: [response: ImageGenerationResponse, options: VariationOptions]
 }>()
 
 const { isLoading, error, createVariation } = useImageEdit()
@@ -171,7 +172,7 @@ async function handleSubmit() {
   if (!prompt.value.trim()) return
 
   try {
-    const response = await createVariation(props.image, {
+    const options: VariationOptions = {
       prompt: prompt.value,
       style: selectedStyle.value,
       size: selectedSize.value,
@@ -180,8 +181,9 @@ async function handleSubmit() {
         IMAGE_COUNT_RANGE.max,
         Math.max(IMAGE_COUNT_RANGE.min, Math.round(selectedCount.value) || 1),
       ),
-    })
-    emit('result', response)
+    }
+    const response = await createVariation(props.image, options)
+    emit('result', response, options)
     emit('close')
   } catch (err) {
     console.error('Variation failed:', err)

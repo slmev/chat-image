@@ -12,8 +12,11 @@ export function createBlobUrlFromBase64(base64: string, mimeType = 'image/png'):
   return URL.createObjectURL(blob)
 }
 
-// blob URL 按 image.id 缓存复用：reviveStoredImageUrls / resolveDisplayUrl 会被反复调用
-// （如每次读取历史、切换会话），若每次都新建 URL 而不释放，旧 URL 会无界泄漏。
+export function createDataUrlFromBase64(base64: string, mimeType = 'image/png'): string {
+  return `data:${mimeType};base64,${base64}`
+}
+
+// blob URL 按 image.id 缓存复用，供仍需要 object URL 的降级路径使用。
 const blobUrlCache = new Map<string, string>()
 
 export function getCachedBlobUrl(key: string, base64: string, mimeType?: string): string {
@@ -50,12 +53,12 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
       attachments: msg.attachments?.map((attachment) => ({
         ...attachment,
         url: attachment.base64
-          ? getCachedBlobUrl(attachment.id, attachment.base64, attachment.mimeType)
+          ? createDataUrlFromBase64(attachment.base64, attachment.mimeType)
           : attachment.url,
       })),
       images: msg.images?.map((img) => ({
         ...img,
-        url: img.base64 ? getCachedBlobUrl(img.id, img.base64, img.mimeType) : img.url,
+        url: img.base64 ? createDataUrlFromBase64(img.base64, img.mimeType) : img.url,
       })),
     }
   })

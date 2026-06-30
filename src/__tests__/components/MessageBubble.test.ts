@@ -2,11 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import MessageBubble from '../../components/Chat/MessageBubble.vue'
-import { useChatStore } from '../../stores/chat'
-import type { ChatAttachment, ChatMessage, GeneratedImage, StyleTemplate } from '../../types'
+import type {
+  ChatAttachment,
+  ChatMessage,
+  GeneratedImage,
+  GenerationMetadata,
+  StyleTemplate,
+} from '../../types'
 
 const mockState = vi.hoisted(() => ({
-  retryMessage: vi.fn(),
+  retryGeneration: vi.fn(),
+  editUserPrompt: vi.fn(),
+  showSuccess: vi.fn(),
   showError: vi.fn(),
   downloadMultipleImages: vi.fn(),
 }))
@@ -24,12 +31,14 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('../../composables/useChat', () => ({
   useChat: () => ({
-    retryMessage: mockState.retryMessage,
+    retryGeneration: mockState.retryGeneration,
+    editUserPrompt: mockState.editUserPrompt,
   }),
 }))
 
 vi.mock('../../composables/useToast', () => ({
   useToast: () => ({
+    success: mockState.showSuccess,
     error: mockState.showError,
   }),
 }))
@@ -69,6 +78,17 @@ function style(): StyleTemplate {
   }
 }
 
+function generation(overrides: Partial<GenerationMetadata> = {}): GenerationMetadata {
+  return {
+    prompt: 'redesign this room',
+    size: 'auto',
+    quality: 'auto',
+    n: 1,
+    attachmentIds: [],
+    ...overrides,
+  }
+}
+
 function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id: 'message-1',
@@ -92,7 +112,18 @@ function mountBubble(chatMessage: ChatMessage) {
           template: '<div class="image-preview-stub">{{ image.id }}</div>',
         },
         MessageActions: {
-          template: '<div class="message-actions-stub" />',
+          props: {
+            messageId: {
+              type: String,
+              required: true,
+            },
+            canEditPrompt: {
+              type: Boolean,
+              default: false,
+            },
+          },
+          template:
+            '<div class="message-actions-stub"><button v-if="canEditPrompt" class="edit-prompt-stub" @click="$emit(\'editPrompt\', messageId)">edit</button></div>',
         },
         VariationDialog: true,
         ImageEditDialog: true,
@@ -106,7 +137,9 @@ describe('MessageBubble generation display', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
-    mockState.retryMessage.mockReset()
+    mockState.retryGeneration.mockReset()
+    mockState.editUserPrompt.mockReset()
+    mockState.showSuccess.mockReset()
     mockState.showError.mockReset()
     mockState.downloadMultipleImages.mockReset()
   })
@@ -114,7 +147,7 @@ describe('MessageBubble generation display', () => {
   it('shows a glass placeholder and cancel action for pending assistant messages', async () => {
     const wrapper = mountBubble(
       message({
-        generationSize: '1024x1792',
+        generation: generation({ size: '1024x1792' }),
       }),
     )
 
@@ -134,12 +167,12 @@ describe('MessageBubble generation display', () => {
   it('uses the requested generation size for placeholder aspect ratio', () => {
     const wideWrapper = mountBubble(
       message({
-        generationSize: '2048x1152',
+        generation: generation({ size: '2048x1152' }),
       }),
     )
     const customWrapper = mountBubble(
       message({
-        generationSize: '1234x777',
+        generation: generation({ size: '1234x777' }),
       }),
     )
     const defaultWrapper = mountBubble(message())
@@ -188,42 +221,51 @@ describe('MessageBubble generation display', () => {
     expect(thumbnails[0].attributes('alt')).toBe('first.png')
   })
 
-  it('retries failed assistant messages with the previous user attachments', async () => {
+  it('edits user prompt text inline from the conversation record', async () => {
+    mockState.editUserPrompt.mockResolvedValueOnce(undefined)
+    const userMessage = message({
+      type: 'user',
+      content: 'original prompt',
+      status: 'success',
+    })
+
+    const wrapper = mountBubble(userMessage)
+    await wrapper.find('.edit-prompt-stub').trigger('click')
+
+    const textarea = wrapper.find('.prompt-edit-textarea')
+    expect(textarea.exists()).toBe(true)
+
+    await textarea.setValue('updated prompt')
+    await wrapper.findAll('.prompt-edit-btn')[0].trigger('click')
+
+    expect(mockState.editUserPrompt).toHaveBeenCalledWith(userMessage.id, 'updated prompt')
+  })
+
+  it('retries failed assistant messages from stored generation metadata', async () => {
     const reference = attachment()
     const selectedStyle = style()
-    mockState.retryMessage.mockResolvedValueOnce(undefined)
-    const chatStore = useChatStore()
-    const userMessage = chatStore.addMessage({
-      type: 'user',
-      content: 'redesign this room',
-      status: 'success',
+    mockState.retryGeneration.mockResolvedValueOnce(undefined)
+    const storedGeneration = generation({
+      size: '1792x1024',
+      quality: 'high',
+      n: 2,
+      styleId: selectedStyle.id,
+      styleName: selectedStyle.name,
+      style: selectedStyle,
+      attachmentIds: [reference.id],
       attachments: [reference],
     })
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = message({
       type: 'assistant',
       content: '生成失败',
       status: 'error',
       error: '生成失败',
-      generationSize: '1792x1024',
-      generationQuality: 'hd' as unknown as ChatMessage['generationQuality'],
-      generationCount: 2,
-      generationStyle: selectedStyle,
+      generation: storedGeneration,
     })
 
     const wrapper = mountBubble(assistantMessage)
     await wrapper.find('.retry-btn').trigger('click')
 
-    expect(userMessage.attachments).toEqual([reference])
-    expect(mockState.retryMessage).toHaveBeenCalledWith(
-      assistantMessage.id,
-      'redesign this room',
-      {
-        size: '1792x1024',
-        quality: 'high',
-        n: 2,
-        style: selectedStyle,
-      },
-      [reference],
-    )
+    expect(mockState.retryGeneration).toHaveBeenCalledWith(assistantMessage.id, storedGeneration)
   })
 })

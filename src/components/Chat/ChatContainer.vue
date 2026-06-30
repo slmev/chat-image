@@ -58,6 +58,8 @@
           @delete="handleDelete"
           @toggle-favorite="handleToggleFavorite"
           @cancel="handleCancel"
+          @set-reference-image="handleSetReferenceImage"
+          @reuse-generation="handleReuseGeneration"
         />
       </template>
     </div>
@@ -74,7 +76,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
 import type { Component } from 'vue'
-import { ImageIcon, Search, Users, Mountain, Cat, Layers, Sparkles } from 'lucide-vue-next'
+import { ImageIcon, Layers, Mountain, Search, Sparkles, Users, Cat } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useChat } from '../../composables/useChat'
 import { useHistory } from '../../composables/useHistory'
@@ -84,7 +86,13 @@ import { useKeyboardShortcuts } from '../../composables/useKeyboardShortcuts'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
-import type { GenerationOptions, PromptTemplate } from '../../types'
+import type {
+  ChatInputAttachment,
+  GeneratedImage,
+  GenerationMetadata,
+  GenerationOptions,
+  PromptTemplate,
+} from '../../types'
 import { DEFAULT_GENERATION_OPTIONS } from '../../utils/constants'
 
 const { t } = useI18n()
@@ -115,7 +123,11 @@ useKeyboardShortcuts([
 ])
 
 const messagesContainer = ref<HTMLElement>()
-const chatInputRef = ref<{ addAttachmentFiles: (files: File[]) => void } | null>(null)
+const chatInputRef = ref<{
+  addAttachmentFiles: (files: File[]) => void
+  addReferenceImage: (image: GeneratedImage) => void
+  fillDraftFromGeneration: (generation: GenerationMetadata) => void
+} | null>(null)
 
 const isConfigured = computed(() => configStore.isConfigured)
 
@@ -145,7 +157,11 @@ function promptTemplateTitle(template: PromptTemplate): string {
   return t(key)
 }
 
-async function handleSend(content: string, options: GenerationOptions, attachments: File[] = []) {
+async function handleSend(
+  content: string,
+  options: GenerationOptions,
+  attachments: ChatInputAttachment[] = [],
+) {
   try {
     await sendMessage(content, options, attachments)
     await nextTick()
@@ -183,6 +199,14 @@ function handleQuickStart(prompt: string) {
   handleSend(prompt, {
     ...DEFAULT_GENERATION_OPTIONS,
   })
+}
+
+function handleSetReferenceImage(image: GeneratedImage) {
+  chatInputRef.value?.addReferenceImage(image)
+}
+
+function handleReuseGeneration(generation: GenerationMetadata) {
+  chatInputRef.value?.fillDraftFromGeneration(generation)
 }
 
 function scrollToBottom() {

@@ -154,11 +154,8 @@ describe('storage utils', () => {
 
   describe('chat history storage', () => {
     it('persists base64 and revives image URLs on read', () => {
-      const createObjectURL = vi.fn(() => 'blob:restored-image')
-      Object.defineProperty(URL, 'createObjectURL', {
-        configurable: true,
-        value: createObjectURL,
-      })
+      const webpBase64 = btoa('webp')
+      const pngBase64 = btoa('png')
 
       const messages: ChatMessage[] = [
         {
@@ -172,7 +169,7 @@ describe('storage utils', () => {
               id: 'attachment-1',
               name: 'reference.webp',
               url: 'https://example.com/reference.webp',
-              base64: btoa('webp'),
+              base64: webpBase64,
               mimeType: 'image/webp',
               timestamp: Date.now(),
             },
@@ -181,7 +178,7 @@ describe('storage utils', () => {
             {
               id: 'image-1',
               url: 'https://example.com/image.png',
-              base64: btoa('png'),
+              base64: pngBase64,
               timestamp: Date.now(),
               sourcePrompt: 'test prompt',
             },
@@ -193,15 +190,14 @@ describe('storage utils', () => {
 
       const restored = getChatHistory()
       expect(restored[0].attachments?.[0]).toMatchObject({
-        url: 'blob:restored-image',
-        base64: btoa('webp'),
+        url: `data:image/webp;base64,${webpBase64}`,
+        base64: webpBase64,
         name: 'reference.webp',
       })
       expect(restored[0].images?.[0]).toMatchObject({
-        url: 'blob:restored-image',
-        base64: btoa('png'),
+        url: `data:image/png;base64,${pngBase64}`,
+        base64: pngBase64,
       })
-      expect(createObjectURL).toHaveBeenCalledTimes(2)
     })
   })
 })

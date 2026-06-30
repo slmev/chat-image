@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useHistory } from '../../composables/useHistory'
 import { useChatStore } from '../../stores/chat'
-import type { ChatAttachment, ChatHistory, ChatMessage, GeneratedImage } from '../../types'
+import type {
+  ChatAttachment,
+  ChatHistory,
+  ChatMessage,
+  GeneratedImage,
+  GenerationMetadata,
+} from '../../types'
 
 const HISTORY_LIST_KEY = 'chat-image-history-list'
 const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
@@ -35,6 +41,17 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   }
 }
 
+function generation(prompt: string, overrides: Partial<GenerationMetadata> = {}): GenerationMetadata {
+  return {
+    prompt,
+    size: '1024x1024',
+    quality: 'auto',
+    n: 1,
+    attachmentIds: [],
+    ...overrides,
+  }
+}
+
 function attachment(overrides: Partial<ChatAttachment> = {}): ChatAttachment {
   return {
     id: 'attachment-1',
@@ -50,6 +67,7 @@ function message(
   images: GeneratedImage[],
   overrides: Partial<ChatMessage> = {},
 ): ChatMessage {
+  const prompt = images[0]?.sourcePrompt || id
   return {
     id,
     type: 'assistant',
@@ -57,6 +75,7 @@ function message(
     timestamp: 1,
     status: 'success',
     images,
+    generation: generation(prompt),
     ...overrides,
   }
 }

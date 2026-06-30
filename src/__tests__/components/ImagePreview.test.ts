@@ -188,6 +188,26 @@ describe('ImagePreview local image actions', () => {
     expect(document.body.textContent).not.toContain('复制')
   })
 
+  it('toggles enlarged image info from the preview action button', async () => {
+    const wrapper = mount(ImagePreview, {
+      props: { image: image({ sourcePrompt: 'silver moon over water' }) },
+    })
+
+    await openPreview(wrapper)
+
+    expect(document.querySelector('.metadata-panel')).toBeNull()
+
+    await triggerBodyButton('图片信息')
+
+    expect(document.querySelector('.metadata-panel')?.textContent).toContain(
+      'silver moon over water',
+    )
+
+    await triggerBodyButton('图片信息')
+
+    expect(document.querySelector('.metadata-panel')).toBeNull()
+  })
+
   it('resolves desktop local paths before rendering images', async () => {
     const localImage = image({
       url: 'images/image-1.png',

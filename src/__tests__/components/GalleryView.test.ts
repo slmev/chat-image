@@ -5,7 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import GalleryView from '../../components/Gallery/GalleryView.vue'
 import i18n from '../../i18n'
 import { useChatStore } from '../../stores/chat'
-import type { ChatHistory, ChatMessage, GeneratedImage } from '../../types'
+import type { ChatHistory, ChatMessage, GeneratedImage, GenerationMetadata } from '../../types'
 
 const HISTORY_LIST_KEY = 'chat-image-history-list'
 const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
@@ -69,11 +69,23 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   }
 }
 
+function generation(prompt: string, overrides: Partial<GenerationMetadata> = {}): GenerationMetadata {
+  return {
+    prompt,
+    size: '1024x1024',
+    quality: 'auto',
+    n: 1,
+    attachmentIds: [],
+    ...overrides,
+  }
+}
+
 function message(
   id: string,
   images: GeneratedImage[],
   overrides: Partial<ChatMessage> = {},
 ): ChatMessage {
+  const prompt = images[0]?.sourcePrompt || id
   return {
     id,
     type: 'assistant',
@@ -81,6 +93,7 @@ function message(
     timestamp: now,
     status: 'success',
     images,
+    generation: generation(prompt),
     ...overrides,
   }
 }
@@ -270,7 +283,11 @@ describe('GalleryView', () => {
 
     await wrapper.get('.image-frame').trigger('click')
     expect(wrapper.find('.preview-overlay').exists()).toBe(true)
-    expect(wrapper.text()).toContain('图片信息')
-    expect(wrapper.text()).toContain('silver moon over water')
+    expect(wrapper.find('.preview-panel').exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="图片信息"]').trigger('click')
+
+    expect(wrapper.find('.preview-panel').exists()).toBe(true)
+    expect(wrapper.find('.preview-panel').text()).toContain('silver moon over water')
   })
 })

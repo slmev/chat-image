@@ -4,7 +4,39 @@
     <div v-if="message.type === 'user'" class="user-message">
       <div class="user-content">
         <div class="user-bubble">
-          <p v-if="highlightedContent" class="user-text">
+          <div v-if="isEditingPrompt" class="prompt-edit-form">
+            <textarea
+              ref="promptEditTextareaRef"
+              v-model="editedPrompt"
+              class="prompt-edit-textarea"
+              :aria-label="t('editPrompt')"
+              rows="3"
+              @keydown.esc.prevent="cancelPromptEdit"
+              @keydown.meta.enter.prevent="savePromptEdit"
+              @keydown.ctrl.enter.prevent="savePromptEdit"
+            />
+            <div class="prompt-edit-actions">
+              <button
+                type="button"
+                class="prompt-edit-btn"
+                :title="t('save')"
+                :aria-label="t('save')"
+                @click="savePromptEdit"
+              >
+                <Check :size="14" />
+              </button>
+              <button
+                type="button"
+                class="prompt-edit-btn"
+                :title="t('cancel')"
+                :aria-label="t('cancel')"
+                @click="cancelPromptEdit"
+              >
+                <X :size="14" />
+              </button>
+            </div>
+          </div>
+          <p v-else-if="highlightedContent" class="user-text">
             <template v-for="(part, i) in highlightedContent" :key="i"
               ><mark v-if="part.isMatch" class="search-highlight">{{ part.text }}</mark
               ><template v-else>{{ part.text }}</template></template
@@ -32,9 +64,11 @@
       <MessageActions
         :message-id="message.id"
         :is-favorite="message.isFavorite"
+        can-edit-prompt
         class="message-actions"
         @delete="handleDelete"
         @toggle-favorite="handleToggleFavorite"
+        @edit-prompt="startPromptEdit"
       />
     </div>
 
@@ -49,6 +83,9 @@
       >
         <div class="generation-placeholder-sheen" aria-hidden="true"></div>
         <div class="generation-spinner" aria-hidden="true"></div>
+        <div v-if="generationSummary" class="placeholder-summary">
+          {{ generationSummary }}
+        </div>
         <button
           type="button"
           class="placeholder-cancel-btn"
@@ -66,10 +103,17 @@
             <AlertCircle :size="16" />
             <span>{{ message.error || t('generationFailed') }}</span>
           </p>
-          <button class="retry-btn" :disabled="isRetrying" @click="handleRetry">
-            <RefreshCw :size="14" :class="{ spin: isRetrying }" />
-            <span>{{ isRetrying ? t('retrying') : t('retry') }}</span>
-          </button>
+          <div v-if="generationSummary" class="generation-meta">{{ generationSummary }}</div>
+          <div class="retry-actions">
+            <button
+              class="retry-btn"
+              :disabled="isRetrying || !message.generation"
+              @click="handleRetry"
+            >
+              <RefreshCw :size="14" :class="{ spin: isRetrying }" />
+              <span>{{ isRetrying ? t('retrying') : t('retry') }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Favorite Badge -->
@@ -88,6 +132,9 @@
       </div>
 
       <!-- Image Grid -->
+      <div v-if="hasImages && generationSummary" class="generation-meta">
+        {{ generationSummary }}
+      </div>
       <div
         v-if="hasImages"
         class="image-grid"
@@ -96,13 +143,55 @@
         <div v-if="message.isFavorite" class="favorite-badge image-favorite-badge">
           <Star :size="12" fill="currentColor" />
         </div>
-        <ImagePreview
+        <div
           v-for="image in message.images || []"
           :key="image.id"
-          :image="image"
-          @create-variation="openVariationDialog"
-          @edit-image="openEditDialog"
-        />
+          class="result-image-item"
+        >
+          <ImagePreview
+            :image="image"
+            @create-variation="openVariationDialog"
+            @edit-image="openEditDialog"
+          />
+          <div v-if="message.generation" class="image-quick-actions">
+            <button
+              type="button"
+              class="image-action-btn"
+              :title="t('setAsReference')"
+              :aria-label="t('setAsReference')"
+              @click="emit('setReferenceImage', image)"
+            >
+              <ImagePlus :size="14" />
+            </button>
+            <button
+              type="button"
+              class="image-action-btn"
+              :title="t('reuseSameParameters')"
+              :aria-label="t('reuseSameParameters')"
+              @click="emit('reuseGeneration', message.generation)"
+            >
+              <Repeat2 :size="14" />
+            </button>
+            <button
+              type="button"
+              class="image-action-btn"
+              :title="t('copyPrompt')"
+              :aria-label="t('copyPrompt')"
+              @click="copyGenerationPrompt"
+            >
+              <Copy :size="14" />
+            </button>
+            <button
+              type="button"
+              class="image-action-btn"
+              :title="t('viewParameters')"
+              :aria-label="t('viewParameters')"
+              @click="showParameterDialog = true"
+            >
+              <Info :size="14" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Actions -->
@@ -144,19 +233,84 @@
         @confirm="confirmDelete"
         @cancel="showDeleteConfirm = false"
       />
+
+      <Teleport to="body">
+        <Transition name="preview">
+          <div
+            v-if="showParameterDialog && message.generation"
+            class="parameter-overlay"
+            role="dialog"
+            aria-modal="true"
+            :aria-label="t('viewParameters')"
+            @click.self="showParameterDialog = false"
+          >
+            <div class="parameter-panel">
+              <div class="parameter-header">
+                <h3>{{ t('viewParameters') }}</h3>
+                <button
+                  type="button"
+                  class="parameter-close"
+                  :aria-label="t('close')"
+                  :title="t('close')"
+                  @click="showParameterDialog = false"
+                >
+                  <X :size="18" />
+                </button>
+              </div>
+              <dl class="parameter-list">
+                <div>
+                  <dt>{{ t('promptLabel') }}</dt>
+                  <dd>{{ message.generation.prompt }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('size') }}</dt>
+                  <dd>{{ generationSizeText }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('quality') }}</dt>
+                  <dd>{{ imageQualityLabel(message.generation.quality) }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('count') }}</dt>
+                  <dd>{{ message.generation.n }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('style') }}</dt>
+                  <dd>{{ message.generation.styleName || t('none') }}</dd>
+                </div>
+                <div>
+                  <dt>{{ t('selectedAttachments') }}</dt>
+                  <dd>{{ t('referenceCount', { count: message.generation.attachmentIds.length }) }}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { Star, AlertCircle, RefreshCw, X } from 'lucide-vue-next'
+import { ref, computed, nextTick } from 'vue'
+import {
+  AlertCircle,
+  Check,
+  Copy,
+  ImagePlus,
+  Info,
+  RefreshCw,
+  Repeat2,
+  Star,
+  X,
+} from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type {
   ChatAttachment,
   ChatMessage,
   GeneratedImage,
   ImageGenerationResponse,
+  VariationOptions,
 } from '../../types'
 import { highlightText } from '../../utils/highlight'
 import ImagePreview from './ImagePreview.vue'
@@ -169,7 +323,17 @@ import { useChat } from '../../composables/useChat'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
 import { persistGeneratedImagesFromResponse } from '../../utils/images'
-import { normalizeImageQuality, normalizeImageSize, parseImageSize } from '../../utils/constants'
+import {
+  DEFAULT_GENERATION_OPTIONS,
+  findImageSizePreset,
+  normalizeImageQuality,
+  normalizeImageSize,
+  parseImageSize,
+} from '../../utils/constants'
+import {
+  createGenerationMetadata,
+  generationAspectRatio,
+} from '../../utils/generation'
 
 interface Props {
   message: ChatMessage
@@ -182,12 +346,14 @@ const emit = defineEmits<{
   delete: [messageId: string]
   toggleFavorite: [messageId: string]
   cancel: []
+  setReferenceImage: [image: GeneratedImage]
+  reuseGeneration: [generation: NonNullable<ChatMessage['generation']>]
 }>()
 
 const { t } = useI18n()
 const chatStore = useChatStore()
-const { retryMessage } = useChat()
-const { error: showError } = useToast()
+const { retryGeneration, editUserPrompt } = useChat()
+const { success, error: showError } = useToast()
 const { downloadMultipleImages } = useImageDownload()
 
 // Dialog state
@@ -198,6 +364,10 @@ const selectedImageForVariation = ref<GeneratedImage | null>(null)
 const selectedImageForEdit = ref<GeneratedImage | null>(null)
 const pendingDeleteId = ref<string | null>(null)
 const isRetrying = ref(false)
+const showParameterDialog = ref(false)
+const isEditingPrompt = ref(false)
+const editedPrompt = ref('')
+const promptEditTextareaRef = ref<HTMLTextAreaElement | null>(null)
 
 const messageClasses = computed(() => {
   return props.message.type === 'user' ? 'message-user' : 'message-assistant'
@@ -214,8 +384,22 @@ const hasAttachments = computed(
 )
 
 const placeholderAspectRatio = computed(() => {
-  const size = parseImageSize(props.message.generationSize)
-  return size ? `${size.width} / ${size.height}` : '1 / 1'
+  return generationAspectRatio(props.message.generation)
+})
+
+const generationSizeText = computed(() => imageSizeLabel(props.message.generation?.size))
+
+const generationSummary = computed(() => {
+  const generation = props.message.generation
+  if (!generation) return ''
+
+  return [
+    imageQualityLabel(generation.quality),
+    imageSizeLabel(generation.size),
+    `${generation.n} ${t('imagesUnit')}`,
+    generation.styleName || t('none'),
+    t('referenceCount', { count: generation.attachmentIds.length }),
+  ].join(' · ')
 })
 
 function handleDelete(messageId: string) {
@@ -235,41 +419,72 @@ function handleToggleFavorite(messageId: string) {
   emit('toggleFavorite', messageId)
 }
 
+async function startPromptEdit() {
+  editedPrompt.value = props.message.content
+  isEditingPrompt.value = true
+  await nextTick()
+  promptEditTextareaRef.value?.focus()
+  promptEditTextareaRef.value?.select()
+}
+
+function cancelPromptEdit() {
+  isEditingPrompt.value = false
+  editedPrompt.value = ''
+}
+
+async function savePromptEdit() {
+  const trimmedPrompt = editedPrompt.value.trim()
+  if (!trimmedPrompt) {
+    showError(t('enterImageDescription'))
+    return
+  }
+
+  try {
+    isEditingPrompt.value = false
+    editedPrompt.value = ''
+    await editUserPrompt(props.message.id, trimmedPrompt)
+  } catch (err) {
+    showError(err instanceof Error ? err.message : t('unknownError'))
+  }
+}
+
+function imageSizeLabel(value: unknown): string {
+  const normalizedSize = normalizeImageSize(value)
+  if (normalizedSize === DEFAULT_GENERATION_OPTIONS.size) return t('imageSizeAuto')
+
+  const parsed = parseImageSize(normalizedSize)
+  if (!parsed) return t('imageSizeAuto')
+
+  const ratio = findImageSizePreset(normalizedSize)?.ratio
+  return ratio && ratio !== 'auto'
+    ? `${parsed.width}x${parsed.height} · ${ratio}`
+    : `${parsed.width}x${parsed.height}`
+}
+
+function imageQualityLabel(value: unknown): string {
+  switch (normalizeImageQuality(value)) {
+    case 'high':
+      return t('qualityHigh')
+    case 'medium':
+      return t('qualityMedium')
+    case 'low':
+      return t('qualityLow')
+    case 'auto':
+    default:
+      return t('qualityAuto')
+  }
+}
+
 async function handleRetry() {
+  if (!props.message.generation) {
+    showError(t('originalPromptMissing'))
+    return
+  }
+
   isRetrying.value = true
 
   try {
-    // 找到前面的用户消息
-    const messages = chatStore.messages
-    const currentIndex = messages.findIndex((m) => m.id === props.message.id)
-    let userPrompt = ''
-    let attachments: ChatAttachment[] = []
-
-    // 向前查找最近的用户消息
-    for (let i = currentIndex - 1; i >= 0; i--) {
-      if (messages[i].type === 'user') {
-        userPrompt = messages[i].content
-        attachments = messages[i].attachments || []
-        break
-      }
-    }
-
-    if (!userPrompt) {
-      showError(t('originalPromptMissing'))
-      return
-    }
-
-    await retryMessage(
-      props.message.id,
-      userPrompt,
-      {
-        size: normalizeImageSize(props.message.generationSize),
-        quality: normalizeImageQuality(props.message.generationQuality),
-        n: props.message.generationCount ?? 1,
-        ...(props.message.generationStyle ? { style: props.message.generationStyle } : {}),
-      },
-      attachments,
-    )
+    await retryGeneration(props.message.id, props.message.generation)
   } catch (err) {
     showError(
       t('retryFailed', {
@@ -284,6 +499,17 @@ async function handleRetry() {
 async function handleDownloadAll() {
   if (props.message.images && props.message.images.length > 0) {
     await downloadMultipleImages(props.message.images)
+  }
+}
+
+async function copyGenerationPrompt() {
+  if (!props.message.generation?.prompt) return
+
+  try {
+    await navigator.clipboard.writeText(props.message.generation.prompt)
+    success(t('promptCopied'))
+  } catch {
+    showError(t('copyFailed'))
   }
 }
 
@@ -325,11 +551,21 @@ async function buildImagesFromResponse(
   })
 }
 
-async function handleVariationResult(response: ImageGenerationResponse) {
+function imageAsAttachment(image: GeneratedImage | null): ChatAttachment[] {
+  if (!image) return []
+  return [
+    {
+      ...image,
+      name: `reference-${image.id}.png`,
+    },
+  ]
+}
+
+async function handleVariationResult(response: ImageGenerationResponse, options: VariationOptions) {
   const newImages = await buildImagesFromResponse(
     response,
     'variation',
-    selectedImageForVariation.value?.sourcePrompt || props.message.content,
+    options.prompt,
   )
 
   chatStore.addMessage({
@@ -337,15 +573,16 @@ async function handleVariationResult(response: ImageGenerationResponse) {
     content: t('variationGenerated'),
     status: 'success',
     images: newImages,
+    generation: createGenerationMetadata(options.prompt, options, imageAsAttachment(selectedImageForVariation.value)),
   })
   await chatStore.flushHistorySave()
 }
 
-async function handleEditResult(response: ImageGenerationResponse) {
+async function handleEditResult(response: ImageGenerationResponse, prompt: string) {
   const newImages = await buildImagesFromResponse(
     response,
     'edited',
-    selectedImageForEdit.value?.sourcePrompt || props.message.content,
+    prompt,
   )
 
   chatStore.addMessage({
@@ -353,6 +590,13 @@ async function handleEditResult(response: ImageGenerationResponse) {
     content: t('editedImageGenerated'),
     status: 'success',
     images: newImages,
+    generation: createGenerationMetadata(
+      prompt,
+      {
+        ...DEFAULT_GENERATION_OPTIONS,
+      },
+      imageAsAttachment(selectedImageForEdit.value),
+    ),
   })
   await chatStore.flushHistorySave()
 }
@@ -416,6 +660,57 @@ async function handleEditResult(response: ImageGenerationResponse) {
   line-height: 1.6;
   color: var(--color-text-primary);
   white-space: pre-wrap;
+}
+
+.prompt-edit-form {
+  display: grid;
+  gap: 8px;
+  min-width: min(520px, 72vw);
+}
+
+.prompt-edit-textarea {
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--color-bg-primary) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+  outline: none;
+}
+
+.prompt-edit-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-light) 60%, transparent);
+}
+
+.prompt-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.prompt-edit-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.prompt-edit-btn:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  color: var(--color-primary);
 }
 
 .favorite-badge {
@@ -551,6 +846,24 @@ async function handleEditResult(response: ImageGenerationResponse) {
   animation: placeholderSpin 0.9s linear infinite;
 }
 
+.placeholder-summary {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  max-width: calc(100% - 28px);
+  padding: 7px 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-bg-primary) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
 .placeholder-cancel-btn {
   position: absolute;
   top: 12px;
@@ -598,6 +911,23 @@ async function handleEditResult(response: ImageGenerationResponse) {
   gap: 10px;
 }
 
+.generation-meta {
+  max-width: min(760px, 100%);
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .error-text {
   display: flex;
   align-items: center;
@@ -633,6 +963,16 @@ async function handleEditResult(response: ImageGenerationResponse) {
   cursor: not-allowed;
 }
 
+.retry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.spin {
+  animation: placeholderSpin 0.9s linear infinite;
+}
+
 /* Image Grid */
 .image-grid {
   position: relative;
@@ -640,6 +980,38 @@ async function handleEditResult(response: ImageGenerationResponse) {
   gap: 14px;
   width: 100%;
   max-width: 760px;
+}
+
+.result-image-item {
+  min-width: 0;
+}
+
+.image-quick-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.image-action-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.image-action-btn:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .image-favorite-badge {
@@ -652,6 +1024,80 @@ async function handleEditResult(response: ImageGenerationResponse) {
 
 .grid-cols-2 {
   grid-template-columns: repeat(2, 1fr);
+}
+
+.parameter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.parameter-panel {
+  width: min(92vw, 520px);
+  max-height: 82vh;
+  overflow: auto;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.parameter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.parameter-header h3 {
+  color: var(--color-text-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.parameter-close {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.parameter-list {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.parameter-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.parameter-list dt {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.parameter-list dd {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 
 /* Message Actions */

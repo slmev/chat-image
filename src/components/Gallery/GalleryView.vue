@@ -66,6 +66,74 @@
         </div>
       </div>
 
+      <div class="sidebar-section">
+        <label for="gallery-ratio-filter" class="filter-label">{{ t('galleryAspectRatio') }}</label>
+        <div class="select-wrapper">
+          <Filter :size="16" aria-hidden="true" />
+          <select
+            id="gallery-ratio-filter"
+            v-model="ratioFilter"
+            class="time-range-select"
+            :aria-label="t('galleryAspectRatio')"
+          >
+            <option v-for="option in ratioOptions" :key="option.id" :value="option.id">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label for="gallery-quality-filter" class="filter-label">{{ t('galleryQuality') }}</label>
+        <div class="select-wrapper">
+          <Filter :size="16" aria-hidden="true" />
+          <select
+            id="gallery-quality-filter"
+            v-model="qualityFilter"
+            class="time-range-select"
+            :aria-label="t('galleryQuality')"
+          >
+            <option v-for="option in qualityOptions" :key="option.id" :value="option.id">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label for="gallery-style-filter" class="filter-label">{{ t('galleryStyle') }}</label>
+        <div class="select-wrapper">
+          <Filter :size="16" aria-hidden="true" />
+          <select
+            id="gallery-style-filter"
+            v-model="styleFilter"
+            class="time-range-select"
+            :aria-label="t('galleryStyle')"
+          >
+            <option v-for="option in styleOptions" :key="option.id" :value="option.id">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <label for="gallery-reference-filter" class="filter-label">{{ t('galleryReferences') }}</label>
+        <div class="select-wrapper">
+          <Filter :size="16" aria-hidden="true" />
+          <select
+            id="gallery-reference-filter"
+            v-model="referenceFilter"
+            class="time-range-select"
+            :aria-label="t('galleryReferences')"
+          >
+            <option value="all">{{ t('all') }}</option>
+            <option value="with">{{ t('galleryWithReferences') }}</option>
+            <option value="without">{{ t('galleryWithoutReferences') }}</option>
+          </select>
+        </div>
+      </div>
+
       <button
         type="button"
         class="btn-ghost clear-filters-btn"
@@ -152,6 +220,9 @@
                 <span>{{ sourceLabel(item) }}</span>
                 <span>{{ formatTime(item.timestamp) }}</span>
               </div>
+              <div v-if="generationSummary(item)" class="card-generation">
+                {{ generationSummary(item) }}
+              </div>
               <div class="card-actions">
                 <button
                   type="button"
@@ -211,24 +282,15 @@
             />
           </div>
 
-          <aside class="preview-panel">
+          <aside v-if="previewInfoVisible" class="preview-panel">
             <div class="preview-panel-header">
               <h3>{{ t('imageInfo') }}</h3>
-              <button
-                type="button"
-                class="btn-icon preview-close"
-                :aria-label="t('close')"
-                :title="t('close')"
-                @click="closePreview"
-              >
-                <X :size="18" />
-              </button>
             </div>
 
             <dl class="preview-details">
-              <div>
+              <div class="preview-prompt-item">
                 <dt>{{ t('promptLabel') }}</dt>
-                <dd>{{ previewItem.prompt || t('noPrompt') }}</dd>
+                <dd class="preview-prompt">{{ previewItem.prompt || t('noPrompt') }}</dd>
               </div>
               <div>
                 <dt>{{ t('sourceHistory') }}</dt>
@@ -238,19 +300,45 @@
                 <dt>{{ t('generatedAt') }}</dt>
                 <dd>{{ formatTime(previewItem.timestamp) }}</dd>
               </div>
+              <div v-if="previewItem.sourceMessage.generation">
+                <dt>{{ t('viewParameters') }}</dt>
+                <dd>{{ generationSummary(previewItem) }}</dd>
+              </div>
             </dl>
-
-            <div class="preview-actions">
-              <button type="button" class="btn-secondary" @click="downloadImage(previewItem)">
-                <Download :size="16" />
-                <span>{{ t('download') }}</span>
-              </button>
-              <button type="button" class="btn-secondary" @click="shareImage(previewItem)">
-                <Share2 :size="16" />
-                <span>{{ t('share') }}</span>
-              </button>
-            </div>
           </aside>
+
+          <div class="preview-actions">
+            <button
+              type="button"
+              class="btn-secondary"
+              :class="{ active: previewInfoVisible }"
+              :aria-label="t('imageInfo')"
+              :aria-pressed="previewInfoVisible"
+              :title="t('imageInfo')"
+              @click="togglePreviewInfo"
+            >
+              <Info :size="16" />
+              <span>{{ t('imageInfo') }}</span>
+            </button>
+            <button type="button" class="btn-secondary" @click="downloadImage(previewItem)">
+              <Download :size="16" />
+              <span>{{ t('download') }}</span>
+            </button>
+            <button type="button" class="btn-secondary" @click="shareImage(previewItem)">
+              <Share2 :size="16" />
+              <span>{{ t('share') }}</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="btn-icon preview-close"
+            :aria-label="t('close')"
+            :title="t('close')"
+            @click="closePreview"
+          >
+            <X :size="18" />
+          </button>
         </div>
       </div>
     </Transition>
@@ -269,6 +357,7 @@ import {
   Filter,
   FilterX,
   ImageIcon,
+  Info,
   LayoutGrid,
   Maximize2,
   Search,
@@ -280,14 +369,21 @@ import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { useImageDownload } from '../../composables/useImageDownload'
 import { useToast } from '../../composables/useToast'
-import type { GalleryImageItem, GeneratedImage } from '../../types'
+import type { GalleryImageItem, GeneratedImage, GenerationQuality } from '../../types'
 import { getImageRepository } from '../../platform/imageRepository'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
-import { parseImageSize } from '../../utils/constants'
+import {
+  DEFAULT_GENERATION_OPTIONS,
+  findImageSizePreset,
+  normalizeImageQuality,
+  normalizeImageSize,
+  parseImageSize,
+} from '../../utils/constants'
 
 type ScopeFilter = 'all' | 'recent' | 'favorite'
 type TimeRange = 'all' | 'today' | 'week' | 'month'
 type Density = 'comfortable' | 'compact'
+type ReferenceFilter = 'all' | 'with' | 'without'
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -301,8 +397,13 @@ const isLoading = ref(true)
 const searchQuery = ref('')
 const activeScope = ref<ScopeFilter>('all')
 const timeRange = ref<TimeRange>('all')
+const ratioFilter = ref('all')
+const qualityFilter = ref<'all' | GenerationQuality>('all')
+const styleFilter = ref('all')
+const referenceFilter = ref<ReferenceFilter>('all')
 const density = ref<Density>('comfortable')
 const previewItem = ref<GalleryImageItem | null>(null)
+const previewInfoVisible = ref(false)
 const galleryGridRef = ref<HTMLElement | null>(null)
 const galleryGridWidth = ref(0)
 const ownedObjectUrls = new Set<string>()
@@ -350,6 +451,47 @@ const timeRangeOptions = computed(() => [
   { id: 'month' as const, label: t('galleryTimeMonth') },
 ])
 
+const ratioOptions = computed(() => {
+  const ratios = new Set<string>()
+  galleryItems.value.forEach((item) => {
+    const ratio = generationRatio(item)
+    if (ratio) ratios.add(ratio)
+  })
+
+  return [
+    { id: 'all', label: t('all') },
+    ...Array.from(ratios)
+      .sort()
+      .map((ratio) => ({
+        id: ratio,
+        label: ratio === 'auto' ? t('imageSizeAuto') : ratio,
+      })),
+  ]
+})
+
+const qualityOptions = computed(() => [
+  { id: 'all' as const, label: t('all') },
+  { id: 'auto' as const, label: t('qualityAuto') },
+  { id: 'high' as const, label: t('qualityHigh') },
+  { id: 'medium' as const, label: t('qualityMedium') },
+  { id: 'low' as const, label: t('qualityLow') },
+])
+
+const styleOptions = computed(() => {
+  const styles = new Map<string, string>()
+  galleryItems.value.forEach((item) => {
+    const generation = item.sourceMessage.generation
+    if (!generation?.styleId) return
+    styles.set(generation.styleId, generation.styleName || generation.styleId)
+  })
+
+  return [
+    { id: 'all', label: t('all') },
+    { id: 'none', label: t('none') },
+    ...Array.from(styles.entries()).map(([id, label]) => ({ id, label })),
+  ]
+})
+
 const filteredItems = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   const cutoff = timeRangeCutoff(timeRange.value)
@@ -359,6 +501,23 @@ const filteredItems = computed(() => {
       if (activeScope.value === 'recent' && !isRecent(item.timestamp)) return false
       if (activeScope.value === 'favorite' && !item.isFavorite) return false
       if (cutoff !== null && item.timestamp < cutoff) return false
+      if (ratioFilter.value !== 'all' && generationRatio(item) !== ratioFilter.value) return false
+      if (
+        qualityFilter.value !== 'all' &&
+        normalizeImageQuality(item.sourceMessage.generation?.quality) !== qualityFilter.value
+      ) {
+        return false
+      }
+      if (styleFilter.value === 'none' && item.sourceMessage.generation?.styleId) return false
+      if (
+        styleFilter.value !== 'all' &&
+        styleFilter.value !== 'none' &&
+        item.sourceMessage.generation?.styleId !== styleFilter.value
+      ) {
+        return false
+      }
+      if (referenceFilter.value === 'with' && !hasReferenceImages(item)) return false
+      if (referenceFilter.value === 'without' && hasReferenceImages(item)) return false
 
       if (!query) return true
       return item.prompt.toLowerCase().includes(query)
@@ -391,7 +550,13 @@ const masonryColumns = computed(() => {
 
 const hasActiveFilters = computed(
   () =>
-    Boolean(searchQuery.value.trim()) || activeScope.value !== 'all' || timeRange.value !== 'all',
+    Boolean(searchQuery.value.trim()) ||
+    activeScope.value !== 'all' ||
+    timeRange.value !== 'all' ||
+    ratioFilter.value !== 'all' ||
+    qualityFilter.value !== 'all' ||
+    styleFilter.value !== 'all' ||
+    referenceFilter.value !== 'all',
 )
 
 const emptyTitle = computed(() =>
@@ -503,10 +668,10 @@ function setupGalleryResizeObserver() {
 }
 
 function estimatedGalleryCardHeight(item: GalleryImageItem, tileSize: number): number {
-  const size = parseImageSize(item.sourceMessage.generationSize)
+  const size = parseImageSize(item.sourceMessage.generation?.size)
   const imageHeight = size ? tileSize * (size.height / size.width) : tileSize
 
-  return imageHeight + 116
+  return imageHeight + 142
 }
 
 function displayImage(item: GalleryImageItem): GeneratedImage {
@@ -538,6 +703,59 @@ function clearFilters() {
   searchQuery.value = ''
   activeScope.value = 'all'
   timeRange.value = 'all'
+  ratioFilter.value = 'all'
+  qualityFilter.value = 'all'
+  styleFilter.value = 'all'
+  referenceFilter.value = 'all'
+}
+
+function gcd(left: number, right: number): number {
+  return right === 0 ? left : gcd(right, left % right)
+}
+
+function generationRatio(item: GalleryImageItem): string {
+  const size = normalizeImageSize(item.sourceMessage.generation?.size)
+  if (size === DEFAULT_GENERATION_OPTIONS.size) return 'auto'
+
+  const preset = findImageSizePreset(size)
+  if (preset?.ratio && preset.ratio !== 'auto') return preset.ratio
+
+  const parsed = parseImageSize(size)
+  if (!parsed) return 'auto'
+
+  const divisor = gcd(parsed.width, parsed.height)
+  return `${parsed.width / divisor}:${parsed.height / divisor}`
+}
+
+function hasReferenceImages(item: GalleryImageItem): boolean {
+  return Boolean(item.sourceMessage.generation?.attachmentIds.length)
+}
+
+function imageQualityLabel(value: unknown): string {
+  switch (normalizeImageQuality(value)) {
+    case 'high':
+      return t('qualityHigh')
+    case 'medium':
+      return t('qualityMedium')
+    case 'low':
+      return t('qualityLow')
+    case 'auto':
+    default:
+      return t('qualityAuto')
+  }
+}
+
+function generationSummary(item: GalleryImageItem): string {
+  const generation = item.sourceMessage.generation
+  if (!generation) return ''
+
+  return [
+    generationRatio(item) === 'auto' ? t('imageSizeAuto') : generationRatio(item),
+    imageQualityLabel(generation.quality),
+    `${generation.n} ${t('imagesUnit')}`,
+    generation.styleName || t('none'),
+    t('referenceCount', { count: generation.attachmentIds.length }),
+  ].join(' · ')
 }
 
 async function goToChat() {
@@ -546,10 +764,16 @@ async function goToChat() {
 
 function openPreview(item: GalleryImageItem) {
   previewItem.value = item
+  previewInfoVisible.value = false
 }
 
 function closePreview() {
   previewItem.value = null
+  previewInfoVisible.value = false
+}
+
+function togglePreviewInfo() {
+  previewInfoVisible.value = !previewInfoVisible.value
 }
 
 async function downloadImage(item: GalleryImageItem) {
@@ -933,6 +1157,16 @@ async function shareImage(item: GalleryImageItem) {
   white-space: nowrap;
 }
 
+.card-generation {
+  overflow: hidden;
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-actions {
   display: flex;
   align-items: center;
@@ -995,8 +1229,9 @@ async function shareImage(item: GalleryImageItem) {
 }
 
 .preview-shell {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   width: min(1180px, 100%);
   max-height: min(86vh, 840px);
@@ -1020,10 +1255,17 @@ async function shareImage(item: GalleryImageItem) {
 }
 
 .preview-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: min(560px, calc(100vw - 56px));
+  max-height: min(70vh, 620px);
   padding: 16px;
+  transform: translate(-50%, -50%);
   background: color-mix(in srgb, var(--color-bg-primary) 94%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
   border-radius: 8px;
@@ -1033,8 +1275,7 @@ async function shareImage(item: GalleryImageItem) {
 .preview-panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--color-border);
 }
@@ -1069,17 +1310,50 @@ async function shareImage(item: GalleryImageItem) {
   overflow-wrap: anywhere;
 }
 
+.preview-prompt {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
 .preview-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  position: absolute;
+  bottom: -48px;
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-top: auto;
+  justify-content: center;
+  max-width: min(90vw, 560px);
+  transform: translateX(-50%);
 }
 
 .preview-actions .btn-secondary {
   height: 38px;
   padding-inline: 12px;
   border-radius: 8px;
+}
+
+.preview-actions .btn-secondary.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.preview-close {
+  position: absolute;
+  top: -48px;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  background: rgb(255 255 255 / 0.12);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  color: white;
+  backdrop-filter: blur(12px);
+}
+
+.preview-close:hover {
+  background: rgb(255 255 255 / 0.2);
+  color: white;
 }
 
 .preview-enter-active,
@@ -1119,9 +1393,6 @@ async function shareImage(item: GalleryImageItem) {
     overflow-y: auto;
   }
 
-  .preview-panel {
-    max-height: none;
-  }
 }
 
 @media (max-width: 640px) {
@@ -1159,7 +1430,7 @@ async function shareImage(item: GalleryImageItem) {
   }
 
   .preview-actions {
-    grid-template-columns: 1fr;
+    width: calc(100vw - 28px);
   }
 }
 </style>

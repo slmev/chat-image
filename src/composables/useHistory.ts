@@ -76,26 +76,9 @@ function galleryImageDedupeKey(image: GeneratedImage): string {
 }
 
 function promptForGalleryImage(
-  messages: ChatMessage[],
   message: ChatMessage,
-  messageIndex: number,
-  image: GeneratedImage,
 ): string {
-  if (image.sourcePrompt?.trim()) return image.sourcePrompt
-
-  if (image.sourceMessageId) {
-    const sourceMessage = messages.find((item) => item.id === image.sourceMessageId)
-    if (sourceMessage?.content.trim()) return sourceMessage.content
-  }
-
-  for (let index = messageIndex; index >= 0; index -= 1) {
-    const candidate = messages[index]
-    if (candidate.type === 'user' && candidate.content.trim()) {
-      return candidate.content
-    }
-  }
-
-  return message.content
+  return message.generation?.prompt || ''
 }
 
 function collectGalleryImageItems(
@@ -108,7 +91,7 @@ function collectGalleryImageItems(
 ): GalleryImageItem[] {
   const items: GalleryImageItem[] = []
 
-  messages.forEach((message, messageIndex) => {
+  messages.forEach((message) => {
     message.images?.forEach((image) => {
       const dedupeKey = galleryImageDedupeKey(image)
       if (seenKeys.has(dedupeKey)) return
@@ -122,7 +105,7 @@ function collectGalleryImageItems(
         sourceHistoryId: source.history?.id,
         sourceHistoryTitle: source.history?.title,
         sourceType: source.type,
-        prompt: promptForGalleryImage(messages, message, messageIndex, image),
+        prompt: promptForGalleryImage(message),
         timestamp: image.timestamp || message.timestamp,
         isFavorite: Boolean(message.isFavorite || source.history?.isFavorite),
       })

@@ -37,31 +37,23 @@ describe('image utils', () => {
     )
   })
 
-  it('creates blob URLs from base64 response items', () => {
-    const createObjectURL = vi.fn(() => 'blob:mock-image')
-    Object.defineProperty(URL, 'createObjectURL', {
-      configurable: true,
-      value: createObjectURL,
-    })
+  it('creates data URLs from base64 response items', () => {
+    const base64 = btoa('png')
 
-    expect(createImageUrlFromResponseItem({ b64_json: btoa('png') })).toBe('blob:mock-image')
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(createImageUrlFromResponseItem({ b64_json: base64 })).toBe(
+      `data:image/png;base64,${base64}`,
+    )
   })
 
   it('prefers base64 over API image URLs', () => {
-    const createObjectURL = vi.fn(() => 'blob:preferred-image')
-    Object.defineProperty(URL, 'createObjectURL', {
-      configurable: true,
-      value: createObjectURL,
-    })
+    const base64 = btoa('png')
 
     expect(
       createImageUrlFromResponseItem({
         url: 'https://example.com/image.png',
-        b64_json: btoa('png'),
+        b64_json: base64,
       }),
-    ).toBe('blob:preferred-image')
-    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    ).toBe(`data:image/png;base64,${base64}`)
   })
 
   it('builds generated images from an API response', () => {
@@ -87,12 +79,6 @@ describe('image utils', () => {
   })
 
   it('keeps base64 on generated images for refresh recovery', () => {
-    const createObjectURL = vi.fn(() => 'blob:persisted-image')
-    Object.defineProperty(URL, 'createObjectURL', {
-      configurable: true,
-      value: createObjectURL,
-    })
-
     const base64 = btoa('png')
     const images = buildGeneratedImagesFromResponse(
       {
@@ -105,7 +91,7 @@ describe('image utils', () => {
     )
 
     expect(images[0]).toMatchObject({
-      url: 'blob:persisted-image',
+      url: `data:image/png;base64,${base64}`,
       base64,
       sourcePrompt: 'test prompt',
     })

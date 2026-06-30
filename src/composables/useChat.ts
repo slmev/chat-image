@@ -2,9 +2,10 @@ import { useChatStore } from '../stores/chat'
 import { useImageGeneration } from '../composables/useImageGeneration'
 import { useConfigStore } from '../stores/config'
 import { useHistory } from '../composables/useHistory'
-import type { ChatAttachment, GenerationOptions } from '../types'
+import type { ChatAttachment, ChatInputAttachment, GenerationMetadata, GenerationOptions } from '../types'
 import { persistChatAttachments } from '../utils/images'
-import { normalizeGenerationOptions } from '../utils/constants'
+import { DEFAULT_GENERATION_OPTIONS, normalizeGenerationOptions } from '../utils/constants'
+import { createGenerationMetadata } from '../utils/generation'
 import i18n from '../i18n'
 
 // 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
@@ -17,10 +18,39 @@ export function useChat() {
   const { saveCurrentChat, loadHistoryChat } = useHistory()
   const t = i18n.global.t
 
+  async function persistInputAttachments(
+    attachments: ChatInputAttachment[],
+    prompt: string,
+  ): Promise<ChatAttachment[]> {
+    const persistedAttachments: ChatAttachment[] = []
+
+    for (const attachment of attachments) {
+      if (attachment instanceof File) {
+        const [persisted] = await persistChatAttachments([attachment], { sourcePrompt: prompt })
+        if (persisted) {
+          persistedAttachments.push(persisted)
+        }
+      } else {
+        persistedAttachments.push(attachment)
+      }
+    }
+
+    return persistedAttachments
+  }
+
+  function isReusableGenerationAttachment(attachment: ChatAttachment): boolean {
+    if (attachment.base64 || attachment.localPath) return true
+    return attachment.url.startsWith('data:')
+  }
+
+  function reusableGenerationAttachments(attachments: ChatAttachment[]): ChatAttachment[] {
+    return attachments.filter(isReusableGenerationAttachment)
+  }
+
   async function sendMessage(
     content: string,
     options: GenerationOptions,
-    files: File[] = [],
+    inputAttachments: ChatInputAttachment[] = [],
   ): Promise<void> {
     if (!configStore.isConfigured) {
       throw new Error(t('configureApiFirst'))
@@ -31,8 +61,8 @@ export function useChat() {
     }
 
     const generationOptions = normalizeGenerationOptions(options)
-    const attachments =
-      files.length > 0 ? await persistChatAttachments(files, { sourcePrompt: content }) : []
+    const attachments = await persistInputAttachments(inputAttachments, content)
+    const generation = createGenerationMetadata(content, generationOptions, attachments)
 
     // 添加用户消息
     chatStore.addMessage({
@@ -46,10 +76,7 @@ export function useChat() {
     const assistantMessage = chatStore.addMessage({
       type: 'assistant',
       content: t('generationInProgress'),
-      generationSize: generationOptions.size,
-      generationQuality: generationOptions.quality,
-      generationCount: generationOptions.n,
-      generationStyle: generationOptions.style,
+      generation,
       status: 'pending',
     })
 
@@ -57,7 +84,10 @@ export function useChat() {
 
     try {
       // 生成图片
-      const images = await generateImage(content, generationOptions, attachments)
+      const images = (await generateImage(content, generationOptions, attachments)).map((image) => ({
+        ...image,
+        sourceMessageId: assistantMessage.id,
+      }))
 
       // 更新助手消息
       await chatStore.addImagesToMessage(assistantMessage.id, images)
@@ -88,13 +118,11 @@ export function useChat() {
     }
 
     const generationOptions = normalizeGenerationOptions(options)
+    const generation = createGenerationMetadata(content, generationOptions, attachments)
 
     await chatStore.updateMessage(messageId, {
       content: t('generationInProgress'),
-      generationSize: generationOptions.size,
-      generationQuality: generationOptions.quality,
-      generationCount: generationOptions.n,
-      generationStyle: generationOptions.style,
+      generation,
       status: 'pending',
       error: undefined,
       images: undefined,
@@ -102,7 +130,10 @@ export function useChat() {
     chatStore.setLoading(true)
 
     try {
-      const images = await generateImage(content, generationOptions, attachments)
+      const images = (await generateImage(content, generationOptions, attachments)).map((image) => ({
+        ...image,
+        sourceMessageId: messageId,
+      }))
       await chatStore.addImagesToMessage(messageId, images)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')
@@ -110,6 +141,86 @@ export function useChat() {
     } finally {
       chatStore.setLoading(false)
     }
+  }
+
+  async function retryGeneration(messageId: string, generation: GenerationMetadata): Promise<void> {
+    await retryMessage(
+      messageId,
+      generation.prompt,
+      {
+        size: generation.size,
+        quality: generation.quality,
+        n: generation.n,
+        ...(generation.style ? { style: generation.style } : {}),
+      },
+      reusableGenerationAttachments(generation.attachments || []),
+    )
+  }
+
+  async function editUserPrompt(messageId: string, content: string): Promise<void> {
+    const trimmedContent = content.trim()
+    if (!trimmedContent) {
+      throw new Error(t('enterImageDescription'))
+    }
+
+    const messages = chatStore.messages
+    const messageIndex = messages.findIndex((message) => message.id === messageId)
+    const message = messages[messageIndex]
+    if (!message || message.type !== 'user') return
+
+    const assistantMessage = (() => {
+      for (let index = messageIndex + 1; index < messages.length; index += 1) {
+        const candidate = messages[index]
+        if (candidate.type === 'user') return null
+        if (candidate.type === 'assistant') return candidate
+      }
+      return null
+    })()
+
+    if (!configStore.isConfigured) {
+      throw new Error(t('configureApiFirst'))
+    }
+
+    const attachments = (message.attachments || []).map((attachment) => ({
+      ...attachment,
+      sourcePrompt: trimmedContent,
+    }))
+
+    await chatStore.updateMessage(messageId, {
+      content: trimmedContent,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    })
+
+    const targetAssistant =
+      assistantMessage ||
+      chatStore.addMessage({
+        type: 'assistant',
+        content: t('generationInProgress'),
+        status: 'pending',
+      })
+
+    const options = assistantMessage?.generation
+      ? {
+          size: assistantMessage.generation.size,
+          quality: assistantMessage.generation.quality,
+          n: assistantMessage.generation.n,
+          ...(assistantMessage.generation.style ? { style: assistantMessage.generation.style } : {}),
+        }
+      : DEFAULT_GENERATION_OPTIONS
+
+    const candidateAttachments =
+      assistantMessage?.generation?.attachments && assistantMessage.generation.attachments.length > 0
+        ? assistantMessage.generation.attachments
+        : attachments
+
+    await retryMessage(
+      targetAssistant.id,
+      trimmedContent,
+      options,
+      reusableGenerationAttachments(candidateAttachments),
+    )
+
+    currentHistoryId = await saveCurrentChat(currentHistoryId)
   }
 
   async function cancelCurrentGeneration(): Promise<void> {
@@ -160,6 +271,8 @@ export function useChat() {
     chatStore,
     sendMessage,
     retryMessage,
+    retryGeneration,
+    editUserPrompt,
     cancelCurrentGeneration,
     clearChat,
     startNewChat,

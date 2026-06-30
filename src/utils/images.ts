@@ -1,6 +1,6 @@
 import type { ChatAttachment, GeneratedImage, ImageGenerationResponse } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
-import { createBlobUrlFromBase64 } from './imagePersistence'
+import { createDataUrlFromBase64 } from './imagePersistence'
 import { generateId } from './storage'
 
 type ImageResponseItem = ImageGenerationResponse['data'][number]
@@ -29,7 +29,7 @@ export function isValidImageUrl(url: string): boolean {
 
 export function createImageUrlFromResponseItem(item: ImageResponseItem): string {
   if (item.b64_json) {
-    return createBlobUrlFromBase64(item.b64_json)
+    return createDataUrlFromBase64(item.b64_json)
   }
 
   return item.url || ''

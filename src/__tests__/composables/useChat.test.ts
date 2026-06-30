@@ -124,7 +124,13 @@ describe('useChat', () => {
     expect(chatStore.messages[1]).toMatchObject({
       id: assistantMessage.id,
       type: 'assistant',
-      generationSize: 'auto',
+      generation: {
+        prompt: 'a quiet mountain lake',
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+        attachmentIds: [],
+      },
       status: 'success',
       images: [expect.objectContaining({ id: 'image-1' })],
     })
@@ -184,10 +190,16 @@ describe('useChat', () => {
     expect(chatStore.messages).toHaveLength(2)
     expect(chatStore.messages[1]).toMatchObject({
       type: 'assistant',
-      generationSize: '4096x2304',
-      generationQuality: 'high',
-      generationCount: 2,
-      generationStyle: selectedStyle,
+      generation: {
+        prompt: 'a wide city skyline',
+        size: '4096x2304',
+        quality: 'high',
+        n: 2,
+        styleId: selectedStyle.id,
+        styleName: selectedStyle.name,
+        style: selectedStyle,
+        attachmentIds: [],
+      },
       status: 'success',
       images: [expect.objectContaining({ id: 'image-1' })],
     })
@@ -227,5 +239,107 @@ describe('useChat', () => {
     expect(mockState.generateImage).toHaveBeenCalledWith('use this as a reference', options, [
       reference,
     ])
+  })
+
+  it('regenerates when editing a historical user prompt without existing generation metadata', async () => {
+    mockState.generateImage.mockResolvedValueOnce([generatedImage()])
+    mockState.saveCurrentChat.mockResolvedValueOnce('history-1')
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chatStore = useChatStore()
+    const userMessage = chatStore.addMessage({
+      type: 'user',
+      content: 'old prompt',
+      status: 'success',
+    })
+    const assistantMessage = chatStore.addMessage({
+      type: 'assistant',
+      content: 'old result',
+      status: 'success',
+      images: [generatedImage()],
+    })
+
+    const { editUserPrompt } = useChat()
+
+    await editUserPrompt(userMessage.id, 'new prompt')
+
+    expect(chatStore.messages[0]).toMatchObject({
+      id: userMessage.id,
+      content: 'new prompt',
+    })
+    expect(chatStore.messages[1]).toMatchObject({
+      id: assistantMessage.id,
+      status: 'success',
+      generation: {
+        prompt: 'new prompt',
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+        attachmentIds: [],
+      },
+      images: [expect.objectContaining({ id: 'image-1' })],
+    })
+    expect(mockState.generateImage).toHaveBeenCalledWith('new prompt', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    }, [])
+    expect(mockState.saveCurrentChat).toHaveBeenCalled()
+  })
+
+  it('regenerates edited historical prompts without unreadable stale blob references', async () => {
+    mockState.generateImage.mockResolvedValueOnce([generatedImage()])
+    mockState.saveCurrentChat.mockResolvedValueOnce('history-1')
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chatStore = useChatStore()
+    const userMessage = chatStore.addMessage({
+      type: 'user',
+      content: 'old prompt',
+      status: 'success',
+      attachments: [
+        {
+          id: 'stale-reference',
+          name: 'stale.png',
+          url: 'blob:stale-reference',
+          timestamp: 1,
+        },
+      ],
+    })
+    chatStore.addMessage({
+      type: 'assistant',
+      content: 'old result',
+      status: 'success',
+      images: [generatedImage()],
+    })
+
+    const { editUserPrompt } = useChat()
+
+    await editUserPrompt(userMessage.id, 'new prompt')
+
+    expect(mockState.generateImage).toHaveBeenCalledWith(
+      'new prompt',
+      {
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+      },
+      [],
+    )
+    expect(chatStore.messages[1]).toMatchObject({
+      status: 'success',
+      generation: {
+        prompt: 'new prompt',
+        attachmentIds: [],
+      },
+    })
   })
 })

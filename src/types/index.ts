@@ -50,10 +50,7 @@ export interface ChatMessage {
   timestamp: number
   attachments?: ChatAttachment[]
   images?: GeneratedImage[]
-  generationSize?: GenerationOptions['size']
-  generationQuality?: GenerationOptions['quality']
-  generationCount?: GenerationOptions['n']
-  generationStyle?: GenerationOptions['style']
+  generation?: GenerationMetadata
   status: 'pending' | 'success' | 'error'
   error?: string
   isFavorite?: boolean
@@ -75,6 +72,20 @@ export interface GeneratedImage {
 export interface ChatAttachment extends GeneratedImage {
   name: string
 }
+
+export interface GenerationMetadata {
+  prompt: string
+  size: GenerationSize
+  quality: GenerationQuality
+  n: number
+  styleId?: string
+  styleName?: string
+  style?: StyleTemplate
+  attachmentIds: string[]
+  attachments?: ChatAttachment[]
+}
+
+export type ChatInputAttachment = File | ChatAttachment
 
 export interface GalleryImageItem {
   id: string

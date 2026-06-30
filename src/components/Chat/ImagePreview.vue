@@ -40,15 +40,15 @@
             <img :src="imageUrl" :alt="t('generatedImageAlt')" class="preview-image" />
 
             <!-- Metadata Panel -->
-            <div v-if="displayImage.sourcePrompt" class="metadata-panel">
+            <div v-if="showImageInfo && hasImageInfo" class="metadata-panel">
               <div class="metadata-header">
                 <Info :size="16" />
                 <span>{{ t('imageInfo') }}</span>
               </div>
               <div class="metadata-content">
-                <div class="metadata-item">
+                <div class="metadata-item metadata-prompt-item">
                   <span class="metadata-label">{{ t('promptLabel') }}:</span>
-                  <span class="metadata-value">{{ displayImage.sourcePrompt }}</span>
+                  <span class="metadata-value metadata-prompt">{{ displayImage.sourcePrompt }}</span>
                 </div>
                 <div class="metadata-item">
                   <span class="metadata-label">{{ t('generatedAt') }}:</span>
@@ -63,57 +63,98 @@
 
             <div class="preview-actions">
               <button
+                v-if="hasImageInfo"
+                type="button"
                 class="preview-btn"
-                :title="t('createVariation')"
-                @click.stop="$emit('createVariation', displayImage)"
+                :class="{ active: showImageInfo }"
+                :title="t('imageInfo')"
+                :aria-label="t('imageInfo')"
+                :aria-pressed="showImageInfo"
+                @click.stop="toggleImageInfo"
               >
-                <Shuffle :size="18" />
-                <span>{{ t('variation') }}</span>
+                <Info :size="14" />
+                <span class="preview-btn-label">{{ t('imageInfo') }}</span>
               </button>
               <button
+                type="button"
+                class="preview-btn"
+                :title="t('createVariation')"
+                :aria-label="t('createVariation')"
+                @click.stop="$emit('createVariation', displayImage)"
+              >
+                <Shuffle :size="14" />
+                <span class="preview-btn-label">{{ t('variation') }}</span>
+              </button>
+              <button
+                type="button"
                 class="preview-btn"
                 :title="t('editImage')"
+                :aria-label="t('editImage')"
                 @click.stop="$emit('editImage', displayImage)"
               >
-                <Edit :size="18" />
-                <span>{{ t('edit') }}</span>
+                <Edit :size="14" />
+                <span class="preview-btn-label">{{ t('edit') }}</span>
               </button>
-              <button class="preview-btn" :title="t('downloadImage')" @click.stop="downloadImage">
-                <Download :size="18" />
-                <span>{{ t('download') }}</span>
+              <button
+                type="button"
+                class="preview-btn"
+                :title="t('downloadImage')"
+                :aria-label="t('downloadImage')"
+                @click.stop="downloadImage"
+              >
+                <Download :size="14" />
+                <span class="preview-btn-label">{{ t('download') }}</span>
               </button>
-              <button class="preview-btn" :title="t('share')" @click.stop="shareImage">
-                <Share2 :size="18" />
-                <span>{{ t('share') }}</span>
+              <button
+                type="button"
+                class="preview-btn"
+                :title="t('share')"
+                :aria-label="t('share')"
+                @click.stop="shareImage"
+              >
+                <Share2 :size="14" />
+                <span class="preview-btn-label">{{ t('share') }}</span>
               </button>
               <template v-if="localActionsAvailable">
                 <button
+                  type="button"
                   class="preview-btn"
                   :title="t('openLocalImage')"
+                  :aria-label="t('openLocalImage')"
                   @click.stop="openImageFile"
                 >
-                  <ExternalLink :size="18" />
-                  <span>{{ t('open') }}</span>
+                  <ExternalLink :size="14" />
+                  <span class="preview-btn-label">{{ t('open') }}</span>
                 </button>
                 <button
+                  type="button"
                   class="preview-btn"
                   :title="t('revealLocalImage')"
+                  :aria-label="t('revealLocalImage')"
                   @click.stop="revealImageFile"
                 >
-                  <FolderSearch :size="18" />
-                  <span>{{ t('reveal') }}</span>
-                </button>
-                <button class="preview-btn" :title="t('saveAs')" @click.stop="downloadImage">
-                  <Save :size="18" />
-                  <span>{{ t('saveAs') }}</span>
+                  <FolderSearch :size="14" />
+                  <span class="preview-btn-label">{{ t('reveal') }}</span>
                 </button>
                 <button
+                  type="button"
+                  class="preview-btn"
+                  :title="t('saveAs')"
+                  :aria-label="t('saveAs')"
+                  @click.stop="downloadImage"
+                >
+                  <Save :size="14" />
+                  <span class="preview-btn-label">{{ t('saveAs') }}</span>
+                </button>
+                <button
+                  type="button"
                   class="preview-btn"
                   :title="t('copyImageToClipboard')"
+                  :aria-label="t('copyImageToClipboard')"
                   @click.stop="copyImageFile"
                 >
-                  <ClipboardCopy :size="18" />
-                  <span>{{ t('copy') }}</span>
+                  <ClipboardCopy :size="14" />
+                  <span class="preview-btn-label">{{ t('copy') }}</span>
                 </button>
               </template>
             </div>
@@ -173,12 +214,14 @@ const { success, error: showError } = useToast()
 const { downloadSingleImage } = useImageDownload()
 const { t, locale } = useI18n()
 const showPreview = ref(false)
+const showImageInfo = ref(false)
 const displayImage = ref<GeneratedImage>(props.image)
 const resolveFailed = ref(false)
 const ownedObjectUrls = new Set<string>()
 let resolveRun = 0
 
 const localActionsAvailable = computed(() => isLocalImageActionAvailable(displayImage.value))
+const hasImageInfo = computed(() => Boolean(displayImage.value.sourcePrompt))
 
 function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
   const validUrl = isValidImageUrl(image.url)
@@ -264,14 +307,22 @@ function handleKeydown(event: KeyboardEvent) {
 
 function openPreview() {
   showPreview.value = true
+  showImageInfo.value = false
   document.body.style.overflow = 'hidden'
   document.addEventListener('keydown', handleKeydown)
 }
 
 function closePreview() {
   showPreview.value = false
+  showImageInfo.value = false
   document.body.style.overflow = ''
   document.removeEventListener('keydown', handleKeydown)
+}
+
+function toggleImageInfo() {
+  if (hasImageInfo.value) {
+    showImageInfo.value = !showImageInfo.value
+  }
 }
 
 onUnmounted(() => {
@@ -500,19 +551,25 @@ async function shareImage() {
 /* Metadata Panel */
 .metadata-panel {
   position: absolute;
-  right: -320px;
-  top: 0;
-  width: 300px;
-  background: rgba(0, 0, 0, 0.8);
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  background: rgba(2, 6, 23, 0.88);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  padding: 18px;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 70px -32px rgba(0, 0, 0, 0.85);
 }
 
 .metadata-header {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   margin-bottom: 12px;
   padding-bottom: 12px;
@@ -546,6 +603,11 @@ async function shareImage() {
   word-break: break-word;
 }
 
+.metadata-prompt {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
 .copy-btn {
   display: flex;
   align-items: center;
@@ -570,40 +632,54 @@ async function shareImage() {
 
 .preview-actions {
   position: absolute;
-  bottom: -60px;
+  bottom: -46px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
+  gap: 6px;
   max-width: min(88vw, 720px);
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-lg);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0;
 }
 
 .preview-btn {
-  display: flex;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-width: 72px;
-  padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  border-radius: var(--radius-full);
-  color: white;
-  font-size: 13px;
-  font-weight: 500;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: all var(--transition-base);
 }
 
 .preview-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.preview-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.preview-btn-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .close-btn {

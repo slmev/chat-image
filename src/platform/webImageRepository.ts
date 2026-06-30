@@ -1,5 +1,5 @@
 import type { GeneratedImage } from '../types'
-import { getCachedBlobUrl } from '../utils/imagePersistence'
+import { createDataUrlFromBase64 } from '../utils/imagePersistence'
 import { isBrowserReadableImageUrl, isExternalImageUrl } from '../utils/images'
 import type { ImageRepository, SaveGeneratedImageInput } from './imageRepository'
 
@@ -21,7 +21,7 @@ export const webImageRepository: ImageRepository = {
     if (input.b64Json) {
       const blob = base64ToBlob(input.b64Json, mimeType)
       byteSize = blob.size
-      url = getCachedBlobUrl(input.id, input.b64Json, mimeType)
+      url = createDataUrlFromBase64(input.b64Json, mimeType)
     }
 
     return {
@@ -41,7 +41,7 @@ export const webImageRepository: ImageRepository = {
     if (image.base64) {
       return {
         ...image,
-        url: getCachedBlobUrl(image.id, image.base64, image.mimeType),
+        url: createDataUrlFromBase64(image.base64, image.mimeType),
       }
     }
     return image

@@ -16,7 +16,7 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   close: []
-  result: [response: ImageGenerationResponse]
+  result: [response: ImageGenerationResponse, prompt: string]
 }>()
 
 const { isLoading, error, editImage, cancelEdit } = useImageEdit()
@@ -230,7 +230,7 @@ async function handleSubmit() {
     }
 
     const response = await editImage(props.image, maskBlob, prompt.value)
-    emit('result', response)
+    emit('result', response, prompt.value)
     emit('close')
   } catch (err) {
     console.error('Edit failed:', err)
