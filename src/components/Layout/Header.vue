@@ -21,7 +21,7 @@
         </div>
       </div>
 
-      <nav class="header-right" :aria-label="t('mainNav')">
+      <nav ref="headerActionsRef" class="header-right" :aria-label="t('mainNav')">
         <button
           class="btn-secondary header-action"
           :aria-label="t('newChat')"
@@ -50,17 +50,53 @@
           <Settings :size="20" />
         </button>
 
-        <ThemeToggle />
-        <ExportImportPanel />
-        <button
-          v-if="chatStore.messageCount > 0"
-          class="btn-icon danger"
-          :aria-label="t('clearChat')"
-          :title="t('clearChat')"
-          @click="handleClearChat"
-        >
-          <Trash2 :size="20" />
-        </button>
+        <div class="desktop-actions">
+          <ThemeToggle />
+          <ExportImportPanel />
+          <button
+            v-if="chatStore.messageCount > 0"
+            class="btn-icon danger"
+            :aria-label="t('clearChat')"
+            :title="t('clearChat')"
+            @click="handleClearChat"
+          >
+            <Trash2 :size="20" />
+          </button>
+        </div>
+
+        <div class="mobile-more">
+          <button
+            class="btn-icon"
+            :aria-label="t('moreOptions')"
+            :title="t('moreOptions')"
+            :aria-expanded="showMoreMenu"
+            @click="toggleMoreMenu"
+          >
+            <MoreHorizontal :size="20" />
+          </button>
+
+          <Transition name="more-menu">
+            <div v-if="showMoreMenu" class="more-menu" role="menu">
+              <div class="more-menu-row">
+                <span class="more-menu-label">{{ t('switchLanguage') }}</span>
+                <ThemeToggle />
+              </div>
+              <div class="more-menu-row">
+                <span class="more-menu-label">{{ t('importExport') }}</span>
+                <ExportImportPanel />
+              </div>
+              <button
+                v-if="chatStore.messageCount > 0"
+                class="more-menu-action danger"
+                role="menuitem"
+                @click="handleClearChat"
+              >
+                <Trash2 :size="18" />
+                <span>{{ t('clearChat') }}</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
       </nav>
     </div>
 
@@ -78,8 +114,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Menu, Plus, Settings, Trash2, ImageIcon } from 'lucide-vue-next'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { Menu, Plus, Settings, Trash2, ImageIcon, MoreHorizontal } from 'lucide-vue-next'
 import ThemeToggle from './ThemeToggle.vue'
 import ExportImportPanel from '../Chat/ExportImportPanel.vue'
 import ConfirmModal from '../Common/ConfirmModal.vue'
@@ -98,9 +134,35 @@ const emit = defineEmits<{
 
 const { chatStore, clearChat, startNewChat } = useChat()
 const showClearConfirm = ref(false)
+const showMoreMenu = ref(false)
+const headerActionsRef = ref<HTMLElement | null>(null)
+
+function closeMoreMenu() {
+  showMoreMenu.value = false
+}
+
+function toggleMoreMenu() {
+  showMoreMenu.value = !showMoreMenu.value
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  const target = event.target
+  if (!(target instanceof Node)) return
+  if (headerActionsRef.value?.contains(target)) return
+  closeMoreMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick)
+})
 
 async function handleNewChat() {
   try {
+    closeMoreMenu()
     await startNewChat()
     await router.push({ name: 'chat' })
   } catch (error) {
@@ -109,10 +171,12 @@ async function handleNewChat() {
 }
 
 async function openGallery() {
+  closeMoreMenu()
   await router.push({ name: 'gallery' })
 }
 
 function handleClearChat() {
+  closeMoreMenu()
   showClearConfirm.value = true
 }
 
@@ -216,6 +280,17 @@ async function confirmClearChat() {
   flex-shrink: 0;
 }
 
+.desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-more {
+  position: relative;
+  display: none;
+}
+
 .header-action {
   padding-inline: 14px;
 }
@@ -227,6 +302,128 @@ async function confirmClearChat() {
 
 :root.dark .btn-icon.danger:hover {
   background: #450a0a;
+}
+
+.more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 55;
+  width: min(236px, calc(100vw - 16px));
+  padding: 8px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.more-menu-row,
+.more-menu-action {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+}
+
+.more-menu-label,
+.more-menu-action span {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.more-menu-action {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.more-menu-action:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.more-menu-action.danger:hover {
+  background: #fef2f2;
+  color: var(--color-error);
+}
+
+:root.dark .more-menu-action.danger:hover {
+  background: #450a0a;
+}
+
+.more-menu-enter-active,
+.more-menu-leave-active {
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.more-menu-enter-from,
+.more-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (max-width: 520px) {
+  .header-content {
+    gap: 8px;
+    padding: 0 8px;
+  }
+
+  .header-left {
+    flex: 1 1 auto;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    gap: 6px;
+  }
+
+  .logo-section {
+    gap: 8px;
+  }
+
+  .logo-mark {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .logo-text {
+    display: none;
+  }
+
+  .header-right {
+    display: grid;
+    grid-template-columns: repeat(4, 34px);
+    align-items: center;
+    flex: 0 0 148px;
+    gap: 4px;
+  }
+
+  .header-action {
+    width: 34px;
+    padding-inline: 0;
+  }
+
+  .header-action .btn-label {
+    display: none;
+  }
+
+  .desktop-actions {
+    display: none;
+  }
+
+  .mobile-more {
+    display: block;
+  }
 }
 
 @media (min-width: 640px) {

@@ -143,11 +143,7 @@
         <div v-if="message.isFavorite" class="favorite-badge image-favorite-badge">
           <Star :size="12" fill="currentColor" />
         </div>
-        <div
-          v-for="image in message.images || []"
-          :key="image.id"
-          class="result-image-item"
-        >
+        <div v-for="image in message.images || []" :key="image.id" class="result-image-item">
           <ImagePreview
             :image="image"
             @create-variation="openVariationDialog"
@@ -280,7 +276,9 @@
                 </div>
                 <div>
                   <dt>{{ t('selectedAttachments') }}</dt>
-                  <dd>{{ t('referenceCount', { count: message.generation.attachmentIds.length }) }}</dd>
+                  <dd>
+                    {{ t('referenceCount', { count: message.generation.attachmentIds.length }) }}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -306,7 +304,6 @@ import {
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type {
-  ChatAttachment,
   ChatMessage,
   GeneratedImage,
   ImageGenerationResponse,
@@ -318,11 +315,9 @@ import MessageActions from './MessageActions.vue'
 import VariationDialog from '../ImageEdit/VariationDialog.vue'
 import ImageEditDialog from '../ImageEdit/ImageEditDialog.vue'
 import ConfirmModal from '../Common/ConfirmModal.vue'
-import { useChatStore } from '../../stores/chat'
 import { useChat } from '../../composables/useChat'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
-import { persistGeneratedImagesFromResponse } from '../../utils/images'
 import {
   DEFAULT_GENERATION_OPTIONS,
   findImageSizePreset,
@@ -330,10 +325,7 @@ import {
   normalizeImageSize,
   parseImageSize,
 } from '../../utils/constants'
-import {
-  createGenerationMetadata,
-  generationAspectRatio,
-} from '../../utils/generation'
+import { generationAspectRatio } from '../../utils/generation'
 
 interface Props {
   message: ChatMessage
@@ -351,8 +343,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const chatStore = useChatStore()
-const { retryGeneration, editUserPrompt } = useChat()
+const { retryGeneration, editUserPrompt, appendDerivedImageResult } = useChat()
 const { success, error: showError } = useToast()
 const { downloadMultipleImages } = useImageDownload()
 
@@ -539,66 +530,28 @@ function closeEditDialog() {
   selectedImageForEdit.value = null
 }
 
-async function buildImagesFromResponse(
-  response: ImageGenerationResponse,
-  prefix: string,
-  sourcePrompt: string,
-): Promise<GeneratedImage[]> {
-  return persistGeneratedImagesFromResponse(response, {
-    idPrefix: prefix,
-    sourcePrompt,
+async function handleVariationResult(response: ImageGenerationResponse, options: VariationOptions) {
+  await appendDerivedImageResult(response, {
+    content: t('variationGenerated'),
+    idPrefix: 'variation',
+    prompt: options.prompt,
+    generationOptions: options,
+    sourceImage: selectedImageForVariation.value,
     sourceMessageId: props.message.id,
   })
 }
 
-function imageAsAttachment(image: GeneratedImage | null): ChatAttachment[] {
-  if (!image) return []
-  return [
-    {
-      ...image,
-      name: `reference-${image.id}.png`,
-    },
-  ]
-}
-
-async function handleVariationResult(response: ImageGenerationResponse, options: VariationOptions) {
-  const newImages = await buildImagesFromResponse(
-    response,
-    'variation',
-    options.prompt,
-  )
-
-  chatStore.addMessage({
-    type: 'assistant',
-    content: t('variationGenerated'),
-    status: 'success',
-    images: newImages,
-    generation: createGenerationMetadata(options.prompt, options, imageAsAttachment(selectedImageForVariation.value)),
-  })
-  await chatStore.flushHistorySave()
-}
-
 async function handleEditResult(response: ImageGenerationResponse, prompt: string) {
-  const newImages = await buildImagesFromResponse(
-    response,
-    'edited',
-    prompt,
-  )
-
-  chatStore.addMessage({
-    type: 'assistant',
+  await appendDerivedImageResult(response, {
     content: t('editedImageGenerated'),
-    status: 'success',
-    images: newImages,
-    generation: createGenerationMetadata(
-      prompt,
-      {
-        ...DEFAULT_GENERATION_OPTIONS,
-      },
-      imageAsAttachment(selectedImageForEdit.value),
-    ),
+    idPrefix: 'edited',
+    prompt,
+    generationOptions: {
+      ...DEFAULT_GENERATION_OPTIONS,
+    },
+    sourceImage: selectedImageForEdit.value,
+    sourceMessageId: props.message.id,
   })
-  await chatStore.flushHistorySave()
 }
 </script>
 

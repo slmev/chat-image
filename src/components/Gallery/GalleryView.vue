@@ -118,7 +118,9 @@
       </div>
 
       <div class="sidebar-section">
-        <label for="gallery-reference-filter" class="filter-label">{{ t('galleryReferences') }}</label>
+        <label for="gallery-reference-filter" class="filter-label">{{
+          t('galleryReferences')
+        }}</label>
         <div class="select-wrapper">
           <Filter :size="16" aria-hidden="true" />
           <select
@@ -1392,7 +1394,6 @@ async function shareImage(item: GalleryImageItem) {
     grid-template-columns: 1fr;
     overflow-y: auto;
   }
-
 }
 
 @media (max-width: 640px) {

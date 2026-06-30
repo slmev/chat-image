@@ -3,7 +3,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import { useChat } from '../../composables/useChat'
 import { useChatStore } from '../../stores/chat'
 import { useConfigStore } from '../../stores/config'
-import type { ChatAttachment, GeneratedImage, StyleTemplate } from '../../types'
+import type {
+  ChatAttachment,
+  GeneratedImage,
+  ImageGenerationResponse,
+  StyleTemplate,
+} from '../../types'
 
 const mockState = vi.hoisted(() => ({
   generateImage: vi.fn(),
@@ -11,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   saveCurrentChat: vi.fn(),
   loadHistoryChat: vi.fn(),
   persistChatAttachments: vi.fn(),
+  persistGeneratedImagesFromResponse: vi.fn(),
 }))
 
 vi.mock('../../platform/runtime', () => ({
@@ -45,6 +51,7 @@ vi.mock('../../composables/useHistory', () => ({
 
 vi.mock('../../utils/images', () => ({
   persistChatAttachments: mockState.persistChatAttachments,
+  persistGeneratedImagesFromResponse: mockState.persistGeneratedImagesFromResponse,
 }))
 
 function generatedImage(): GeneratedImage {
@@ -52,6 +59,13 @@ function generatedImage(): GeneratedImage {
     id: 'image-1',
     url: 'blob:image-1',
     timestamp: 1,
+  }
+}
+
+function imageResponse(): ImageGenerationResponse {
+  return {
+    created: 1,
+    data: [{ b64_json: 'image' }],
   }
 }
 
@@ -77,7 +91,7 @@ function style(): StyleTemplate {
 }
 
 describe('useChat', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     localStorage.clear()
     mockState.generateImage.mockReset()
@@ -85,6 +99,8 @@ describe('useChat', () => {
     mockState.saveCurrentChat.mockReset()
     mockState.loadHistoryChat.mockReset()
     mockState.persistChatAttachments.mockReset()
+    mockState.persistGeneratedImagesFromResponse.mockReset()
+    await useChat().clearChat()
   })
 
   it('retries an assistant message without appending new chat messages or history records', async () => {
@@ -283,11 +299,15 @@ describe('useChat', () => {
       },
       images: [expect.objectContaining({ id: 'image-1' })],
     })
-    expect(mockState.generateImage).toHaveBeenCalledWith('new prompt', {
-      size: 'auto',
-      quality: 'auto',
-      n: 1,
-    }, [])
+    expect(mockState.generateImage).toHaveBeenCalledWith(
+      'new prompt',
+      {
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+      },
+      [],
+    )
     expect(mockState.saveCurrentChat).toHaveBeenCalled()
   })
 
@@ -341,5 +361,94 @@ describe('useChat', () => {
         attachmentIds: [],
       },
     })
+  })
+
+  it('appends derived image results and saves the current history item', async () => {
+    const derivedImage = generatedImage()
+    mockState.persistGeneratedImagesFromResponse.mockResolvedValueOnce([derivedImage])
+    mockState.saveCurrentChat.mockResolvedValueOnce('history-1')
+    const sourceImage = generatedImage()
+    const chatStore = useChatStore()
+    chatStore.addMessage({
+      type: 'user',
+      content: 'make a landscape',
+      status: 'success',
+    })
+    const sourceMessage = chatStore.addMessage({
+      type: 'assistant',
+      content: 'done',
+      status: 'success',
+      images: [sourceImage],
+    })
+
+    await useChat().appendDerivedImageResult(imageResponse(), {
+      content: 'variationGenerated',
+      idPrefix: 'variation',
+      prompt: 'make it snowy',
+      generationOptions: {
+        size: '1024x1024',
+        quality: 'medium',
+        n: 1,
+      },
+      sourceImage,
+      sourceMessageId: sourceMessage.id,
+    })
+
+    expect(mockState.persistGeneratedImagesFromResponse).toHaveBeenCalledWith(imageResponse(), {
+      idPrefix: 'variation',
+      sourcePrompt: 'make it snowy',
+      sourceMessageId: sourceMessage.id,
+    })
+    expect(chatStore.messages.at(-1)).toMatchObject({
+      type: 'assistant',
+      content: 'variationGenerated',
+      status: 'success',
+      images: [derivedImage],
+      generation: {
+        prompt: 'make it snowy',
+        size: '1024x1024',
+        quality: 'medium',
+        n: 1,
+        attachmentIds: [sourceImage.id],
+        attachments: [expect.objectContaining({ id: sourceImage.id })],
+      },
+    })
+    expect(mockState.saveCurrentChat).toHaveBeenCalledTimes(1)
+  })
+
+  it('saves the current conversation before loading a different history item', async () => {
+    mockState.generateImage.mockResolvedValueOnce([generatedImage()])
+    mockState.saveCurrentChat
+      .mockResolvedValueOnce('current-history')
+      .mockResolvedValueOnce('current-history')
+    mockState.loadHistoryChat.mockResolvedValueOnce([
+      {
+        id: 'loaded-message',
+        type: 'user',
+        content: 'loaded',
+        timestamp: 1,
+        status: 'success',
+      },
+    ])
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const chat = useChat()
+    await chat.sendMessage('current prompt', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await chat.loadChat('target-history')
+
+    expect(mockState.saveCurrentChat.mock.calls[1]).toEqual(['current-history'])
+    expect(mockState.saveCurrentChat.mock.invocationCallOrder[1]).toBeLessThan(
+      mockState.loadHistoryChat.mock.invocationCallOrder[0],
+    )
+    expect(mockState.loadHistoryChat).toHaveBeenCalledWith('target-history')
   })
 })

@@ -65,19 +65,24 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
 }
 
 export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] {
+  function stripImageData<T extends GeneratedImage>(image: T): T {
+    const fallbackUrl =
+      image.originalUrl && !image.originalUrl.startsWith('data:') ? image.originalUrl : ''
+
+    return {
+      ...image,
+      base64: undefined,
+      url: image.url.startsWith('data:') ? fallbackUrl : image.url,
+    }
+  }
+
   return messages.map((msg) => {
     if (!msg.images && !msg.attachments) return msg
 
     return {
       ...msg,
-      attachments: msg.attachments?.map((attachment) => ({
-        ...attachment,
-        base64: undefined,
-      })),
-      images: msg.images?.map((img) => ({
-        ...img,
-        base64: undefined,
-      })),
+      attachments: msg.attachments?.map(stripImageData),
+      images: msg.images?.map(stripImageData),
     }
   })
 }

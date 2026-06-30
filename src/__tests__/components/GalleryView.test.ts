@@ -69,7 +69,10 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   }
 }
 
-function generation(prompt: string, overrides: Partial<GenerationMetadata> = {}): GenerationMetadata {
+function generation(
+  prompt: string,
+  overrides: Partial<GenerationMetadata> = {},
+): GenerationMetadata {
   return {
     prompt,
     size: '1024x1024',

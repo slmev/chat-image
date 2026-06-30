@@ -11,6 +11,7 @@ export default {
   backToChat: '返回聊天',
   switchTheme: '切换主题',
   switchLanguage: '切换语言',
+  moreOptions: '更多选项',
   clearChat: '清空对话',
   clearChatConfirm: '确定要清空所有对话吗？此操作不可恢复。',
   clear: '清空',

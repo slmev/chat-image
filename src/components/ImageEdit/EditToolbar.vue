@@ -66,11 +66,13 @@ function handleBrushSizeChange(event: Event) {
 .edit-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 8px 12px;
   background: var(--color-bg-tertiary);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
+  max-width: 100%;
 }
 
 .tool-btn {
@@ -117,15 +119,20 @@ function handleBrushSizeChange(event: Event) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 160px;
+  min-width: 0;
 }
 
 .size-label {
+  flex: 0 0 auto;
   font-size: 12px;
   color: var(--color-text-secondary);
 }
 
 .size-slider {
-  width: 80px;
+  flex: 1 1 80px;
+  min-width: 70px;
+  width: 100%;
   height: 4px;
   appearance: none;
   background: var(--color-border);
@@ -143,9 +150,26 @@ function handleBrushSizeChange(event: Event) {
 }
 
 .size-value {
+  flex: 0 0 auto;
   font-size: 11px;
   color: var(--color-text-secondary);
   min-width: 32px;
   text-align: right;
+}
+
+@media (max-width: 520px) {
+  .edit-toolbar {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .brush-size-control {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .divider {
+    display: none;
+  }
 }
 </style>

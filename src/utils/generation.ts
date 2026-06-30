@@ -60,9 +60,7 @@ export function styleFromGeneration(generation: GenerationMetadata): StyleTempla
   }
 }
 
-export function normalizeGenerationMetadata(
-  generation: GenerationMetadata,
-): GenerationMetadata {
+export function normalizeGenerationMetadata(generation: GenerationMetadata): GenerationMetadata {
   const quality: GenerationQuality = normalizeImageQuality(generation.quality)
   const count = Number(generation.n)
   const style = styleFromGeneration(generation)

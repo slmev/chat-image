@@ -529,7 +529,9 @@ function styleLabel(style: StyleTemplate): string {
 
 .original-image {
   position: relative;
+  flex: 0 0 auto;
   height: clamp(220px, 42vh, 420px);
+  min-height: 220px;
   border-radius: var(--radius-md);
   overflow: auto;
   border: 1px solid var(--color-border);
@@ -836,6 +838,52 @@ function styleLabel(style: StyleTemplate): string {
   padding: 16px 24px;
   border-top: 1px solid var(--color-border);
   background: var(--color-bg-secondary);
+}
+
+@media (max-width: 520px) {
+  .dialog-overlay {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .dialog-content {
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .dialog-header,
+  .dialog-footer {
+    padding: 14px 16px;
+  }
+
+  .dialog-body {
+    min-height: 0;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .original-image {
+    height: clamp(190px, 34vh, 300px);
+    min-height: 190px;
+  }
+
+  .options-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dimension-field {
+    flex: 1 1 120px;
+    width: auto;
+  }
+
+  .dialog-footer {
+    flex-wrap: wrap;
+  }
+
+  .dialog-footer .btn-secondary,
+  .dialog-footer .btn-primary {
+    flex: 1 1 140px;
+  }
 }
 
 /* Transitions */

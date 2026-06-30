@@ -2,8 +2,15 @@ import { useChatStore } from '../stores/chat'
 import { useImageGeneration } from '../composables/useImageGeneration'
 import { useConfigStore } from '../stores/config'
 import { useHistory } from '../composables/useHistory'
-import type { ChatAttachment, ChatInputAttachment, GenerationMetadata, GenerationOptions } from '../types'
-import { persistChatAttachments } from '../utils/images'
+import type {
+  ChatAttachment,
+  ChatInputAttachment,
+  GeneratedImage,
+  GenerationMetadata,
+  GenerationOptions,
+  ImageGenerationResponse,
+} from '../types'
+import { persistChatAttachments, persistGeneratedImagesFromResponse } from '../utils/images'
 import { DEFAULT_GENERATION_OPTIONS, normalizeGenerationOptions } from '../utils/constants'
 import { createGenerationMetadata } from '../utils/generation'
 import i18n from '../i18n'
@@ -47,6 +54,48 @@ export function useChat() {
     return attachments.filter(isReusableGenerationAttachment)
   }
 
+  function imageAsAttachment(image: GeneratedImage | null | undefined): ChatAttachment[] {
+    if (!image) return []
+    return [
+      {
+        ...image,
+        name: `reference-${image.id}.png`,
+      },
+    ]
+  }
+
+  async function appendDerivedImageResult(
+    response: ImageGenerationResponse,
+    options: {
+      content: string
+      idPrefix: string
+      prompt: string
+      generationOptions: GenerationOptions
+      sourceImage?: GeneratedImage | null
+      sourceMessageId?: string
+    },
+  ): Promise<void> {
+    const images = await persistGeneratedImagesFromResponse(response, {
+      idPrefix: options.idPrefix,
+      sourcePrompt: options.prompt,
+      sourceMessageId: options.sourceMessageId,
+    })
+
+    chatStore.addMessage({
+      type: 'assistant',
+      content: options.content,
+      status: 'success',
+      images,
+      generation: createGenerationMetadata(
+        options.prompt,
+        options.generationOptions,
+        imageAsAttachment(options.sourceImage),
+      ),
+    })
+
+    currentHistoryId = await saveCurrentChat(currentHistoryId)
+  }
+
   async function sendMessage(
     content: string,
     options: GenerationOptions,
@@ -84,10 +133,12 @@ export function useChat() {
 
     try {
       // 生成图片
-      const images = (await generateImage(content, generationOptions, attachments)).map((image) => ({
-        ...image,
-        sourceMessageId: assistantMessage.id,
-      }))
+      const images = (await generateImage(content, generationOptions, attachments)).map(
+        (image) => ({
+          ...image,
+          sourceMessageId: assistantMessage.id,
+        }),
+      )
 
       // 更新助手消息
       await chatStore.addImagesToMessage(assistantMessage.id, images)
@@ -130,10 +181,12 @@ export function useChat() {
     chatStore.setLoading(true)
 
     try {
-      const images = (await generateImage(content, generationOptions, attachments)).map((image) => ({
-        ...image,
-        sourceMessageId: messageId,
-      }))
+      const images = (await generateImage(content, generationOptions, attachments)).map(
+        (image) => ({
+          ...image,
+          sourceMessageId: messageId,
+        }),
+      )
       await chatStore.addImagesToMessage(messageId, images)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')
@@ -204,12 +257,15 @@ export function useChat() {
           size: assistantMessage.generation.size,
           quality: assistantMessage.generation.quality,
           n: assistantMessage.generation.n,
-          ...(assistantMessage.generation.style ? { style: assistantMessage.generation.style } : {}),
+          ...(assistantMessage.generation.style
+            ? { style: assistantMessage.generation.style }
+            : {}),
         }
       : DEFAULT_GENERATION_OPTIONS
 
     const candidateAttachments =
-      assistantMessage?.generation?.attachments && assistantMessage.generation.attachments.length > 0
+      assistantMessage?.generation?.attachments &&
+      assistantMessage.generation.attachments.length > 0
         ? assistantMessage.generation.attachments
         : attachments
 
@@ -254,6 +310,10 @@ export function useChat() {
 
   // 加载历史对话
   async function loadChat(historyId: string): Promise<boolean> {
+    if (chatStore.messages.length > 0 && currentHistoryId !== historyId) {
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
+    }
+
     const messages = await loadHistoryChat(historyId)
     if (messages) {
       currentHistoryId = historyId
@@ -273,6 +333,7 @@ export function useChat() {
     retryMessage,
     retryGeneration,
     editUserPrompt,
+    appendDerivedImageResult,
     cancelCurrentGeneration,
     clearChat,
     startNewChat,

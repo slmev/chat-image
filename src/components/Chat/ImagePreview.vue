@@ -48,7 +48,9 @@
               <div class="metadata-content">
                 <div class="metadata-item metadata-prompt-item">
                   <span class="metadata-label">{{ t('promptLabel') }}:</span>
-                  <span class="metadata-value metadata-prompt">{{ displayImage.sourcePrompt }}</span>
+                  <span class="metadata-value metadata-prompt">{{
+                    displayImage.sourcePrompt
+                  }}</span>
                 </div>
                 <div class="metadata-item">
                   <span class="metadata-label">{{ t('generatedAt') }}:</span>

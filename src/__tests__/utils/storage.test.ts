@@ -199,5 +199,58 @@ describe('storage utils', () => {
         base64: pngBase64,
       })
     })
+
+    it('removes base64 and data URLs when quota fallback strips image data', () => {
+      const pngBase64 = btoa('png')
+      const writes: Array<{ key: string; value: string }> = []
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+        writes.push({ key, value })
+        if (writes.length <= 2) {
+          throw new DOMException('quota exceeded', 'QuotaExceededError')
+        }
+      })
+
+      setChatHistory([
+        {
+          id: 'message-1',
+          type: 'assistant',
+          content: '图片已生成',
+          timestamp: Date.now(),
+          status: 'success',
+          attachments: [
+            {
+              id: 'attachment-1',
+              name: 'reference.png',
+              url: `data:image/png;base64,${pngBase64}`,
+              originalUrl: 'https://example.com/reference.png',
+              base64: pngBase64,
+              mimeType: 'image/png',
+              timestamp: Date.now(),
+            },
+          ],
+          images: [
+            {
+              id: 'image-1',
+              url: `data:image/png;base64,${pngBase64}`,
+              base64: pngBase64,
+              mimeType: 'image/png',
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      ])
+
+      const fallbackMessages = JSON.parse(writes[2].value) as ChatMessage[]
+      expect(JSON.stringify(fallbackMessages)).not.toContain(pngBase64)
+      expect(JSON.stringify(fallbackMessages)).not.toContain('data:image')
+      expect(fallbackMessages[0].attachments?.[0]).not.toHaveProperty('base64')
+      expect(fallbackMessages[0].attachments?.[0]).toMatchObject({
+        url: 'https://example.com/reference.png',
+      })
+      expect(fallbackMessages[0].images?.[0]).not.toHaveProperty('base64')
+      expect(fallbackMessages[0].images?.[0]).toMatchObject({
+        url: '',
+      })
+    })
   })
 })

@@ -75,9 +75,7 @@ function galleryImageDedupeKey(image: GeneratedImage): string {
   return `url:${image.url}`
 }
 
-function promptForGalleryImage(
-  message: ChatMessage,
-): string {
+function promptForGalleryImage(message: ChatMessage): string {
   return message.generation?.prompt || ''
 }
 

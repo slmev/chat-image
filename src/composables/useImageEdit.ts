@@ -66,6 +66,7 @@ export function useImageEdit() {
     try {
       const service = getService()
       const generationOptions = normalizeGenerationOptions(options)
+      const imageBlob = await fetchImageAsBlob(image)
 
       // Build variation prompt
       const basePrompt = options.prompt?.trim() || image.sourcePrompt || ''
@@ -76,10 +77,13 @@ export function useImageEdit() {
         variationPrompt += `, ${generationOptions.style.promptSuffix}`
       }
 
-      const response = await service.generateImage(variationPrompt, {
+      const response = await service.editImage({
+        image: imageBlob,
+        prompt: variationPrompt,
         size: generationOptions.size,
         quality: generationOptions.quality,
         n: generationOptions.n,
+        response_format: 'b64_json',
       })
 
       return response

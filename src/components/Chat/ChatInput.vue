@@ -446,12 +446,7 @@ interface Props {
 }
 
 interface Emits {
-  (
-    e: 'send',
-    content: string,
-    options: GenerationOptions,
-    attachments: ChatInputAttachment[],
-  ): void
+  (e: 'send', content: string, options: GenerationOptions, attachments: ChatInputAttachment[]): void
 }
 
 const props = defineProps<Props>()
@@ -998,8 +993,12 @@ function handleAttachmentDrop(targetId: string): void {
   draggingAttachmentId.value = null
   if (!sourceId || sourceId === targetId) return
 
-  const sourceIndex = selectedAttachments.value.findIndex((attachment) => attachment.id === sourceId)
-  const targetIndex = selectedAttachments.value.findIndex((attachment) => attachment.id === targetId)
+  const sourceIndex = selectedAttachments.value.findIndex(
+    (attachment) => attachment.id === sourceId,
+  )
+  const targetIndex = selectedAttachments.value.findIndex(
+    (attachment) => attachment.id === targetId,
+  )
   if (sourceIndex === -1 || targetIndex === -1) return
 
   const [source] = selectedAttachments.value.splice(sourceIndex, 1)

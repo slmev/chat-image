@@ -11,6 +11,7 @@ export default {
   backToChat: 'Back to Chat',
   switchTheme: 'Switch theme',
   switchLanguage: 'Switch language',
+  moreOptions: 'More options',
   clearChat: 'Clear Chat',
   clearChatConfirm:
     'Are you sure you want to clear all conversations? This action cannot be undone.',
