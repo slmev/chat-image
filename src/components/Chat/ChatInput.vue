@@ -255,6 +255,11 @@
             </button>
           </div>
         </div>
+
+        <!-- Config -->
+        <div class="option-group config-group">
+          <ConfigSwitcher variant="inline" />
+        </div>
       </div>
 
       <Transition name="size-panel">
@@ -429,6 +434,7 @@ import { useToast } from '../../composables/useToast'
 import PromptPanel from '../Prompt/PromptPanel.vue'
 import PromptSuggest from '../Prompt/PromptSuggest.vue'
 import CustomStyleDialog from '../Style/CustomStyleDialog.vue'
+import ConfigSwitcher from '../Config/ConfigSwitcher.vue'
 import type {
   ChatAttachment,
   ChatInputAttachment,

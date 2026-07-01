@@ -51,6 +51,7 @@
         </button>
 
         <div class="desktop-actions">
+          <ConfigSwitcher variant="header" />
           <ThemeToggle />
           <ExportImportPanel />
           <button
@@ -77,6 +78,10 @@
 
           <Transition name="more-menu">
             <div v-if="showMoreMenu" class="more-menu" role="menu">
+              <div class="more-menu-row">
+                <span class="more-menu-label">{{ t('switchConfig') }}</span>
+                <ConfigSwitcher variant="header" />
+              </div>
               <div class="more-menu-row">
                 <span class="more-menu-label">{{ t('switchLanguage') }}</span>
                 <ThemeToggle />
@@ -118,6 +123,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { Menu, Plus, Settings, Trash2, ImageIcon, MoreHorizontal } from 'lucide-vue-next'
 import ThemeToggle from './ThemeToggle.vue'
 import ExportImportPanel from '../Chat/ExportImportPanel.vue'
+import ConfigSwitcher from '../Config/ConfigSwitcher.vue'
 import ConfirmModal from '../Common/ConfirmModal.vue'
 import { useChat } from '../../composables/useChat'
 import { useI18n } from 'vue-i18n'

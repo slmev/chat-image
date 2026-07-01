@@ -47,6 +47,7 @@ function mountInput() {
         PromptPanel: true,
         PromptSuggest: true,
         CustomStyleDialog: true,
+        ConfigSwitcher: true,
       },
     },
   })

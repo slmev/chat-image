@@ -12,6 +12,9 @@ export default {
   switchTheme: 'Switch theme',
   switchLanguage: 'Switch language',
   moreOptions: 'More options',
+  switchConfig: 'Switch config',
+  manageConfigs: 'Manage configs…',
+  config: 'Config',
   clearChat: 'Clear Chat',
   clearChatConfirm:
     'Are you sure you want to clear all conversations? This action cannot be undone.',
