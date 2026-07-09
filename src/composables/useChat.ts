@@ -284,12 +284,17 @@ export function useChat() {
     chatStore.setLoading(false)
 
     // 更新最后一个 pending 状态的消息为已取消
-    const lastPendingMessage = chatStore.messages.find(
-      (msg) => msg.type === 'assistant' && msg.status === 'pending',
-    )
+    const lastPendingMessage = [...chatStore.messages]
+      .reverse()
+      .find((msg) => msg.type === 'assistant' && msg.status === 'pending')
     if (lastPendingMessage) {
       await chatStore.setMessageError(lastPendingMessage.id, t('canceled'))
     }
+  }
+
+  async function cancelActiveGenerationBeforeLeavingChat(): Promise<void> {
+    if (!chatStore.isLoading) return
+    await cancelCurrentGeneration()
   }
 
   async function clearChat(): Promise<void> {
@@ -299,6 +304,8 @@ export function useChat() {
 
   // 开始新对话
   async function startNewChat(): Promise<void> {
+    await cancelActiveGenerationBeforeLeavingChat()
+
     // 保存当前对话
     if (chatStore.messages.length > 0) {
       currentHistoryId = await saveCurrentChat(currentHistoryId)
@@ -310,6 +317,10 @@ export function useChat() {
 
   // 加载历史对话
   async function loadChat(historyId: string): Promise<boolean> {
+    if (currentHistoryId !== historyId) {
+      await cancelActiveGenerationBeforeLeavingChat()
+    }
+
     if (chatStore.messages.length > 0 && currentHistoryId !== historyId) {
       currentHistoryId = await saveCurrentChat(currentHistoryId)
     }

@@ -416,6 +416,119 @@ describe('useChat', () => {
     expect(mockState.saveCurrentChat).toHaveBeenCalledTimes(1)
   })
 
+  it('cancels an active generation before loading a different history item', async () => {
+    let rejectGeneration: (error: Error) => void = () => undefined
+    mockState.generateImage.mockReturnValueOnce(
+      new Promise<GeneratedImage[]>((_, reject) => {
+        rejectGeneration = reject
+      }),
+    )
+    mockState.saveCurrentChat.mockResolvedValueOnce('current-history')
+    mockState.loadHistoryChat.mockResolvedValueOnce([
+      {
+        id: 'loaded-message',
+        type: 'user',
+        content: 'loaded',
+        timestamp: 1,
+        status: 'success',
+      },
+    ])
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const chat = useChat()
+    const chatStore = useChatStore()
+    const sendPromise = chat.sendMessage('current prompt', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(chatStore.isLoading).toBe(true)
+    expect(chatStore.messages[1]).toMatchObject({
+      type: 'assistant',
+      status: 'pending',
+    })
+
+    await chat.loadChat('target-history')
+
+    expect(mockState.cancelGeneration).toHaveBeenCalledTimes(1)
+    expect(chatStore.isLoading).toBe(false)
+    expect(chatStore.messages[1]).toMatchObject({
+      type: 'assistant',
+      status: 'error',
+    })
+    expect(mockState.cancelGeneration.mock.invocationCallOrder[0]).toBeLessThan(
+      mockState.saveCurrentChat.mock.invocationCallOrder[0],
+    )
+    expect(mockState.saveCurrentChat).toHaveBeenCalledWith(null)
+    expect(mockState.loadHistoryChat).toHaveBeenCalledWith('target-history')
+
+    rejectGeneration(new Error('请求已取消'))
+    await sendPromise
+  })
+
+  it('does not cancel when loading a history item without an active generation', async () => {
+    mockState.loadHistoryChat.mockResolvedValueOnce([
+      {
+        id: 'loaded-message',
+        type: 'user',
+        content: 'loaded',
+        timestamp: 1,
+        status: 'success',
+      },
+    ])
+
+    await useChat().loadChat('target-history')
+
+    expect(mockState.cancelGeneration).not.toHaveBeenCalled()
+    expect(mockState.loadHistoryChat).toHaveBeenCalledWith('target-history')
+  })
+
+  it('cancels an active generation before starting a new chat', async () => {
+    let rejectGeneration: (error: Error) => void = () => undefined
+    mockState.generateImage.mockReturnValueOnce(
+      new Promise<GeneratedImage[]>((_, reject) => {
+        rejectGeneration = reject
+      }),
+    )
+    mockState.saveCurrentChat.mockResolvedValueOnce('current-history')
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const chat = useChat()
+    const chatStore = useChatStore()
+    const sendPromise = chat.sendMessage('current prompt', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(chatStore.isLoading).toBe(true)
+
+    await chat.startNewChat()
+
+    expect(mockState.cancelGeneration).toHaveBeenCalledTimes(1)
+    expect(mockState.saveCurrentChat).toHaveBeenCalledWith(null)
+    expect(chatStore.isLoading).toBe(false)
+    expect(chatStore.messages).toHaveLength(0)
+
+    rejectGeneration(new Error('请求已取消'))
+    await sendPromise
+  })
+
   it('saves the current conversation before loading a different history item', async () => {
     mockState.generateImage.mockResolvedValueOnce([generatedImage()])
     mockState.saveCurrentChat
