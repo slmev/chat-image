@@ -139,6 +139,11 @@ function pasteEvent(files: File[] = [], types: string[] = []): ClipboardEvent {
   return event
 }
 
+async function waitForAnimationFrame() {
+  await new Promise((resolve) => window.setTimeout(resolve, 0))
+  await flushPromises()
+}
+
 describe('ChatContainer clipboard attachments', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -229,6 +234,51 @@ describe('ChatContainer clipboard attachments', () => {
     await flushPromises()
 
     expect(mockState.showError).toHaveBeenCalledWith('sendMessageFailed')
+    expect(wrapper.get('textarea').element).toHaveProperty('value', 'people')
+    consoleError.mockRestore()
+  })
+
+  it('restores the draft after generation appends an error message and fails', async () => {
+    mockState.sendMessage.mockImplementationOnce(async (content: string) => {
+      mockState.chatStore.messages.push(
+        {
+          id: 'user-message',
+          type: 'user',
+          content,
+          timestamp: 1,
+          status: 'success',
+          isFavorite: false,
+        },
+        {
+          id: 'assistant-message',
+          type: 'assistant',
+          content: 'generationInProgress',
+          timestamp: 2,
+          status: 'pending',
+          isFavorite: false,
+        },
+      )
+      mockState.chatStore.messages[1] = {
+        ...mockState.chatStore.messages[1],
+        status: 'error',
+        error: 'generation failed',
+      }
+      throw new Error('generation failed')
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const wrapper = await mountContainer()
+
+    await wrapper.get('textarea').setValue('restore this prompt')
+    await wrapper.get('.send-btn').trigger('click')
+    await flushPromises()
+
+    expect(mockState.showError).toHaveBeenCalledWith('sendMessageFailed')
+    expect(wrapper.get('textarea').element).toHaveProperty('value', 'restore this prompt')
+    expect(mockState.chatStore.messages.at(-1)).toMatchObject({
+      id: 'assistant-message',
+      status: 'error',
+      error: 'generation failed',
+    })
     consoleError.mockRestore()
   })
 
@@ -262,7 +312,128 @@ describe('ChatContainer clipboard attachments', () => {
 
     await wrapper.get('.quick-start-card').trigger('click')
     await flushPromises()
+    await waitForAnimationFrame()
 
     expect(messagesArea.scrollTop).toBe(720)
+  })
+
+  it('scrolls to the bottom when the latest assistant message receives images', async () => {
+    mockState.chatStore.messages.push(
+      {
+        id: 'user-message',
+        type: 'user',
+        content: 'render',
+        timestamp: 1,
+        status: 'success',
+        isFavorite: false,
+      },
+      {
+        id: 'assistant-message',
+        type: 'assistant',
+        content: 'generationInProgress',
+        timestamp: 2,
+        status: 'pending',
+        isFavorite: false,
+      },
+    )
+    const wrapper = await mountContainer()
+    const messagesArea = wrapper.get('.messages-area').element as HTMLElement
+    Object.defineProperty(messagesArea, 'scrollHeight', {
+      configurable: true,
+      value: 960,
+    })
+    messagesArea.scrollTop = 0
+
+    Object.assign(mockState.chatStore.messages[1], {
+      status: 'success',
+      images: [
+        {
+          id: 'generated-image',
+          url: 'blob:generated-image',
+          timestamp: 3,
+        },
+      ],
+    })
+    await flushPromises()
+    await waitForAnimationFrame()
+
+    expect(messagesArea.scrollTop).toBe(960)
+  })
+
+  it('scrolls to the bottom when the latest assistant message fails', async () => {
+    mockState.chatStore.messages.push(
+      {
+        id: 'user-message',
+        type: 'user',
+        content: 'render',
+        timestamp: 1,
+        status: 'success',
+        isFavorite: false,
+      },
+      {
+        id: 'assistant-message',
+        type: 'assistant',
+        content: 'generationInProgress',
+        timestamp: 2,
+        status: 'pending',
+        isFavorite: false,
+      },
+    )
+    const wrapper = await mountContainer()
+    const messagesArea = wrapper.get('.messages-area').element as HTMLElement
+    Object.defineProperty(messagesArea, 'scrollHeight', {
+      configurable: true,
+      value: 840,
+    })
+    messagesArea.scrollTop = 0
+
+    Object.assign(mockState.chatStore.messages[1], {
+      status: 'error',
+      error: 'failed',
+    })
+    await flushPromises()
+    await waitForAnimationFrame()
+
+    expect(messagesArea.scrollTop).toBe(840)
+  })
+
+  it('scrolls again when the latest message image finishes loading', async () => {
+    mockState.chatStore.messages.push(
+      {
+        id: 'user-message',
+        type: 'user',
+        content: 'render',
+        timestamp: 1,
+        status: 'success',
+        isFavorite: false,
+      },
+      {
+        id: 'assistant-message',
+        type: 'assistant',
+        content: 'done',
+        timestamp: 2,
+        status: 'success',
+        isFavorite: false,
+        images: [
+          {
+            id: 'generated-image',
+            url: 'blob:generated-image',
+            timestamp: 3,
+          },
+        ],
+      },
+    )
+    const wrapper = await mountContainer()
+    const messagesArea = wrapper.get('.messages-area').element as HTMLElement
+    Object.defineProperty(messagesArea, 'scrollHeight', {
+      configurable: true,
+      value: 1180,
+    })
+    messagesArea.scrollTop = 0
+
+    await wrapper.getComponent({ name: 'MessageBubble' }).vm.$emit('imageLoad', 'assistant-message')
+    await waitForAnimationFrame()
+
+    expect(messagesArea.scrollTop).toBe(1180)
   })
 })

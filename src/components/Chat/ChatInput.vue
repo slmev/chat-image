@@ -911,6 +911,7 @@ defineExpose({
   addAttachmentFiles,
   addReferenceImage,
   fillDraftFromGeneration,
+  restoreDraft,
 })
 
 function handleAttachmentSelect(event: Event) {
@@ -1024,6 +1025,36 @@ function applyGeneration(generation: GenerationMetadata): void {
   generation.attachments?.forEach(addReferenceImage)
   showSuggestions.value = false
   showSizePanel.value = false
+  nextTick(resizeTextarea)
+}
+
+function restoreDraft(
+  content: string,
+  options: GenerationOptions,
+  attachments: ChatInputAttachment[],
+): void {
+  if (inputContent.value.trim() || selectedAttachments.value.length > 0) return
+
+  inputContent.value = content
+  const normalizedOptions = normalizeGenerationOptions(options)
+  selectedOptions.value = {
+    size: normalizedOptions.size,
+    quality: normalizedOptions.quality,
+    n: normalizedOptions.n,
+  }
+  setSizeValue(normalizedOptions.size)
+  setSelectedStyle(normalizedOptions.style)
+  clearAttachments()
+  attachments.forEach((attachment) => {
+    if (attachment instanceof File) {
+      const selected = createSelectedAttachmentFromFile(attachment)
+      if (selected) {
+        selectedAttachments.value.push(selected)
+      }
+      return
+    }
+    addReferenceImage(attachment)
+  })
   nextTick(resizeTextarea)
 }
 

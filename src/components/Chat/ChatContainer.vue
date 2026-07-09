@@ -61,6 +61,7 @@
           @cancel="handleCancel"
           @set-reference-image="handleSetReferenceImage"
           @reuse-generation="handleReuseGeneration"
+          @image-load="handleImageLoad"
         />
       </template>
     </div>
@@ -136,6 +137,11 @@ const chatInputRef = ref<{
   addAttachmentFiles: (files: File[]) => void
   addReferenceImage: (image: GeneratedImage) => void
   fillDraftFromGeneration: (generation: GenerationMetadata) => void
+  restoreDraft: (
+    content: string,
+    options: GenerationOptions,
+    attachments: ChatInputAttachment[],
+  ) => void
 } | null>(null)
 
 const isConfigured = computed(() => configStore.isConfigured)
@@ -175,6 +181,7 @@ async function handleSend(
     await sendMessage(content, options, attachments)
   } catch (error) {
     console.error('Send message failed:', error)
+    chatInputRef.value?.restoreDraft(content, options, attachments)
     showError(t('sendMessageFailed'))
   }
 }
@@ -226,12 +233,46 @@ function scrollToBottom() {
   }
 }
 
+async function scrollToBottomAfterRender() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      resolve()
+      return
+    }
+    requestAnimationFrame(() => resolve())
+  })
+  scrollToBottom()
+}
+
+function handleImageLoad(messageId: string) {
+  const lastMessage = chatStore.messages.at(-1)
+  if (lastMessage?.id !== messageId) return
+  void scrollToBottomAfterRender()
+}
+
 watch(
-  () => chatStore.messages.length,
-  async (messageCount, previousMessageCount) => {
-    if (messageCount <= previousMessageCount) return
-    await nextTick()
-    scrollToBottom()
+  () => {
+    const lastMessage = chatStore.messages.at(-1)
+    return {
+      messageCount: chatStore.messages.length,
+      lastMessageId: lastMessage?.id,
+      lastMessageStatus: lastMessage?.status,
+      lastMessageImageCount: lastMessage?.images?.length ?? 0,
+      lastMessageError: lastMessage?.error,
+    }
+  },
+  async (current, previous) => {
+    const hasNewMessage = current.messageCount > previous.messageCount
+    const hasLastMessageUpdate =
+      current.messageCount === previous.messageCount &&
+      current.lastMessageId === previous.lastMessageId &&
+      (current.lastMessageStatus !== previous.lastMessageStatus ||
+        current.lastMessageImageCount !== previous.lastMessageImageCount ||
+        current.lastMessageError !== previous.lastMessageError)
+
+    if (!hasNewMessage && !hasLastMessageUpdate) return
+    await scrollToBottomAfterRender()
   },
 )
 

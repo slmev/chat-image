@@ -284,4 +284,15 @@ describe('ImagePreview local image actions', () => {
     expect(mockState.showError).toHaveBeenCalledWith('打开本地图片失败')
     consoleError.mockRestore()
   })
+
+  it('emits when the inline image finishes loading', async () => {
+    mockState.tauriRuntime = false
+    const wrapper = mount(ImagePreview, {
+      props: { image: image({ localPath: undefined }) },
+    })
+
+    await wrapper.find('.image').trigger('load')
+
+    expect(wrapper.emitted('imageLoad')).toHaveLength(1)
+  })
 })

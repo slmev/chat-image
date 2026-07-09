@@ -597,7 +597,9 @@ export function useHistory() {
     return (await findMatchingHistory(chatStore.messages))?.id || historyId
   }
 
-  async function ensureCurrentChatInHistory(existingHistoryId?: string | null): Promise<string | null> {
+  async function ensureCurrentChatInHistory(
+    existingHistoryId?: string | null,
+  ): Promise<string | null> {
     if (chatStore.messages.length === 0) return null
 
     await chatStore.flushHistorySave()

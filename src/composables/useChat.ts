@@ -149,6 +149,7 @@ export function useChat() {
       // 设置错误状态
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')
       await chatStore.setMessageError(assistantMessage.id, errorMessage)
+      throw error
     } finally {
       chatStore.setLoading(false)
     }

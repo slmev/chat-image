@@ -8,7 +8,13 @@
         :aria-label="t('expandImage')"
         @click="openPreview"
       >
-        <img :src="imageUrl" :alt="t('generatedImageAlt')" class="image" loading="lazy" />
+        <img
+          :src="imageUrl"
+          :alt="t('generatedImageAlt')"
+          class="image"
+          loading="lazy"
+          @load="emit('imageLoad')"
+        />
       </button>
       <div class="image-overlay">
         <div class="overlay-actions">
@@ -227,6 +233,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   createVariation: [image: GeneratedImage]
   editImage: [image: GeneratedImage]
+  imageLoad: []
 }>()
 
 const { success, error: showError } = useToast()

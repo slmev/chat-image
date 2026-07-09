@@ -154,6 +154,40 @@ describe('ChatInput attachments', () => {
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:pasted.png')
   })
 
+  it('restores a cleared draft and attachments after a parent send failure', async () => {
+    const wrapper = mountInput()
+    const reference = new File(['reference'], 'reference.png', { type: 'image/png' })
+
+    await selectFiles(wrapper, [reference])
+    await wrapper.find('textarea').setValue('try this prompt')
+    await wrapper.find('.send-btn').trigger('click')
+
+    expect(wrapper.find('textarea').element).toHaveProperty('value', '')
+    expect(wrapper.findAll('.attachment-thumb')).toHaveLength(0)
+
+    const exposed = wrapper.vm as unknown as {
+      restoreDraft: (
+        content: string,
+        options: { size: string; quality: 'high'; n: number },
+        attachments: File[],
+      ) => void
+    }
+    exposed.restoreDraft('try this prompt', { size: '1024x1024', quality: 'high', n: 2 }, [
+      reference,
+    ])
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('textarea').element).toHaveProperty('value', 'try this prompt')
+    expect(wrapper.findAll('.attachment-thumb')).toHaveLength(1)
+    expect(wrapper.find('.attachment-preview').attributes('src')).toBe('blob:reference.png')
+
+    await wrapper.find('.send-btn').trigger('click')
+    const event = wrapper.emitted('send')?.at(-1)
+    expect(event?.[0]).toBe('try this prompt')
+    expect(event?.[1]).toMatchObject({ size: '1024x1024', quality: 'high', n: 2 })
+    expect(event?.[2]).toEqual([reference])
+  })
+
   it('sends auto size and selected quality', async () => {
     const wrapper = mountInput()
 

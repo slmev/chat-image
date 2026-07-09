@@ -109,7 +109,8 @@ function mountBubble(chatMessage: ChatMessage) {
       stubs: {
         ImagePreview: {
           props: ['image'],
-          template: '<div class="image-preview-stub">{{ image.id }}</div>',
+          template:
+            '<button class="image-preview-stub" @click="$emit(\'imageLoad\')">{{ image.id }}</button>',
         },
         MessageActions: {
           props: {
@@ -200,6 +201,20 @@ describe('MessageBubble generation display', () => {
     expect(wrapper.text()).not.toContain('图片已生成')
     expect(wrapper.find('.assistant-bubble').exists()).toBe(false)
     expect(wrapper.find('.image-preview-stub').exists()).toBe(true)
+  })
+
+  it('forwards generated image load events with the message id', async () => {
+    const assistantMessage = message({
+      id: 'assistant-message',
+      content: '图片已生成',
+      status: 'success',
+      images: [image()],
+    })
+    const wrapper = mountBubble(assistantMessage)
+
+    await wrapper.find('.image-preview-stub').trigger('click')
+
+    expect(wrapper.emitted('imageLoad')?.[0]).toEqual(['assistant-message'])
   })
 
   it('renders user message attachments below the message bubble', () => {

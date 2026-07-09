@@ -221,6 +221,35 @@ describe('useChat', () => {
     })
   })
 
+  it('rejects after marking the assistant message as failed when generation fails', async () => {
+    mockState.generateImage.mockRejectedValueOnce(new Error('image service unavailable'))
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const { sendMessage } = useChat()
+    const chatStore = useChatStore()
+
+    await expect(
+      sendMessage('a broken generation', {
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+      }),
+    ).rejects.toThrow('image service unavailable')
+
+    expect(chatStore.messages).toHaveLength(2)
+    expect(chatStore.messages[1]).toMatchObject({
+      type: 'assistant',
+      status: 'error',
+      error: 'image service unavailable',
+    })
+    expect(chatStore.isLoading).toBe(false)
+  })
+
   it('persists uploaded files before storing the user message and generating', async () => {
     const reference = attachment()
     const file = new File(['reference'], 'reference.png', { type: 'image/png' })
@@ -471,7 +500,7 @@ describe('useChat', () => {
     expect(mockState.loadHistoryChat).toHaveBeenCalledWith('target-history')
 
     rejectGeneration(new Error('请求已取消'))
-    await sendPromise
+    await expect(sendPromise).rejects.toThrow('请求已取消')
   })
 
   it('does not cancel when loading a history item without an active generation', async () => {
@@ -526,7 +555,7 @@ describe('useChat', () => {
     expect(chatStore.messages).toHaveLength(0)
 
     rejectGeneration(new Error('请求已取消'))
-    await sendPromise
+    await expect(sendPromise).rejects.toThrow('请求已取消')
   })
 
   it('saves the current conversation before loading a different history item', async () => {

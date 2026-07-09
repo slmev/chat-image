@@ -148,6 +148,7 @@
             :image="image"
             @create-variation="openVariationDialog"
             @edit-image="openEditDialog"
+            @image-load="emit('imageLoad', message.id)"
           />
           <div v-if="message.generation" class="image-quick-actions">
             <button
@@ -342,6 +343,7 @@ const emit = defineEmits<{
   cancel: []
   setReferenceImage: [image: GeneratedImage]
   reuseGeneration: [generation: NonNullable<ChatMessage['generation']>]
+  imageLoad: [messageId: string]
 }>()
 
 const { t } = useI18n()
