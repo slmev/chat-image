@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import ChatContainer from '../../components/Chat/ChatContainer.vue'
 import { useConfigStore } from '../../stores/config'
+import type { ChatMessage } from '../../types'
 
 const mockState = vi.hoisted(() => ({
   showError: vi.fn(),
@@ -14,6 +16,10 @@ const mockState = vi.hoisted(() => ({
   clearSearch: vi.fn(),
   addStyle: vi.fn(),
   deleteStyle: vi.fn(),
+  chatStore: {
+    messages: [] as ChatMessage[],
+    isLoading: false,
+  },
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -38,10 +44,7 @@ vi.mock('../../platform/metadataStore', () => ({
 
 vi.mock('../../composables/useChat', () => ({
   useChat: () => ({
-    chatStore: {
-      messages: [],
-      isLoading: false,
-    },
+    chatStore: mockState.chatStore,
     sendMessage: mockState.sendMessage,
     cancelCurrentGeneration: mockState.cancelCurrentGeneration,
     startNewChat: mockState.startNewChat,
@@ -52,7 +55,7 @@ vi.mock('../../composables/useHistory', () => ({
   useHistory: () => ({
     searchQuery: '',
     showFavoritesOnly: false,
-    filteredMessages: [],
+    filteredMessages: mockState.chatStore.messages,
     deleteMessage: mockState.deleteMessage,
     toggleFavorite: mockState.toggleFavorite,
     clearSearch: mockState.clearSearch,
@@ -90,6 +93,8 @@ vi.mock('../../composables/useCustomStyles', async () => {
 })
 
 const mountedWrappers: VueWrapper[] = []
+
+mockState.chatStore = reactive(mockState.chatStore)
 
 async function mountContainer() {
   const pinia = createPinia()
@@ -139,6 +144,8 @@ describe('ChatContainer clipboard attachments', () => {
     localStorage.clear()
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    mockState.chatStore.messages.splice(0)
+    mockState.chatStore.isLoading = false
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
       value: vi.fn((file: File) => `blob:${file.name}`),
@@ -223,5 +230,39 @@ describe('ChatContainer clipboard attachments', () => {
 
     expect(mockState.showError).toHaveBeenCalledWith('sendMessageFailed')
     consoleError.mockRestore()
+  })
+
+  it('scrolls to the bottom when sent messages are appended', async () => {
+    mockState.sendMessage.mockImplementationOnce(async (content: string) => {
+      mockState.chatStore.messages.push(
+        {
+          id: 'user-message',
+          type: 'user',
+          content,
+          timestamp: 1,
+          status: 'success',
+          isFavorite: false,
+        },
+        {
+          id: 'assistant-message',
+          type: 'assistant',
+          content: 'generationInProgress',
+          timestamp: 2,
+          status: 'pending',
+          isFavorite: false,
+        },
+      )
+    })
+    const wrapper = await mountContainer()
+    const messagesArea = wrapper.get('.messages-area').element as HTMLElement
+    Object.defineProperty(messagesArea, 'scrollHeight', {
+      configurable: true,
+      value: 720,
+    })
+
+    await wrapper.get('.quick-start-card').trigger('click')
+    await flushPromises()
+
+    expect(messagesArea.scrollTop).toBe(720)
   })
 })

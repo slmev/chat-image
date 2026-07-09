@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import type { Component } from 'vue'
 import { ImageIcon, Layers, Mountain, Search, Sparkles, Users, Cat } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
@@ -173,8 +173,6 @@ async function handleSend(
 ) {
   try {
     await sendMessage(content, options, attachments)
-    await nextTick()
-    scrollToBottom()
   } catch (error) {
     console.error('Send message failed:', error)
     showError(t('sendMessageFailed'))
@@ -227,6 +225,15 @@ function scrollToBottom() {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
+
+watch(
+  () => chatStore.messages.length,
+  async (messageCount, previousMessageCount) => {
+    if (messageCount <= previousMessageCount) return
+    await nextTick()
+    scrollToBottom()
+  },
+)
 
 function clipboardFiles(event: ClipboardEvent): File[] {
   const data = event.clipboardData
