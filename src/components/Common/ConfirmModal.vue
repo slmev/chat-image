@@ -3,6 +3,7 @@
     <Transition name="confirm">
       <div v-if="isOpen" class="confirm-overlay" @click.self="handleCancel">
         <div
+          ref="contentRef"
           class="confirm-content scale-in"
           role="dialog"
           aria-modal="true"
@@ -23,7 +24,7 @@
 
           <!-- Actions -->
           <div class="confirm-actions">
-            <button ref="cancelBtn" class="btn-secondary" @click="handleCancel">
+            <button class="btn-secondary" @click="handleCancel">
               {{ displayCancelText }}
             </button>
             <button :class="['btn-primary', type]" @click="handleConfirm">
@@ -37,9 +38,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, useId } from 'vue'
+import { computed, ref, toRef, useId } from 'vue'
 import { AlertTriangle, AlertCircle, Info } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
 
 interface Props {
   isOpen: boolean
@@ -62,10 +65,12 @@ const emit = defineEmits<{
 }>()
 
 const titleId = `confirm-title-${useId()}`
-const cancelBtn = ref<HTMLButtonElement>()
+const contentRef = ref<HTMLElement>()
 const { t } = useI18n()
 const displayConfirmText = computed(() => props.confirmText || t('confirm'))
 const displayCancelText = computed(() => props.cancelText || t('cancel'))
+useFocusTrap(contentRef, { isActive: toRef(props, 'isOpen') })
+useModalLayer(toRef(props, 'isOpen'), handleCancel)
 
 function handleConfirm() {
   emit('confirm')
@@ -74,44 +79,32 @@ function handleConfirm() {
 function handleCancel() {
   emit('cancel')
 }
-
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    handleCancel()
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
-  // 聚焦到取消按钮
-  cancelBtn.value?.focus()
-})
-
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
-})
 </script>
 
 <style scoped>
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--color-text-primary) 32%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: 20px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .confirm-content {
-  background: var(--color-bg-primary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  padding: 24px;
+  padding: 26px 24px;
   max-width: 400px;
   width: 100%;
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--glass-shadow);
   text-align: center;
 }
 

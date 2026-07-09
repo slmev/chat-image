@@ -55,15 +55,13 @@
               v-for="item in filteredHistory"
               :key="item.id"
               :class="['history-item', { active: item.id === currentChatId }]"
-              @click="handleSelectHistory(item)"
             >
-              <div class="history-item-content">
+              <div v-if="editingHistoryId === item.id" class="history-item-content">
                 <div class="history-item-icon">
                   <MessageSquare :size="16" />
                 </div>
                 <div class="history-item-info">
                   <input
-                    v-if="editingHistoryId === item.id"
                     v-model="editingTitle"
                     type="text"
                     class="history-rename-input"
@@ -74,10 +72,24 @@
                     @keydown.esc.prevent="cancelRename"
                     @blur="commitRename(item.id)"
                   />
-                  <p v-else class="history-item-title">{{ item.title }}</p>
                   <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
                 </div>
               </div>
+              <button
+                v-else
+                type="button"
+                class="history-item-content history-item-trigger"
+                :aria-label="item.title"
+                @click="handleSelectHistory(item)"
+              >
+                <div class="history-item-icon">
+                  <MessageSquare :size="16" />
+                </div>
+                <div class="history-item-info">
+                  <p class="history-item-title">{{ item.title }}</p>
+                  <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
+                </div>
+              </button>
               <div class="history-item-actions">
                 <button
                   class="action-btn"
@@ -119,15 +131,13 @@
               v-for="item in filteredFavorites"
               :key="item.id"
               :class="['history-item', { active: item.id === currentChatId }]"
-              @click="handleSelectHistory(item)"
             >
-              <div class="history-item-content">
+              <div v-if="editingHistoryId === item.id" class="history-item-content">
                 <div class="history-item-icon favorite">
                   <Star :size="16" fill="currentColor" />
                 </div>
                 <div class="history-item-info">
                   <input
-                    v-if="editingHistoryId === item.id"
                     v-model="editingTitle"
                     type="text"
                     class="history-rename-input"
@@ -138,10 +148,24 @@
                     @keydown.esc.prevent="cancelRename"
                     @blur="commitRename(item.id)"
                   />
-                  <p v-else class="history-item-title">{{ item.title }}</p>
                   <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
                 </div>
               </div>
+              <button
+                v-else
+                type="button"
+                class="history-item-content history-item-trigger"
+                :aria-label="item.title"
+                @click="handleSelectHistory(item)"
+              >
+                <div class="history-item-icon favorite">
+                  <Star :size="16" fill="currentColor" />
+                </div>
+                <div class="history-item-info">
+                  <p class="history-item-title">{{ item.title }}</p>
+                  <p class="history-item-time">{{ formatTime(item.timestamp) }}</p>
+                </div>
+              </button>
               <div class="history-item-actions">
                 <button
                   class="action-btn"
@@ -188,6 +212,17 @@
     <div v-if="isOpen" class="sidebar-overlay" @click="$emit('close')" />
   </Transition>
 
+  <!-- Delete Single Confirm -->
+  <ConfirmModal
+    :is-open="showDeleteConfirm"
+    :title="t('deleteHistory')"
+    :message="t('deleteHistoryConfirm')"
+    :confirm-text="t('delete')"
+    type="danger"
+    @confirm="confirmDelete"
+    @cancel="cancelDelete"
+  />
+
   <!-- Clear All Confirm -->
   <ConfirmModal
     :is-open="showClearConfirm"
@@ -206,6 +241,7 @@ import { X, Search, Clock, Star, StarOff, MessageSquare, Pencil, Trash2 } from '
 import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { useChat } from '../../composables/useChat'
+import { useToast } from '../../composables/useToast'
 import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ChatHistory } from '../../types'
 
@@ -230,11 +266,14 @@ const {
   renameHistoryItem,
 } = useHistory()
 const { clearChat, loadChat } = useChat()
+const { error: showError } = useToast()
 
 const searchQuery = ref('')
 const activeTab = ref<'history' | 'favorites'>('history')
 const currentChatId = ref<string | null>(null)
 const showClearConfirm = ref(false)
+const showDeleteConfirm = ref(false)
+const pendingDeleteId = ref<string | null>(null)
 const editingHistoryId = ref<string | null>(null)
 const editingTitle = ref('')
 
@@ -296,6 +335,7 @@ async function toggleFavorite(id: string) {
     await toggleHistoryFavorite(id)
   } catch (error) {
     console.error('Toggle history favorite failed:', error)
+    showError(t('favoriteFailed'))
   }
 }
 
@@ -320,10 +360,18 @@ async function commitRename(id: string) {
     await renameHistoryItem(id, nextTitle)
   } catch (error) {
     console.error('Rename history failed:', error)
+    showError(t('renameHistoryFailed'))
   }
 }
 
-async function deleteHistory(id: string) {
+function deleteHistory(id: string) {
+  pendingDeleteId.value = id
+  showDeleteConfirm.value = true
+}
+
+async function confirmDelete() {
+  const id = pendingDeleteId.value
+  if (!id) return
   try {
     await deleteHistoryItem(id)
     if (currentChatId.value === id) {
@@ -331,7 +379,16 @@ async function deleteHistory(id: string) {
     }
   } catch (error) {
     console.error('Delete history failed:', error)
+    showError(t('deleteHistoryFailed'))
+  } finally {
+    showDeleteConfirm.value = false
+    pendingDeleteId.value = null
   }
+}
+
+function cancelDelete() {
+  showDeleteConfirm.value = false
+  pendingDeleteId.value = null
 }
 
 function clearAll() {
@@ -346,6 +403,7 @@ async function confirmClearAll() {
     showClearConfirm.value = false
   } catch (error) {
     console.error('Clear history failed:', error)
+    showError(t('clearHistoryFailed'))
   }
 }
 </script>
@@ -357,12 +415,14 @@ async function confirmClearAll() {
   top: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: color-mix(in srgb, var(--color-bg-secondary) 92%, var(--color-bg-primary));
-  border-right: 1px solid var(--color-border);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border-right: 1px solid var(--glass-border);
   display: flex;
   flex-direction: column;
   z-index: 40;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-shadow);
 }
 
 .sidebar-header {
@@ -530,6 +590,15 @@ async function confirmClearAll() {
   min-width: 0;
 }
 
+.history-item-trigger {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .history-item-icon {
   flex-shrink: 0;
   width: 32px;
@@ -655,14 +724,19 @@ async function confirmClearAll() {
 .sidebar-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.35);
+  background: rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 35;
 }
 
 /* Transitions */
-.sidebar-enter-active,
+.sidebar-enter-active {
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .sidebar-leave-active {
-  transition: transform var(--transition-slow);
+  transition: transform 320ms cubic-bezier(0.4, 0, 0.6, 1);
 }
 
 .sidebar-enter-from,

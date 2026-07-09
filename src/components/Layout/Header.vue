@@ -128,10 +128,12 @@ import ConfirmModal from '../Common/ConfirmModal.vue'
 import { useChat } from '../../composables/useChat'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useToast } from '../../composables/useToast'
 import appLogo from '../../assets/app-logo.svg'
 
 const { t } = useI18n()
 const router = useRouter()
+const { error: showError } = useToast()
 
 const emit = defineEmits<{
   'toggle-config': []
@@ -173,6 +175,7 @@ async function handleNewChat() {
     await router.push({ name: 'chat' })
   } catch (error) {
     console.error('Start new chat failed:', error)
+    showError(t('startNewChatFailed'))
   }
 }
 
@@ -192,6 +195,7 @@ async function confirmClearChat() {
     showClearConfirm.value = false
   } catch (error) {
     console.error('Clear chat failed:', error)
+    showError(t('clearChatFailed'))
   }
 }
 </script>
@@ -218,13 +222,14 @@ async function confirmClearChat() {
 
 .header {
   height: var(--header-height);
-  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--glass-bg);
+  border-bottom: 1px solid var(--glass-border);
   position: sticky;
   top: 0;
   z-index: 30;
   flex-shrink: 0;
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
 }
 
 .header-content {

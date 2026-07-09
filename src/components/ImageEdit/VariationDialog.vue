@@ -3,6 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { ArrowLeftRight, X, Loader2, Shuffle, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useImageEdit } from '../../composables/useImageEdit'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import {
   DEFAULT_GENERATION_OPTIONS,
   IMAGE_COUNT_RANGE,
@@ -41,8 +44,15 @@ const { isLoading, error, createVariation } = useImageEdit()
 const { t } = useI18n()
 
 const prompt = ref(props.image.sourcePrompt || '')
+const dialogContentRef = ref<HTMLElement>()
 const imageRef = ref<HTMLImageElement>()
 const viewportRef = ref<HTMLDivElement>()
+const showUnsavedConfirm = ref(false)
+const initialSnapshot = ref('')
+
+const isDialogTrapActive = computed(() => props.isOpen && !showUnsavedConfirm.value)
+useFocusTrap(dialogContentRef, { isActive: isDialogTrapActive })
+useModalLayer(isDialogTrapActive, requestClose)
 const naturalSize = ref({ width: 0, height: 0 })
 const fitScale = ref(1)
 const zoomLevel = ref(1)
@@ -63,6 +73,8 @@ watch(
   (newImage) => {
     prompt.value = newImage.sourcePrompt || ''
     if (props.isOpen) {
+      showUnsavedConfirm.value = false
+      snapshotCurrentForm()
       setupImage()
     }
   },
@@ -77,19 +89,14 @@ watch(
       selectedQuality.value = DEFAULT_GENERATION_OPTIONS.quality
       selectedCount.value = DEFAULT_GENERATION_OPTIONS.n
       selectedStyleId.value = ''
+      showUnsavedConfirm.value = false
+      snapshotCurrentForm()
       setupImage()
     }
   },
 )
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    handleClose()
-  }
-}
-
 onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', updateFitScale)
   if (props.isOpen) {
     setupImage()
@@ -97,7 +104,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', updateFitScale)
 })
 
@@ -168,6 +174,36 @@ const selectedStyle = computed<StyleTemplate | undefined>(() => {
   return STYLE_TEMPLATES.find((s) => s.id === selectedStyleId.value)
 })
 
+function snapshotForm(): string {
+  return JSON.stringify({
+    prompt: prompt.value,
+    size: selectedSize.value,
+    quality: selectedQuality.value,
+    count: selectedCount.value,
+    styleId: selectedStyleId.value,
+  })
+}
+
+const isDirty = computed(() => snapshotForm() !== initialSnapshot.value)
+
+function snapshotCurrentForm(): void {
+  initialSnapshot.value = snapshotForm()
+}
+
+if (props.isOpen) {
+  snapshotCurrentForm()
+}
+
+// 手动键入的数量可能越界或为空，失焦时纠正到合法范围（L4）。
+function clampSelectedCount() {
+  const value = Math.round(selectedCount.value)
+  if (!Number.isFinite(value)) {
+    selectedCount.value = IMAGE_COUNT_RANGE.min
+    return
+  }
+  selectedCount.value = Math.min(IMAGE_COUNT_RANGE.max, Math.max(IMAGE_COUNT_RANGE.min, value))
+}
+
 async function handleSubmit() {
   if (!prompt.value.trim()) return
 
@@ -192,6 +228,23 @@ async function handleSubmit() {
 
 function handleClose() {
   emit('close')
+}
+
+function requestClose() {
+  if (isDirty.value) {
+    showUnsavedConfirm.value = true
+    return
+  }
+  handleClose()
+}
+
+function confirmDiscard() {
+  showUnsavedConfirm.value = false
+  handleClose()
+}
+
+function cancelDiscard() {
+  showUnsavedConfirm.value = false
 }
 
 function imageSizeLabel(preset: ImageSizePreset): string {
@@ -278,12 +331,18 @@ function styleLabel(style: StyleTemplate): string {
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-      <div v-if="isOpen" class="dialog-overlay" @click.self="handleClose">
-        <div class="dialog-content scale-in">
+      <div v-if="isOpen" class="dialog-overlay" @click.self="requestClose">
+        <div
+          ref="dialogContentRef"
+          class="dialog-content scale-in"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('createImageVariation')"
+        >
           <!-- Header -->
           <div class="dialog-header">
             <h2 class="dialog-title">{{ t('createImageVariation') }}</h2>
-            <button class="btn-icon" @click="handleClose">
+            <button class="btn-icon" :aria-label="t('close')" @click="requestClose">
               <X :size="20" />
             </button>
           </div>
@@ -446,9 +505,10 @@ function styleLabel(style: StyleTemplate): string {
                 <input
                   v-model.number="selectedCount"
                   type="number"
-                  min="1"
-                  max="4"
+                  :min="IMAGE_COUNT_RANGE.min"
+                  :max="IMAGE_COUNT_RANGE.max"
                   class="input-field"
+                  @blur="clampSelectedCount"
                 />
               </div>
             </div>
@@ -461,7 +521,7 @@ function styleLabel(style: StyleTemplate): string {
 
           <!-- Footer -->
           <div class="dialog-footer">
-            <button class="btn-secondary" @click="handleClose">
+            <button class="btn-secondary" @click="requestClose">
               {{ t('cancel') }}
             </button>
             <button
@@ -477,6 +537,15 @@ function styleLabel(style: StyleTemplate): string {
         </div>
       </div>
     </Transition>
+    <ConfirmModal
+      :is-open="showUnsavedConfirm"
+      :title="t('unsavedChanges')"
+      :message="t('unsavedChangesConfirm')"
+      :confirm-text="t('discard')"
+      type="warning"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
   </Teleport>
 </template>
 
@@ -487,14 +556,18 @@ function styleLabel(style: StyleTemplate): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(8, 12, 20, 0.58);
   z-index: 100;
   padding: 20px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .dialog-content {
-  background: var(--color-bg-primary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 550px;
@@ -502,7 +575,7 @@ function styleLabel(style: StyleTemplate): string {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--glass-shadow), var(--shadow-xl);
 }
 
 .dialog-header {

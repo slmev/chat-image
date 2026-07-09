@@ -22,7 +22,7 @@ export function useChat() {
   const chatStore = useChatStore()
   const configStore = useConfigStore()
   const { generateImage, cancelGeneration } = useImageGeneration()
-  const { saveCurrentChat, loadHistoryChat } = useHistory()
+  const { saveCurrentChat, ensureCurrentChatInHistory, loadHistoryChat } = useHistory()
   const t = i18n.global.t
 
   async function persistInputAttachments(
@@ -327,6 +327,11 @@ export function useChat() {
     return currentHistoryId
   }
 
+  async function ensureCurrentChatSaved(): Promise<string | null> {
+    currentHistoryId = await ensureCurrentChatInHistory(currentHistoryId)
+    return currentHistoryId
+  }
+
   return {
     chatStore,
     sendMessage,
@@ -338,6 +343,7 @@ export function useChat() {
     clearChat,
     startNewChat,
     loadChat,
+    ensureCurrentChatSaved,
     getCurrentHistoryId,
   }
 }

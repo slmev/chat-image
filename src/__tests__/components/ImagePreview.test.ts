@@ -120,7 +120,7 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
 }
 
 async function openPreview(wrapper: ReturnType<typeof mount>) {
-  await wrapper.find('.image-wrapper').trigger('click')
+  await wrapper.find('.image-open-button').trigger('click')
 }
 
 async function triggerBodyButton(title: string) {
@@ -206,6 +206,28 @@ describe('ImagePreview local image actions', () => {
     await triggerBodyButton('图片信息')
 
     expect(document.querySelector('.metadata-panel')).toBeNull()
+  })
+
+  it('keeps the enlarged preview open when requesting a variation from it', async () => {
+    const sourceImage = image({ localPath: undefined })
+    const wrapper = mount(ImagePreview, { props: { image: sourceImage } })
+
+    await openPreview(wrapper)
+    await triggerBodyButton('创建变体')
+
+    expect(wrapper.emitted('createVariation')?.[0]).toEqual([sourceImage])
+    expect(document.querySelector('.preview-overlay')).not.toBeNull()
+  })
+
+  it('keeps the enlarged preview open when requesting image edit from it', async () => {
+    const sourceImage = image({ localPath: undefined })
+    const wrapper = mount(ImagePreview, { props: { image: sourceImage } })
+
+    await openPreview(wrapper)
+    await triggerBodyButton('编辑图片')
+
+    expect(wrapper.emitted('editImage')?.[0]).toEqual([sourceImage])
+    expect(document.querySelector('.preview-overlay')).not.toBeNull()
   })
 
   it('resolves desktop local paths before rendering images', async () => {

@@ -5,6 +5,7 @@ import ConfigModal from '../../components/Config/ConfigModal.vue'
 const mockState = vi.hoisted(() => ({
   saveConfig: vi.fn(),
   testApiConnection: vi.fn(),
+  showError: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -26,6 +27,13 @@ vi.mock('../../composables/useConfig', () => ({
       model: 'gpt-image-2',
     }),
   }),
+  localizeApiTestResult: (result: { success: boolean; message: string }) => result.message,
+}))
+
+vi.mock('../../composables/useToast', () => ({
+  useToast: () => ({
+    error: mockState.showError,
+  }),
 }))
 
 async function triggerButtonByText(text: string) {
@@ -38,12 +46,23 @@ async function triggerButtonByText(text: string) {
   await new DOMWrapper(button).trigger('click')
 }
 
+async function triggerButtonByLabel(label: string) {
+  const button = document.querySelector(`button[aria-label="${label}"]`) as
+    | HTMLButtonElement
+    | undefined
+  if (!button) {
+    throw new Error(`Missing button label: ${label}`)
+  }
+  await new DOMWrapper(button).trigger('click')
+}
+
 describe('ConfigModal setup guide', () => {
   beforeEach(() => {
     mockState.saveConfig.mockReset()
     mockState.saveConfig.mockResolvedValue(undefined)
     mockState.testApiConnection.mockReset()
     mockState.testApiConnection.mockResolvedValue({ success: true, message: 'API 连接成功' })
+    mockState.showError.mockReset()
     document.body.innerHTML = ''
   })
 
@@ -76,5 +95,48 @@ describe('ConfigModal setup guide', () => {
       apiKey: 'key',
       model: 'gpt-image-2',
     })
+  })
+
+  it('shows a toast when saving config fails', async () => {
+    mockState.saveConfig.mockRejectedValueOnce(new Error('save failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mount(ConfigModal, { attachTo: document.body })
+    await vi.dynamicImportSettled()
+
+    await triggerButtonByText('saveConfig')
+    await vi.dynamicImportSettled()
+
+    expect(mockState.showError).toHaveBeenCalledWith('unknownError')
+    consoleError.mockRestore()
+  })
+
+  it('shows a toast when testing the API connection throws', async () => {
+    mockState.testApiConnection.mockRejectedValueOnce(new Error('test failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mount(ConfigModal, { attachTo: document.body })
+    await vi.dynamicImportSettled()
+
+    await triggerButtonByText('testConnection')
+    await vi.dynamicImportSettled()
+
+    expect(mockState.showError).toHaveBeenCalledWith('unknownError')
+    consoleError.mockRestore()
+  })
+
+  it('closes the unsaved confirmation with Escape without reopening it', async () => {
+    mount(ConfigModal, { attachTo: document.body })
+    await vi.dynamicImportSettled()
+
+    const endpoint = document.querySelector('#endpoint') as HTMLInputElement
+    endpoint.value = 'https://changed.example.test'
+    endpoint.dispatchEvent(new Event('input', { bubbles: true }))
+    await triggerButtonByLabel('close')
+
+    expect(document.body.textContent).toContain('unsavedChanges')
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await vi.dynamicImportSettled()
+
+    expect(document.body.textContent).not.toContain('unsavedChanges')
   })
 })

@@ -114,6 +114,7 @@ async function handleSelect(id: string): Promise<void> {
     toast.success(t('activeConfigSaved'))
   } catch (error) {
     console.error('Switch config failed:', error)
+    toast.error(t('switchConfigFailed'))
   }
 }
 

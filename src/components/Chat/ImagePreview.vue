@@ -1,8 +1,15 @@
 <template>
   <div class="image-card">
     <!-- Image -->
-    <div class="image-wrapper" @click="openPreview">
-      <img :src="imageUrl" :alt="t('generatedImageAlt')" class="image" loading="lazy" />
+    <div class="image-wrapper">
+      <button
+        type="button"
+        class="image-open-button"
+        :aria-label="t('expandImage')"
+        @click="openPreview"
+      >
+        <img :src="imageUrl" :alt="t('generatedImageAlt')" class="image" loading="lazy" />
+      </button>
       <div class="image-overlay">
         <div class="overlay-actions">
           <button
@@ -35,7 +42,15 @@
     <!-- Preview Modal -->
     <Teleport to="body">
       <Transition name="preview">
-        <div v-if="showPreview" class="preview-overlay" @click="closePreview">
+        <div
+          v-if="showPreview"
+          ref="previewOverlayRef"
+          class="preview-overlay"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('previewImage')"
+          @click="closePreview"
+        >
           <div class="preview-container" @click.stop>
             <img :src="imageUrl" :alt="t('generatedImageAlt')" class="preview-image" />
 
@@ -82,7 +97,7 @@
                 class="preview-btn"
                 :title="t('createVariation')"
                 :aria-label="t('createVariation')"
-                @click.stop="$emit('createVariation', displayImage)"
+                @click.stop="requestVariation"
               >
                 <Shuffle :size="14" />
                 <span class="preview-btn-label">{{ t('variation') }}</span>
@@ -92,7 +107,7 @@
                 class="preview-btn"
                 :title="t('editImage')"
                 :aria-label="t('editImage')"
-                @click.stop="$emit('editImage', displayImage)"
+                @click.stop="requestEdit"
               >
                 <Edit :size="14" />
                 <span class="preview-btn-label">{{ t('edit') }}</span>
@@ -189,6 +204,8 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
 import type { GeneratedImage } from '../../types'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
 import { getImageRepository } from '../../platform/imageRepository'
@@ -207,7 +224,7 @@ interface Props {
 
 const props = defineProps<Props>()
 
-defineEmits<{
+const emit = defineEmits<{
   createVariation: [image: GeneratedImage]
   editImage: [image: GeneratedImage]
 }>()
@@ -217,6 +234,7 @@ const { downloadSingleImage } = useImageDownload()
 const { t, locale } = useI18n()
 const showPreview = ref(false)
 const showImageInfo = ref(false)
+const previewOverlayRef = ref<HTMLElement>()
 const displayImage = ref<GeneratedImage>(props.image)
 const resolveFailed = ref(false)
 const ownedObjectUrls = new Set<string>()
@@ -224,6 +242,9 @@ let resolveRun = 0
 
 const localActionsAvailable = computed(() => isLocalImageActionAvailable(displayImage.value))
 const hasImageInfo = computed(() => Boolean(displayImage.value.sourcePrompt))
+const { isTopLayer: isPreviewTopLayer } = useModalLayer(showPreview, closePreview)
+const isPreviewTrapActive = computed(() => showPreview.value && isPreviewTopLayer.value)
+useFocusTrap(previewOverlayRef, { isActive: isPreviewTrapActive })
 
 function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
   const validUrl = isValidImageUrl(image.url)
@@ -301,24 +322,16 @@ const imageUrl = computed(() => {
   return displayImage.value.url
 })
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && showPreview.value) {
-    closePreview()
-  }
-}
-
 function openPreview() {
   showPreview.value = true
   showImageInfo.value = false
   document.body.style.overflow = 'hidden'
-  document.addEventListener('keydown', handleKeydown)
 }
 
 function closePreview() {
   showPreview.value = false
   showImageInfo.value = false
   document.body.style.overflow = ''
-  document.removeEventListener('keydown', handleKeydown)
 }
 
 function toggleImageInfo() {
@@ -327,9 +340,17 @@ function toggleImageInfo() {
   }
 }
 
+function requestVariation() {
+  emit('createVariation', displayImage.value)
+}
+
+function requestEdit() {
+  emit('editImage', displayImage.value)
+}
+
 onUnmounted(() => {
   if (showPreview.value) {
-    document.removeEventListener('keydown', handleKeydown)
+    document.body.style.overflow = ''
   }
   revokeOwnedObjectUrls()
 })
@@ -453,8 +474,17 @@ async function shareImage() {
 
 .image-wrapper {
   position: relative;
-  cursor: pointer;
   overflow: hidden;
+}
+
+.image-open-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: inherit;
 }
 
 .image {
@@ -478,9 +508,11 @@ async function shareImage() {
   align-items: flex-end;
   justify-content: center;
   padding: 16px;
+  pointer-events: none;
 }
 
-.image-card:hover .image-overlay {
+.image-card:hover .image-overlay,
+.image-card:focus-within .image-overlay {
   opacity: 1;
 }
 
@@ -488,6 +520,7 @@ async function shareImage() {
   display: flex;
   gap: 10px;
   padding: 6px;
+  pointer-events: auto;
   background: rgba(15, 23, 42, 0.36);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: var(--radius-lg);

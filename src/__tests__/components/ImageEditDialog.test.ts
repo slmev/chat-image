@@ -22,6 +22,10 @@ vi.mock('vue-i18n', () => ({
         editPromptPlaceholder: '例如：将背景改为海滩场景',
         editMaskHint: '在图片上绘制白色区域作为遮罩',
         cancel: '取消',
+        close: '关闭',
+        unsavedChanges: '未保存的更改',
+        unsavedChangesConfirm: '有未保存的更改，确定不保存就关闭吗？',
+        discard: '放弃',
         processing: '处理中...',
         applyEdit: '应用编辑',
       })[key] ?? key,
@@ -166,5 +170,25 @@ describe('ImageEditDialog image sizing', () => {
 
     expect(parsePx(stage.style.height)).toBeCloseTo(fittedHeight)
     expect(wrapper.get('.zoom-value').text()).toBe('100%')
+  })
+
+  it('prompts before closing after changing the edit prompt', async () => {
+    const wrapper = await mountDialog()
+
+    await wrapper.get('textarea').setValue('replace the background')
+    await wrapper.get('.btn-secondary').trigger('click')
+
+    expect(wrapper.text()).toContain('未保存的更改')
+    expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('prompts before closing after drawing a mask', async () => {
+    const wrapper = await mountDialog()
+
+    await wrapper.get('canvas').trigger('mousedown', { clientX: 10, clientY: 10 })
+    await wrapper.get('.btn-secondary').trigger('click')
+
+    expect(wrapper.text()).toContain('未保存的更改')
+    expect(wrapper.emitted('close')).toBeUndefined()
   })
 })

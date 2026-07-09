@@ -160,6 +160,54 @@ describe('history duplicate prevention', () => {
     })
   })
 
+  it('creates a history item for a restored current chat when startup sync runs', async () => {
+    const restoredMessages = [
+      message('user-1', { type: 'user', content: 'restored current prompt' }),
+      message('assistant-1'),
+    ]
+    await useChatStore().importMessages(restoredMessages, 'replace')
+
+    expect(readHistoryList()).toHaveLength(0)
+
+    const chat = useChat()
+    const historyId = await chat.ensureCurrentChatSaved()
+
+    const historyList = readHistoryList()
+    expect(historyList).toHaveLength(1)
+    expect(historyId).toBe(historyList[0].id)
+    expect(historyList[0]).toMatchObject({
+      title: 'restored current prompt',
+      messageCount: 2,
+      preview: 'restored current prompt',
+    })
+    expect(
+      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + historyId) || '[]').map(
+        (item: ChatMessage) => item.id,
+      ),
+    ).toEqual(['user-1', 'assistant-1'])
+  })
+
+  it('binds a restored current chat to matching history without rewriting it', async () => {
+    const savedHistory = history('history-1', {
+      title: 'Renamed saved chat',
+      timestamp: 123,
+      messageCount: 2,
+    })
+    const savedMessages = [
+      message('user-1', { type: 'user', content: 'original prompt' }),
+      message('assistant-1'),
+    ]
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify(savedMessages))
+    await useChatStore().importMessages(savedMessages, 'replace')
+
+    const chat = useChat()
+    const historyId = await chat.ensureCurrentChatSaved()
+
+    expect(historyId).toBe(savedHistory.id)
+    expect(readHistoryList()).toEqual([savedHistory])
+  })
+
   it('updates a prefix-matched history when saving without a current history id', async () => {
     const savedHistory = history('history-1', {
       title: 'first generated prompt',

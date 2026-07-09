@@ -3,6 +3,9 @@ import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { X, Loader2, ZoomOut, Maximize2, ZoomIn } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useImageEdit } from '../../composables/useImageEdit'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import EditToolbar from './EditToolbar.vue'
 import type { GeneratedImage, ImageGenerationResponse } from '../../types'
 import type { CSSProperties } from 'vue'
@@ -25,6 +28,14 @@ const { t } = useI18n()
 const canvasRef = ref<HTMLCanvasElement>()
 const imageRef = ref<HTMLImageElement>()
 const viewportRef = ref<HTMLDivElement>()
+const dialogContentRef = ref<HTMLElement>()
+const showUnsavedConfirm = ref(false)
+const initialSnapshot = ref('')
+const hasMaskEdits = ref(false)
+
+const isDialogTrapActive = computed(() => props.isOpen && !showUnsavedConfirm.value)
+useFocusTrap(dialogContentRef, { isActive: isDialogTrapActive })
+useModalLayer(isDialogTrapActive, requestClose)
 const prompt = ref('')
 const brushSize = ref(20)
 const isEraser = ref(false)
@@ -49,19 +60,29 @@ const stageStyle = computed<CSSProperties>(() => ({
   height: `${naturalSize.value.height * displayScale.value}px`,
 }))
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    handleClose()
-  }
+function snapshotForm(): string {
+  return JSON.stringify({
+    prompt: prompt.value,
+    brushSize: brushSize.value,
+    isEraser: isEraser.value,
+  })
+}
+
+const isDirty = computed(() => hasMaskEdits.value || snapshotForm() !== initialSnapshot.value)
+
+function snapshotCurrentForm(): void {
+  initialSnapshot.value = snapshotForm()
+}
+
+if (props.isOpen) {
+  snapshotCurrentForm()
 }
 
 onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', updateFitScale)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', updateFitScale)
 })
 
@@ -134,6 +155,7 @@ function startDrawing(event: MouseEvent | TouchEvent) {
   if (!ctx || !canvasRef.value) return
 
   isDrawing.value = true
+  hasMaskEdits.value = true
   const rect = canvasRef.value.getBoundingClientRect()
   const scaleX = canvasRef.value.width / rect.width
   const scaleY = canvasRef.value.height / rect.height
@@ -206,6 +228,7 @@ function clearCanvas() {
   if (!ctx || !canvasRef.value) return
   ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
   drawHistory = []
+  hasMaskEdits.value = true
 }
 
 async function handleSubmit() {
@@ -242,6 +265,23 @@ function handleClose() {
   emit('close')
 }
 
+function requestClose() {
+  if (isDirty.value) {
+    showUnsavedConfirm.value = true
+    return
+  }
+  handleClose()
+}
+
+function confirmDiscard() {
+  showUnsavedConfirm.value = false
+  handleClose()
+}
+
+function cancelDiscard() {
+  showUnsavedConfirm.value = false
+}
+
 watch(
   () => props.isOpen,
   (newVal) => {
@@ -250,6 +290,9 @@ watch(
       brushSize.value = 20
       isEraser.value = false
       drawHistory = []
+      hasMaskEdits.value = false
+      showUnsavedConfirm.value = false
+      snapshotCurrentForm()
       setupCanvas()
     }
   },
@@ -265,12 +308,18 @@ onMounted(() => {
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-      <div v-if="isOpen" class="dialog-overlay" @click.self="handleClose">
-        <div class="dialog-content scale-in">
+      <div v-if="isOpen" class="dialog-overlay" @click.self="requestClose">
+        <div
+          ref="dialogContentRef"
+          class="dialog-content scale-in"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('editImageTitle')"
+        >
           <!-- Header -->
           <div class="dialog-header">
             <h2 class="dialog-title">{{ t('editImageTitle') }}</h2>
-            <button class="btn-icon" @click="handleClose">
+            <button class="btn-icon" :aria-label="t('close')" @click="requestClose">
               <X :size="20" />
             </button>
           </div>
@@ -359,7 +408,7 @@ onMounted(() => {
 
           <!-- Footer -->
           <div class="dialog-footer">
-            <button class="btn-secondary" @click="handleClose">
+            <button class="btn-secondary" @click="requestClose">
               {{ t('cancel') }}
             </button>
             <button
@@ -374,6 +423,15 @@ onMounted(() => {
         </div>
       </div>
     </Transition>
+    <ConfirmModal
+      :is-open="showUnsavedConfirm"
+      :title="t('unsavedChanges')"
+      :message="t('unsavedChangesConfirm')"
+      :confirm-text="t('discard')"
+      type="warning"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
   </Teleport>
 </template>
 
@@ -384,14 +442,18 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(10, 12, 18, 0.58);
   z-index: 100;
   padding: 20px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
 }
 
 .dialog-content {
-  background: var(--color-bg-primary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   width: 100%;
   max-width: 700px;
@@ -399,7 +461,7 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--glass-shadow);
 }
 
 .dialog-header {

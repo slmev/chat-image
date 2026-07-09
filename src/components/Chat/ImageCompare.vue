@@ -1,6 +1,6 @@
 <template>
   <Transition name="compare">
-    <div v-if="isOpen" class="compare-overlay" @click.self="$emit('close')">
+    <div v-if="isOpen" class="compare-overlay" @click.self="emit('close')">
       <div class="compare-container">
         <!-- Header -->
         <div class="compare-header">
@@ -8,7 +8,7 @@
             <Scale :size="20" />
             <span>{{ t('imageCompare') }}</span>
           </h2>
-          <button class="btn-icon" @click="$emit('close')">
+          <button class="btn-icon" @click="emit('close')">
             <X :size="20" />
           </button>
         </div>
@@ -60,9 +60,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch, onUnmounted, toRef } from 'vue'
 import { X, Scale, ChevronsLeftRight } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
+import { useModalLayer } from '../../composables/useModalLayer'
 import type { GeneratedImage } from '../../types'
 import { getImageRepository } from '../../platform/imageRepository'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
@@ -75,7 +76,7 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-defineEmits<{
+const emit = defineEmits<{
   close: []
 }>()
 
@@ -88,6 +89,8 @@ const leftUrl = ref('')
 const rightUrl = ref('')
 const ownedObjectUrls = new Set<string>()
 let resolveRun = 0
+
+useModalLayer(toRef(props, 'isOpen'), () => emit('close'))
 
 function shouldResolveDisplayUrl(image: GeneratedImage): boolean {
   const validUrl = isValidImageUrl(image.url)

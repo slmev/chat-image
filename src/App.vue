@@ -6,6 +6,7 @@ import ToastNotification from './components/Common/ToastNotification.vue'
 import UpdatePrompt from './components/Common/UpdatePrompt.vue'
 import { useConfigStore } from './stores/config'
 import { useChatStore } from './stores/chat'
+import { useChat } from './composables/useChat'
 import { initializeDesktopPersistence } from './platform/metadataStore'
 import { isTauriRuntime } from './platform/runtime'
 
@@ -15,6 +16,7 @@ const ConfigModal = defineAsyncComponent(() => import('./components/Config/Confi
 
 const configStore = useConfigStore()
 const chatStore = useChatStore()
+const { ensureCurrentChatSaved } = useChat()
 const route = useRoute()
 const router = useRouter()
 const showConfigGuide = ref(false)
@@ -29,11 +31,20 @@ function syncConfigGuide() {
 
 watch([() => configStore.isConfigured, () => route.name], syncConfigGuide, { immediate: true })
 
+async function syncCurrentChatHistory() {
+  try {
+    await ensureCurrentChatSaved()
+  } catch (error) {
+    console.error('Failed to sync current chat to history:', error)
+  }
+}
+
 onMounted(async () => {
   if (isTauriRuntime()) {
     await initializeDesktopPersistence()
     await Promise.all([configStore.hydrateFromPersistence(), chatStore.hydrateFromPersistence()])
   }
+  await syncCurrentChatHistory()
   syncConfigGuide()
 })
 
@@ -49,10 +60,14 @@ function closeConfigGuide() {
 async function toggleSidebar() {
   if (!isChatRoute.value) {
     await router.push({ name: 'chat' })
+    await syncCurrentChatHistory()
     showSidebar.value = true
     return
   }
 
+  if (!showSidebar.value) {
+    await syncCurrentChatHistory()
+  }
   showSidebar.value = !showSidebar.value
 }
 
@@ -79,7 +94,11 @@ function closeSidebar() {
 
       <!-- Routed Content -->
       <div class="content-area">
-        <RouterView />
+        <RouterView v-slot="{ Component }">
+          <Transition name="route" mode="out-in">
+            <component :is="Component" />
+          </Transition>
+        </RouterView>
       </div>
     </main>
 
@@ -100,12 +119,24 @@ function closeSidebar() {
 
 <style scoped>
 .app-container {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
   background: var(--gradient-bg);
+  isolation: isolate;
+}
+
+/* Ambient gradient glow behind the whole app */
+.app-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--gradient-glow);
+  pointer-events: none;
 }
 
 .main-content {
@@ -120,6 +151,24 @@ function closeSidebar() {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+}
+
+/* Route Transition */
+.route-enter-active,
+.route-leave-active {
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base);
+}
+
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.route-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 /* Modal Transition */

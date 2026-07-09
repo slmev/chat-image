@@ -1,5 +1,5 @@
 <template>
-  <div class="input-container">
+  <div ref="inputContainerRef" class="input-container">
     <!-- Prompt Panel -->
     <Transition name="panel">
       <div v-if="showPromptPanel" class="prompt-panel-wrapper">
@@ -363,9 +363,11 @@
       <Transition name="preview">
         <div
           v-if="previewAttachment"
+          ref="attachmentPreviewRef"
           class="attachment-preview-overlay"
           role="dialog"
           aria-modal="true"
+          tabindex="-1"
           :aria-label="t('previewImage')"
           @click.self="previewAttachment = null"
         >
@@ -388,6 +390,16 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Reuse Parameters Confirm -->
+    <ConfirmModal
+      :is-open="showReuseConfirm"
+      :title="t('reuseSameParameters')"
+      :message="t('reuseParametersConfirm')"
+      :confirm-text="t('confirm')"
+      @confirm="confirmReuse"
+      @cancel="cancelReuse"
+    />
   </div>
 </template>
 
@@ -431,10 +443,13 @@ import { getEnhancementSuggestions } from '../../utils/promptEnhancers'
 import { PROMPT_TEMPLATES } from '../../utils/promptTemplates'
 import { useCustomStyles } from '../../composables/useCustomStyles'
 import { useToast } from '../../composables/useToast'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
 import PromptPanel from '../Prompt/PromptPanel.vue'
 import PromptSuggest from '../Prompt/PromptSuggest.vue'
 import CustomStyleDialog from '../Style/CustomStyleDialog.vue'
 import ConfigSwitcher from '../Config/ConfigSwitcher.vue'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import type {
   ChatAttachment,
   ChatInputAttachment,
@@ -497,6 +512,15 @@ interface SelectedAttachment {
 
 const selectedAttachments = ref<SelectedAttachment[]>([])
 const previewAttachment = ref<SelectedAttachment | null>(null)
+const showReuseConfirm = ref(false)
+const pendingGeneration = ref<GenerationMetadata | null>(null)
+const inputContainerRef = ref<HTMLElement>()
+const attachmentPreviewRef = ref<HTMLElement>()
+const isAttachmentPreviewOpen = computed(() => previewAttachment.value !== null)
+useFocusTrap(attachmentPreviewRef, { isActive: isAttachmentPreviewOpen })
+useModalLayer(isAttachmentPreviewOpen, () => {
+  previewAttachment.value = null
+})
 
 // 合并内置和自定义风格
 const allStyles = computed(() => {
@@ -723,6 +747,22 @@ function saveGenerationOptions(options: GenerationOptions): void {
   }
 }
 
+// 尺寸/提示词面板：点击输入区外部或按 Esc 关闭，与其他浮层行为一致。
+function handlePanelPointerDown(event: PointerEvent) {
+  if (!showSizePanel.value && !showPromptPanel.value) return
+  const target = event.target
+  if (target instanceof Node && inputContainerRef.value?.contains(target)) return
+  showSizePanel.value = false
+  showPromptPanel.value = false
+}
+
+function handlePanelEsc(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  if (!showSizePanel.value && !showPromptPanel.value) return
+  showSizePanel.value = false
+  showPromptPanel.value = false
+}
+
 // 读取上次的生成参数
 onMounted(async () => {
   const savedOptions = isTauriRuntime()
@@ -745,6 +785,9 @@ onMounted(async () => {
   ) {
     selectedStyleId.value = normalizedOptions.style.id
   }
+  // 尺寸/提示词面板：外部点击或 Esc 关闭（M6）。
+  document.addEventListener('pointerdown', handlePanelPointerDown)
+  document.addEventListener('keydown', handlePanelEsc)
 })
 
 // 保存生成参数
@@ -968,7 +1011,7 @@ function addReferenceImage(image: GeneratedImage | ChatAttachment): void {
   })
 }
 
-function fillDraftFromGeneration(generation: GenerationMetadata): void {
+function applyGeneration(generation: GenerationMetadata): void {
   inputContent.value = generation.prompt
   selectedOptions.value = {
     size: generation.size,
@@ -982,6 +1025,30 @@ function fillDraftFromGeneration(generation: GenerationMetadata): void {
   showSuggestions.value = false
   showSizePanel.value = false
   nextTick(resizeTextarea)
+}
+
+// 复用参数会覆盖当前输入。草稿非空时先确认，避免静默丢弃用户已输入的内容。
+function fillDraftFromGeneration(generation: GenerationMetadata): void {
+  const hasDraft = inputContent.value.trim().length > 0 || selectedAttachments.value.length > 0
+  if (hasDraft) {
+    pendingGeneration.value = generation
+    showReuseConfirm.value = true
+    return
+  }
+  applyGeneration(generation)
+}
+
+function confirmReuse(): void {
+  if (pendingGeneration.value) {
+    applyGeneration(pendingGeneration.value)
+  }
+  pendingGeneration.value = null
+  showReuseConfirm.value = false
+}
+
+function cancelReuse(): void {
+  pendingGeneration.value = null
+  showReuseConfirm.value = false
 }
 
 function revokeSelectedAttachment(attachment: SelectedAttachment): void {
@@ -1072,13 +1139,15 @@ function handleSend() {
 onBeforeUnmount(() => {
   clearCompositionEndTimer()
   clearAttachments()
+  document.removeEventListener('pointerdown', handlePanelPointerDown)
+  document.removeEventListener('keydown', handlePanelEsc)
 })
 </script>
 
 <style scoped>
 .input-container {
   position: relative;
-  padding: 0 20px 20px;
+  padding: 0 20px 24px;
   background: linear-gradient(
     180deg,
     transparent 0%,
@@ -1096,17 +1165,27 @@ onBeforeUnmount(() => {
 
 .input-main {
   padding: 14px;
-  background: color-mix(in srgb, var(--color-bg-primary) 92%, var(--color-bg-secondary));
-  border: 1px solid var(--color-border);
-  border-radius: 24px;
-  box-shadow: var(--shadow-lg);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
   transition:
     border-color var(--transition-base),
+    box-shadow var(--transition-base),
     background var(--transition-base);
 }
 
+.input-main:focus-within {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--glass-border));
+  box-shadow:
+    var(--glass-shadow),
+    0 0 0 3px var(--color-primary-light);
+}
+
 .input-main.dragging {
-  background: color-mix(in srgb, var(--color-primary-light) 18%, var(--color-bg-primary));
+  background: color-mix(in srgb, var(--color-primary-light) 24%, var(--glass-bg-strong));
   border-color: color-mix(in srgb, var(--color-primary) 54%, var(--color-border));
 }
 

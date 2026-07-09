@@ -1,6 +1,7 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay" @click.self="requestClose">
     <div
+      ref="modalContentRef"
       class="modal-content scale-in"
       role="dialog"
       aria-modal="true"
@@ -14,7 +15,7 @@
           </div>
           <h2 class="modal-title">{{ t('apiConfig') }}</h2>
         </div>
-        <button class="btn-icon" :aria-label="t('close')" @click="$emit('close')">
+        <button class="btn-icon" :aria-label="t('close')" @click="requestClose">
           <X :size="20" />
         </button>
       </div>
@@ -83,22 +84,38 @@
       <!-- Footer -->
       <div class="modal-footer">
         <div class="footer-spacer"></div>
-        <button class="btn-secondary" :disabled="!isFormValid || isTesting" @click="handleTest">
+        <button
+          class="btn-secondary"
+          :disabled="!isFormValid || isTesting || isSaving"
+          @click="handleTest"
+        >
           <Loader2 v-if="isTesting" :size="16" class="spin" />
           <Zap v-else :size="16" />
           <span>{{ isTesting ? t('testing') : t('testConnection') }}</span>
         </button>
-        <button class="btn-primary" :disabled="!isFormValid" @click="handleSave">
-          <Save :size="16" />
+        <button class="btn-primary" :disabled="!isFormValid || isSaving" @click="handleSave">
+          <Loader2 v-if="isSaving" :size="16" class="spin" />
+          <Save v-else :size="16" />
           <span>{{ t('saveConfig') }}</span>
         </button>
       </div>
     </div>
+
+    <!-- Unsaved Changes Confirm -->
+    <ConfirmModal
+      :is-open="showUnsavedConfirm"
+      :title="t('unsavedChanges')"
+      :message="t('unsavedChangesConfirm')"
+      :confirm-text="t('discard')"
+      type="warning"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import {
   AlertCircle,
   CheckCircle,
@@ -112,9 +129,14 @@ import {
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useConfig, localizeApiTestResult } from '../../composables/useConfig'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
+import { useToast } from '../../composables/useToast'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { ApiConfig } from '../../types'
 
 const { t } = useI18n()
+const { error: showError } = useToast()
 
 const emit = defineEmits<{
   close: []
@@ -124,22 +146,36 @@ const { configStore, testApiConnection, initializeConfig } = useConfig()
 
 const localConfig = ref<ApiConfig>(initializeConfig())
 const isTesting = ref(false)
+const isSaving = ref(false)
 const testResult = ref<{ success: boolean; message: string } | null>(null)
 const showApiKey = ref(false)
+// 打开时的配置快照，用于判断是否有未保存改动（L1）。
+const initialSnapshot = ref(JSON.stringify(localConfig.value))
+const showUnsavedConfirm = ref(false)
+const modalContentRef = ref<HTMLElement>()
+const isModalTrapActive = computed(() => !showUnsavedConfirm.value)
+useFocusTrap(modalContentRef, { isActive: isModalTrapActive })
+useModalLayer(isModalTrapActive, requestClose)
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') {
-    emit('close')
+const isDirty = computed(() => JSON.stringify(localConfig.value) !== initialSnapshot.value)
+
+// 关闭前拦截：有未保存改动时先弹二次确认。保存成功后 isSaving 期间不拦截。
+function requestClose() {
+  if (isDirty.value && !isSaving.value) {
+    showUnsavedConfirm.value = true
+    return
   }
+  emit('close')
 }
 
-onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
-})
+function confirmDiscard() {
+  showUnsavedConfirm.value = false
+  emit('close')
+}
 
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
-})
+function cancelDiscard() {
+  showUnsavedConfirm.value = false
+}
 
 const isFormValid = computed(() => {
   return (
@@ -150,17 +186,19 @@ const isFormValid = computed(() => {
 })
 
 async function handleSave() {
-  if (isFormValid.value) {
-    try {
-      await configStore.saveConfig(localConfig.value)
-      testResult.value = { success: true, message: t('configSaved') }
-      setTimeout(() => {
-        emit('close')
-      }, 1000)
-    } catch (error) {
-      console.error('Save config failed:', error)
-      testResult.value = { success: false, message: t('unknownError') }
-    }
+  if (!isFormValid.value || isSaving.value) return
+  isSaving.value = true
+  try {
+    await configStore.saveConfig(localConfig.value)
+    testResult.value = { success: true, message: t('configSaved') }
+    setTimeout(() => {
+      emit('close')
+    }, 1000)
+  } catch (error) {
+    console.error('Save config failed:', error)
+    testResult.value = { success: false, message: t('unknownError') }
+    showError(t('unknownError'))
+    isSaving.value = false
   }
 }
 
@@ -176,6 +214,7 @@ async function handleTest() {
   } catch (error) {
     console.error('API connection test failed:', error)
     testResult.value = { success: false, message: t('unknownError') }
+    showError(t('unknownError'))
   } finally {
     isTesting.value = false
   }
@@ -200,7 +239,10 @@ async function handleTest() {
   max-width: 480px;
   max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
-  background: var(--color-bg-primary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;

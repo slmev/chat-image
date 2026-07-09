@@ -16,6 +16,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: mockState.routerPush,
   }),
+  onBeforeRouteLeave: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -58,12 +59,12 @@ vi.mock('../../platform/imageReferenceCleanup', () => ({
   openLocalDataDirectory: vi.fn(),
 }))
 
-function mountPage() {
+function mountPage({ stubConfirm = true }: { stubConfirm?: boolean } = {}) {
   return mount(SettingsPage, {
     attachTo: document.body,
     global: {
       stubs: {
-        ConfirmModal: true,
+        ConfirmModal: stubConfirm,
       },
     },
   })
@@ -165,5 +166,41 @@ describe('SettingsPage', () => {
       apiKey: 'sk-test',
       model: 'gpt-image-2',
     })
+  })
+
+  it('blocks switching configs while the current form is dirty', async () => {
+    const store = useConfigStore()
+    await store.addConfig({
+      name: 'Primary',
+      endpoint: 'https://primary.example.test',
+      apiKey: 'sk-primary',
+      model: 'gpt-image-2',
+    })
+    const second = await store.addConfig({
+      name: 'Backup',
+      endpoint: 'https://backup.example.test',
+      apiKey: 'sk-backup',
+      model: 'gpt-image-2',
+    })
+
+    const wrapper = mountPage({ stubConfirm: false })
+    await vi.dynamicImportSettled()
+
+    const inputs = wrapper.findAll('input')
+    await inputs[1].setValue('https://edited.example.test')
+    await clickButtonByText('Backup')
+
+    expect(document.body.textContent).toContain('unsavedChanges')
+    expect((wrapper.findAll('input')[1].element as HTMLInputElement).value).toBe(
+      'https://edited.example.test',
+    )
+
+    await clickButtonByText('discard')
+
+    expect(document.body.textContent).not.toContain('unsavedChanges')
+    expect((wrapper.findAll('input')[1].element as HTMLInputElement).value).toBe(
+      'https://backup.example.test',
+    )
+    expect(store.activeConfigId).not.toBe(second.id)
   })
 })

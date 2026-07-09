@@ -1,12 +1,12 @@
 <template>
   <Teleport to="body">
     <Transition name="dialog">
-      <div v-if="isOpen" class="dialog-overlay" @click.self="$emit('close')">
-        <div class="dialog-content scale-in" role="dialog" aria-modal="true">
+      <div v-if="isOpen" class="dialog-overlay" @click.self="requestClose">
+        <div ref="dialogContentRef" class="dialog-content scale-in" role="dialog" aria-modal="true">
           <!-- Header -->
           <div class="dialog-header">
             <h2 class="dialog-title">{{ isEditing ? t('editStyle') : t('createStyle') }}</h2>
-            <button class="btn-icon" :aria-label="t('close')" @click="$emit('close')">
+            <button class="btn-icon" :aria-label="t('close')" @click="requestClose">
               <X :size="20" />
             </button>
           </div>
@@ -54,7 +54,7 @@
               {{ t('delete') }}
             </button>
             <div class="footer-spacer"></div>
-            <button class="btn-secondary" @click="$emit('close')">
+            <button class="btn-secondary" @click="requestClose">
               {{ t('cancel') }}
             </button>
             <button
@@ -68,13 +68,27 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Unsaved Changes Confirm -->
+    <ConfirmModal
+      :is-open="showUnsavedConfirm"
+      :title="t('unsavedChanges')"
+      :message="t('unsavedChangesConfirm')"
+      :confirm-text="t('discard')"
+      type="danger"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { StyleTemplate } from '../../types'
 
 const { t } = useI18n()
@@ -95,6 +109,7 @@ const emit = defineEmits<{
 }>()
 
 const isEditing = ref(false)
+const dialogContentRef = ref<HTMLElement>()
 
 const form = ref({
   name: '',
@@ -102,6 +117,18 @@ const form = ref({
   promptSuffix: '',
   icon: 'sparkles',
 })
+// 打开时的表单快照，用于判断是否有未保存改动（L1）。
+const initialSnapshot = ref('')
+const showUnsavedConfirm = ref(false)
+const isDialogTrapActive = computed(() => props.isOpen && !showUnsavedConfirm.value)
+useFocusTrap(dialogContentRef, { isActive: isDialogTrapActive })
+useModalLayer(isDialogTrapActive, requestClose)
+
+function snapshot() {
+  return JSON.stringify(form.value)
+}
+
+const isDirty = computed(() => snapshot() !== initialSnapshot.value)
 
 watch(
   () => props.isOpen,
@@ -118,6 +145,10 @@ watch(
       isEditing.value = false
       form.value = { name: '', description: '', promptSuffix: '', icon: 'sparkles' }
     }
+    if (open) {
+      initialSnapshot.value = snapshot()
+      showUnsavedConfirm.value = false
+    }
   },
 )
 
@@ -132,33 +163,48 @@ function handleDelete() {
   emit('close')
 }
 
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') emit('close')
+// 关闭前拦截：有未保存改动时先弹二次确认。
+function requestClose() {
+  if (isDirty.value) {
+    showUnsavedConfirm.value = true
+    return
+  }
+  emit('close')
 }
 
-onMounted(() => document.addEventListener('keydown', handleKeydown))
-onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
+function confirmDiscard() {
+  showUnsavedConfirm.value = false
+  emit('close')
+}
+
+function cancelDiscard() {
+  showUnsavedConfirm.value = false
+}
 </script>
 
 <style scoped>
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(10, 14, 22, 0.58);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
   padding: 20px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .dialog-content {
   width: 100%;
   max-width: 480px;
-  background: var(--color-bg-primary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--glass-shadow);
   overflow: hidden;
 }
 

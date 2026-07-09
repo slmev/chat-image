@@ -29,6 +29,10 @@ vi.mock('vue-i18n', () => ({
         aspectRatio: '宽高比',
         count: '数量',
         cancel: '取消',
+        close: '关闭',
+        unsavedChanges: '未保存的更改',
+        unsavedChangesConfirm: '有未保存的更改，确定不保存就关闭吗？',
+        discard: '放弃',
         generatingDots: '生成中...',
         generateVariation: '生成变体',
         imageSizeSquare: '方形 (1024x1024)',
@@ -238,5 +242,15 @@ describe('VariationDialog image sizing', () => {
         n: 1,
       }),
     )
+  })
+
+  it('prompts before closing after changing variation settings', async () => {
+    const wrapper = await mountDialog()
+
+    await wrapper.get('textarea').setValue('changed prompt')
+    await wrapper.get('.btn-secondary').trigger('click')
+
+    expect(wrapper.text()).toContain('未保存的更改')
+    expect(wrapper.emitted('close')).toBeUndefined()
   })
 })

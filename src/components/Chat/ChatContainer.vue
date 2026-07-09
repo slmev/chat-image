@@ -28,9 +28,10 @@
         <!-- Quick Start Templates -->
         <div class="quick-start-grid">
           <button
-            v-for="template in quickStartTemplates"
+            v-for="(template, index) in quickStartTemplates"
             :key="template.id"
             class="quick-start-card"
+            :style="{ '--card-index': index }"
             @click="handleQuickStart(template.prompt)"
           >
             <div class="quick-start-icon">
@@ -83,6 +84,8 @@ import { useHistory } from '../../composables/useHistory'
 import { usePromptSuggestions } from '../../composables/usePromptSuggestions'
 import { useConfigStore } from '../../stores/config'
 import { useKeyboardShortcuts } from '../../composables/useKeyboardShortcuts'
+import { useToast } from '../../composables/useToast'
+import { isTauriRuntime } from '../../platform/runtime'
 import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
@@ -107,20 +110,26 @@ const {
 } = useHistory()
 const { templates } = usePromptSuggestions()
 const configStore = useConfigStore()
+const { error: showError } = useToast()
 
-// 快捷键
-useKeyboardShortcuts([
-  {
-    key: 'n',
-    ctrl: true,
-    handler: () => {
-      if (chatStore.messages.length > 0) {
-        startNewChat()
-      }
-    },
-    description: 'New chat',
-  },
-])
+// 快捷键：仅在 Tauri 桌面端注册 Ctrl/Cmd+N，
+// Web 端该组合被浏览器保留为「新建窗口」，preventDefault 不可靠（L3）。
+useKeyboardShortcuts(
+  isTauriRuntime()
+    ? [
+        {
+          key: 'n',
+          ctrl: true,
+          handler: () => {
+            if (chatStore.messages.length > 0) {
+              startNewChat()
+            }
+          },
+          description: 'New chat',
+        },
+      ]
+    : [],
+)
 
 const messagesContainer = ref<HTMLElement>()
 const chatInputRef = ref<{
@@ -168,6 +177,7 @@ async function handleSend(
     scrollToBottom()
   } catch (error) {
     console.error('Send message failed:', error)
+    showError(t('sendMessageFailed'))
   }
 }
 
@@ -176,6 +186,7 @@ async function handleCancel() {
     await cancelCurrentGeneration()
   } catch (error) {
     console.error('Cancel generation failed:', error)
+    showError(t('cancelGenerationFailed'))
   }
 }
 
@@ -184,6 +195,7 @@ async function handleDelete(messageId: string) {
     await deleteMessage(messageId)
   } catch (error) {
     console.error('Delete message failed:', error)
+    showError(t('deleteMessageFailed'))
   }
 }
 
@@ -192,6 +204,7 @@ async function handleToggleFavorite(messageId: string) {
     await toggleFavorite(messageId)
   } catch (error) {
     console.error('Toggle favorite failed:', error)
+    showError(t('favoriteFailed'))
   }
 }
 
@@ -266,7 +279,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--color-bg-primary);
+  background: transparent;
 }
 
 .messages-area {
@@ -290,19 +303,37 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 20px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
+  padding: 8px 14px;
+  margin-bottom: 22px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
   border-radius: 999px;
   color: var(--color-text-secondary);
   font-size: 13px;
   font-weight: 500;
+  box-shadow: var(--shadow-sm);
+}
+
+.empty-eyebrow svg {
+  color: var(--color-primary);
 }
 
 .empty-title {
-  font-size: 32px;
-  font-weight: 600;
+  font-size: 34px;
+  font-weight: 680;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  background: linear-gradient(
+    120deg,
+    var(--color-text-primary) 0%,
+    color-mix(in srgb, var(--color-primary) 70%, var(--color-text-primary)) 60%,
+    var(--color-accent-2) 120%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
   color: var(--color-text-primary);
   margin-bottom: 12px;
   max-width: 680px;
@@ -310,10 +341,10 @@ onUnmounted(() => {
 
 .empty-description {
   font-size: 15px;
+  line-height: 1.6;
   color: var(--color-text-secondary);
   margin-bottom: 28px;
   max-width: 540px;
-  line-height: 1.6;
 }
 
 .empty-icon {
@@ -334,24 +365,63 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
+  padding: 15px 16px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-base);
   text-align: left;
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  /* Animate opacity + `translate` (not `transform`) so the entrance never
+     fights the :hover lift, which uses `transform`. */
+  animation: card-in var(--transition-slow) cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.quick-start-card:nth-child(1) {
+  animation-delay: 40ms;
+}
+.quick-start-card:nth-child(2) {
+  animation-delay: 100ms;
+}
+.quick-start-card:nth-child(3) {
+  animation-delay: 160ms;
+}
+.quick-start-card:nth-child(4) {
+  animation-delay: 220ms;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 
 .quick-start-card:hover {
-  background: var(--color-bg-primary);
-  border-color: var(--color-border-hover);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--glass-border));
+  box-shadow: var(--shadow-lg);
+}
+
+.quick-start-card:hover .quick-start-icon {
+  background: var(--gradient-primary);
+  border-color: transparent;
+  color: var(--color-text-inverse);
+  box-shadow: var(--shadow-primary);
 }
 
 .quick-start-icon {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -359,6 +429,7 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 12px;
   color: var(--color-primary);
+  transition: all var(--transition-base);
 }
 
 .quick-start-text {
@@ -376,6 +447,11 @@ onUnmounted(() => {
 
   .quick-start-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quick-start-card {
+    padding: 18px 16px;
+    min-height: 64px;
   }
 
   .empty-title {

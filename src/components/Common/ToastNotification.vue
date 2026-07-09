@@ -115,7 +115,7 @@ const { toasts, removeToast } = useToast()
 
 /* Transitions */
 .toast-enter-active {
-  transition: all var(--transition-slow);
+  transition: all 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toast-leave-active {
@@ -124,7 +124,7 @@ const { toasts, removeToast } = useToast()
 
 .toast-enter-from {
   opacity: 0;
-  transform: translateX(100%);
+  transform: translate(100%, -8px);
 }
 
 .toast-leave-to {

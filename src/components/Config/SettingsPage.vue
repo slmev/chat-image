@@ -5,7 +5,7 @@
         <p class="settings-eyebrow">{{ t('settings') }}</p>
         <h2 id="settings-title" class="settings-title">{{ t('apiConfig') }}</h2>
       </div>
-      <button type="button" class="btn-secondary" @click="router.push({ name: 'chat' })">
+      <button type="button" class="btn-secondary" @click="requestBackToChat">
         <ArrowLeft :size="16" />
         <span>{{ t('backToChat') }}</span>
       </button>
@@ -15,7 +15,7 @@
       <aside class="config-list-panel" :aria-label="t('configList')">
         <div class="panel-header">
           <h3>{{ t('configList') }}</h3>
-          <button type="button" class="btn-secondary compact" @click="startNewConfig">
+          <button type="button" class="btn-secondary compact" @click="requestStartNewConfig">
             <Plus :size="14" />
             <span>{{ t('addConfig') }}</span>
           </button>
@@ -37,7 +37,7 @@
                 active: profile.id === configStore.activeConfigId,
               },
             ]"
-            @click="selectConfig(profile.id)"
+            @click="requestSelectConfig(profile.id)"
           >
             <span class="config-name">{{ profile.name }}</span>
             <span class="config-meta"
@@ -278,12 +278,22 @@
       @confirm="handleCleanupOrphans"
       @cancel="showCleanupConfirm = false"
     />
+
+    <ConfirmModal
+      :is-open="showUnsavedConfirm"
+      :title="t('unsavedChanges')"
+      :message="t('unsavedChangesConfirm')"
+      :confirm-text="t('discard')"
+      type="warning"
+      @confirm="confirmDiscard"
+      @cancel="cancelDiscard"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import {
   AlertCircle,
   ArrowLeft,
@@ -335,6 +345,12 @@ const testResult = ref<{ success: boolean; message: string } | null>(null)
 const showDeleteConfirm = ref(false)
 const showClearAllConfirm = ref(false)
 const showCleanupConfirm = ref(false)
+const showUnsavedConfirm = ref(false)
+const initialSnapshot = ref(JSON.stringify(draft.value))
+const pendingAction = ref<(() => void) | null>(null)
+let allowRouteLeave = false
+// 判断当前草稿相对打开/保存时是否有未保存改动（L1）。
+const isDirty = computed(() => JSON.stringify(draft.value) !== initialSnapshot.value)
 const isDesktop = isTauriRuntime()
 const isStorageLoading = ref(false)
 const isCleaningStorage = ref(false)
@@ -358,6 +374,11 @@ function resetTestResult() {
   testResult.value = null
 }
 
+// 当前表单快照，用于判断是否有未保存改动（L1）。
+function snapshotDraft() {
+  initialSnapshot.value = JSON.stringify(draft.value)
+}
+
 function loadDraft(profile: ApiConfigProfile) {
   draft.value = {
     name: profile.name,
@@ -366,6 +387,7 @@ function loadDraft(profile: ApiConfigProfile) {
     model: profile.model,
   }
   resetTestResult()
+  snapshotDraft()
 }
 
 function startNewConfig() {
@@ -378,6 +400,7 @@ function startNewConfig() {
     model: DEFAULT_MODEL,
   }
   resetTestResult()
+  snapshotDraft()
 }
 
 function selectConfig(id: string) {
@@ -387,6 +410,53 @@ function selectConfig(id: string) {
   isCreating.value = false
   loadDraft(profile)
 }
+
+// 离开当前草稿前拦截：有未保存改动时先弹二次确认，确认后执行挂起的动作。
+function guardedRun(action: () => void) {
+  if (isDirty.value) {
+    pendingAction.value = action
+    showUnsavedConfirm.value = true
+    return
+  }
+  action()
+}
+
+function confirmDiscard() {
+  const action = pendingAction.value
+  showUnsavedConfirm.value = false
+  pendingAction.value = null
+  action?.()
+}
+
+function cancelDiscard() {
+  showUnsavedConfirm.value = false
+  pendingAction.value = null
+}
+
+function requestSelectConfig(id: string) {
+  if (id === selectedConfigId.value && !isCreating.value) return
+  guardedRun(() => selectConfig(id))
+}
+
+function requestStartNewConfig() {
+  guardedRun(startNewConfig)
+}
+
+function requestBackToChat() {
+  guardedRun(() => {
+    allowRouteLeave = true
+    void router.push({ name: 'chat' })
+  })
+}
+
+onBeforeRouteLeave((to) => {
+  if (allowRouteLeave || !isDirty.value) return true
+  guardedRun(() => {
+    allowRouteLeave = true
+    void router.push(to)
+  })
+  return false
+})
 
 function selectDefaultConfig() {
   const preferredId = configStore.activeConfigId || configStore.configs[0]?.id
@@ -423,6 +493,7 @@ async function handleSave() {
     } else {
       await configStore.updateConfig(selectedConfigId.value, draft.value)
     }
+    snapshotDraft()
     success(t('configSaved'))
   } catch (error) {
     console.error('Save config failed:', error)
@@ -573,7 +644,7 @@ onMounted(() => {
   min-width: 0;
   overflow-y: auto;
   padding: 24px;
-  background: var(--color-bg-primary);
+  background: transparent;
 }
 
 .settings-header {
@@ -594,24 +665,38 @@ onMounted(() => {
 }
 
 .settings-title {
-  color: var(--color-text-primary);
   font-size: 24px;
-  font-weight: 650;
+  font-weight: 670;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  background: linear-gradient(
+    120deg,
+    var(--color-text-primary) 0%,
+    color-mix(in srgb, var(--color-primary) 70%, var(--color-text-primary)) 70%,
+    var(--color-accent-2) 130%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--color-text-primary);
 }
 
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  gap: 16px;
+  gap: 20px;
   max-width: 1180px;
   margin: 0 auto;
 }
 
 .config-list-panel,
 .settings-section {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  background: var(--color-bg-secondary);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  box-shadow: var(--shadow-sm);
 }
 
 .config-list-panel {

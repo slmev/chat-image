@@ -597,6 +597,22 @@ export function useHistory() {
     return (await findMatchingHistory(chatStore.messages))?.id || historyId
   }
 
+  async function ensureCurrentChatInHistory(existingHistoryId?: string | null): Promise<string | null> {
+    if (chatStore.messages.length === 0) return null
+
+    await chatStore.flushHistorySave()
+    const existingHistory = existingHistoryId
+      ? historyList.value.find((item) => item.id === existingHistoryId)
+      : undefined
+    const historyCandidate = existingHistory ?? (await findMatchingHistory(chatStore.messages))
+
+    if (historyCandidate) {
+      return historyCandidate.id
+    }
+
+    return saveCurrentChat(null)
+  }
+
   // 加载历史对话
   async function loadHistoryChat(historyId: string): Promise<ChatMessage[] | null> {
     const messages = await readHistoryMessages(historyId)
@@ -795,6 +811,7 @@ export function useHistory() {
     historyList,
     searchHistory,
     saveCurrentChat,
+    ensureCurrentChatInHistory,
     loadHistoryChat,
     loadGalleryImages,
     deleteHistoryItem,

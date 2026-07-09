@@ -269,6 +269,7 @@
     <Transition name="preview">
       <div
         v-if="previewItem"
+        ref="previewOverlayRef"
         class="preview-overlay"
         role="dialog"
         aria-modal="true"
@@ -371,6 +372,8 @@ import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { useImageDownload } from '../../composables/useImageDownload'
 import { useToast } from '../../composables/useToast'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
 import type { GalleryImageItem, GeneratedImage, GenerationQuality } from '../../types'
 import { getImageRepository } from '../../platform/imageRepository'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
@@ -406,6 +409,7 @@ const referenceFilter = ref<ReferenceFilter>('all')
 const density = ref<Density>('comfortable')
 const previewItem = ref<GalleryImageItem | null>(null)
 const previewInfoVisible = ref(false)
+const previewOverlayRef = ref<HTMLElement>()
 const galleryGridRef = ref<HTMLElement | null>(null)
 const galleryGridWidth = ref(0)
 const ownedObjectUrls = new Set<string>()
@@ -424,6 +428,9 @@ const favoriteCount = computed(() => galleryItems.value.filter((item) => item.is
 const recentCount = computed(
   () => galleryItems.value.filter((item) => isRecent(item.timestamp)).length,
 )
+const isPreviewOpen = computed(() => previewItem.value !== null)
+useFocusTrap(previewOverlayRef, { isActive: isPreviewOpen })
+useModalLayer(isPreviewOpen, closePreview)
 
 const scopeFilters = computed(() => [
   {
@@ -829,13 +836,11 @@ async function shareImage(item: GalleryImageItem) {
   width: 100%;
   height: 100%;
   min-height: 0;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-bg-secondary) 88%, transparent),
-      transparent 45%
-    ),
-    var(--color-bg-primary);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-bg-secondary) 88%, transparent),
+    transparent 45%
+  );
   overflow: hidden;
 }
 
@@ -1094,18 +1099,22 @@ async function shareImage(item: GalleryImageItem) {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   transition:
     border-color var(--transition-base),
-    box-shadow var(--transition-base);
+    box-shadow var(--transition-base),
+    transform var(--transition-base);
 }
 
 .gallery-card:hover {
   z-index: 1;
-  border-color: var(--color-border-hover);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--glass-border));
   box-shadow: var(--shadow-lg);
 }
 

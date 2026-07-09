@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import ChatContainer from '../../components/Chat/ChatContainer.vue'
 import { useConfigStore } from '../../stores/config'
@@ -211,5 +211,17 @@ describe('ChatContainer clipboard attachments', () => {
 
     expect(event.defaultPrevented).toBe(false)
     expect(wrapper.findAll('.attachment-thumb')).toHaveLength(0)
+  })
+
+  it('shows a toast when sending a message fails', async () => {
+    mockState.sendMessage.mockRejectedValueOnce(new Error('send failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const wrapper = await mountContainer()
+
+    await wrapper.get('.quick-start-card').trigger('click')
+    await flushPromises()
+
+    expect(mockState.showError).toHaveBeenCalledWith('sendMessageFailed')
+    consoleError.mockRestore()
   })
 })

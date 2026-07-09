@@ -240,7 +240,7 @@
             :aria-label="t('viewParameters')"
             @click.self="showParameterDialog = false"
           >
-            <div class="parameter-panel">
+            <div ref="parameterPanelRef" class="parameter-panel">
               <div class="parameter-header">
                 <h3>{{ t('viewParameters') }}</h3>
                 <button
@@ -318,6 +318,8 @@ import ConfirmModal from '../Common/ConfirmModal.vue'
 import { useChat } from '../../composables/useChat'
 import { useToast } from '../../composables/useToast'
 import { useImageDownload } from '../../composables/useImageDownload'
+import { useFocusTrap } from '../../composables/useFocusTrap'
+import { useModalLayer } from '../../composables/useModalLayer'
 import {
   DEFAULT_GENERATION_OPTIONS,
   findImageSizePreset,
@@ -356,6 +358,11 @@ const selectedImageForEdit = ref<GeneratedImage | null>(null)
 const pendingDeleteId = ref<string | null>(null)
 const isRetrying = ref(false)
 const showParameterDialog = ref(false)
+const parameterPanelRef = ref<HTMLElement>()
+useFocusTrap(parameterPanelRef, { isActive: showParameterDialog })
+useModalLayer(showParameterDialog, () => {
+  showParameterDialog.value = false
+})
 const isEditingPrompt = ref(false)
 const editedPrompt = ref('')
 const promptEditTextareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -531,27 +538,37 @@ function closeEditDialog() {
 }
 
 async function handleVariationResult(response: ImageGenerationResponse, options: VariationOptions) {
-  await appendDerivedImageResult(response, {
-    content: t('variationGenerated'),
-    idPrefix: 'variation',
-    prompt: options.prompt,
-    generationOptions: options,
-    sourceImage: selectedImageForVariation.value,
-    sourceMessageId: props.message.id,
-  })
+  try {
+    await appendDerivedImageResult(response, {
+      content: t('variationGenerated'),
+      idPrefix: 'variation',
+      prompt: options.prompt,
+      generationOptions: options,
+      sourceImage: selectedImageForVariation.value,
+      sourceMessageId: props.message.id,
+    })
+  } catch (error) {
+    console.error('Variation result failed:', error)
+    showError(t('createVariationFailed'))
+  }
 }
 
 async function handleEditResult(response: ImageGenerationResponse, prompt: string) {
-  await appendDerivedImageResult(response, {
-    content: t('editedImageGenerated'),
-    idPrefix: 'edited',
-    prompt,
-    generationOptions: {
-      ...DEFAULT_GENERATION_OPTIONS,
-    },
-    sourceImage: selectedImageForEdit.value,
-    sourceMessageId: props.message.id,
-  })
+  try {
+    await appendDerivedImageResult(response, {
+      content: t('editedImageGenerated'),
+      idPrefix: 'edited',
+      prompt,
+      generationOptions: {
+        ...DEFAULT_GENERATION_OPTIONS,
+      },
+      sourceImage: selectedImageForEdit.value,
+      sourceMessageId: props.message.id,
+    })
+  } catch (error) {
+    console.error('Edit result failed:', error)
+    showError(t('editImageFailed'))
+  }
 }
 </script>
 
