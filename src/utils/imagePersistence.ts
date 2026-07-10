@@ -66,13 +66,22 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
 
 export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] {
   function stripImageData<T extends GeneratedImage>(image: T): T {
-    const fallbackUrl =
-      image.originalUrl && !image.originalUrl.startsWith('data:') ? image.originalUrl : ''
+    const isDurableUrl = (url: string | undefined): url is string =>
+      Boolean(url && !url.startsWith('data:') && !url.startsWith('blob:'))
+    const fallbackUrl = isDurableUrl(image.url)
+      ? image.url
+      : isDurableUrl(image.originalUrl)
+        ? image.originalUrl
+        : image.localPath || image.url
+
+    if (!image.localPath && !isDurableUrl(image.url) && !isDurableUrl(image.originalUrl)) {
+      return image
+    }
 
     return {
       ...image,
       base64: undefined,
-      url: image.url.startsWith('data:') ? fallbackUrl : image.url,
+      url: isDurableUrl(image.url) ? image.url : fallbackUrl,
     }
   }
 
@@ -90,6 +99,15 @@ export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] 
 export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<ChatMessage[]> {
   const repository = getImageRepository()
 
+  async function resolveImage<T extends GeneratedImage>(image: T): Promise<T> {
+    try {
+      return (await repository.resolveDisplayUrl(image)) as T
+    } catch (error) {
+      console.warn('Failed to resolve stored image URL:', error)
+      return image
+    }
+  }
+
   return Promise.all(
     messages.map(async (msg) => {
       if (!msg.images && !msg.attachments) return msg
@@ -97,14 +115,14 @@ export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<C
       const attachments = msg.attachments
         ? await Promise.all(
             msg.attachments.map(async (attachment) => ({
-              ...(await repository.resolveDisplayUrl(attachment)),
+              ...(await resolveImage(attachment)),
               name: attachment.name,
             })),
           )
         : undefined
 
       const images = msg.images
-        ? await Promise.all(msg.images.map((image) => repository.resolveDisplayUrl(image)))
+        ? await Promise.all(msg.images.map((image) => resolveImage(image)))
         : undefined
 
       return {

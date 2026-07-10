@@ -21,6 +21,7 @@
           <button
             class="overlay-btn"
             :title="t('createVariation')"
+            :aria-label="t('createVariation')"
             @click.stop="$emit('createVariation', displayImage)"
           >
             <Shuffle :size="16" />
@@ -28,17 +29,33 @@
           <button
             class="overlay-btn"
             :title="t('editImage')"
+            :aria-label="t('editImage')"
             @click.stop="$emit('editImage', displayImage)"
           >
             <Edit :size="16" />
           </button>
-          <button class="overlay-btn" :title="t('downloadImage')" @click.stop="downloadImage">
+          <button
+            class="overlay-btn"
+            :title="t('downloadImage')"
+            :aria-label="t('downloadImage')"
+            @click.stop="downloadImage"
+          >
             <Download :size="16" />
           </button>
-          <button class="overlay-btn" :title="t('shareImage')" @click.stop="shareImage">
+          <button
+            class="overlay-btn"
+            :title="t('shareImage')"
+            :aria-label="t('shareImage')"
+            @click.stop="shareImage"
+          >
             <Share2 :size="16" />
           </button>
-          <button class="overlay-btn" :title="t('expandImage')" @click.stop="openPreview">
+          <button
+            class="overlay-btn"
+            :title="t('expandImage')"
+            :aria-label="t('expandImage')"
+            @click.stop="openPreview"
+          >
             <Expand :size="16" />
           </button>
         </div>
@@ -181,7 +198,12 @@
                 </button>
               </template>
             </div>
-            <button class="close-btn" @click="closePreview">
+            <button
+              class="close-btn"
+              :title="t('close')"
+              :aria-label="t('close')"
+              @click="closePreview"
+            >
               <X :size="20" />
             </button>
           </div>

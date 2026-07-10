@@ -78,6 +78,34 @@ describe('chat store', () => {
     ])
   })
 
+  it('rolls back a message update when desktop persistence fails', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+    const message = store.addMessage({
+      type: 'assistant',
+      content: 'previous failure',
+      status: 'error',
+      error: 'previous failure',
+    })
+    await store.flushHistorySave()
+    setMetadataValue.mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(
+      store.updateMessage(message.id, {
+        content: 'generating',
+        status: 'pending',
+        error: undefined,
+      }),
+    ).rejects.toThrow('Failed to save chat history')
+
+    expect(store.messages[0]).toMatchObject({
+      content: 'previous failure',
+      status: 'error',
+      error: 'previous failure',
+    })
+  })
+
   it('passes removed current chat images to local image cleanup when clearing messages', async () => {
     const { useChatStore } = await import('../../stores/chat')
     const store = useChatStore()

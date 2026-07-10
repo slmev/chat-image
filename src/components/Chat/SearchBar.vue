@@ -40,9 +40,16 @@ function toggleFavorites() {
         :value="searchQuery"
         :placeholder="t('searchMessages')"
         class="search-input"
+        :aria-label="t('searchMessages')"
         @input="handleInput"
       />
-      <button v-if="searchQuery" class="clear-btn" :title="t('clearSearch')" @click="handleClear">
+      <button
+        v-if="searchQuery"
+        class="clear-btn"
+        :title="t('clearSearch')"
+        :aria-label="t('clearSearch')"
+        @click="handleClear"
+      >
         <X :size="14" />
       </button>
     </div>
@@ -50,6 +57,8 @@ function toggleFavorites() {
     <button
       :class="['favorites-btn', { active: showFavoritesOnly }]"
       :title="showFavoritesOnly ? t('showAll') : t('showFavoritesOnly')"
+      :aria-label="showFavoritesOnly ? t('showAll') : t('showFavoritesOnly')"
+      :aria-pressed="showFavoritesOnly"
       @click="toggleFavorites"
     >
       <Star :size="16" :fill="showFavoritesOnly ? 'currentColor' : 'none'" />

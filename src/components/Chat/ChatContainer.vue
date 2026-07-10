@@ -32,6 +32,7 @@
             :key="template.id"
             class="quick-start-card"
             :style="{ '--card-index': index }"
+            :disabled="chatStore.isLoading || !isConfigured"
             @click="handleQuickStart(template.prompt)"
           >
             <div class="quick-start-icon">
@@ -98,6 +99,7 @@ import type {
   PromptTemplate,
 } from '../../types'
 import { DEFAULT_GENERATION_OPTIONS } from '../../utils/constants'
+import { isPersistenceError } from '../../utils/storage'
 
 const { t } = useI18n()
 const { chatStore, sendMessage, cancelCurrentGeneration, startNewChat } = useChat()
@@ -182,7 +184,7 @@ async function handleSend(
   } catch (error) {
     console.error('Send message failed:', error)
     chatInputRef.value?.restoreDraft(content, options, attachments)
-    showError(t('sendMessageFailed'))
+    showError(t(isPersistenceError(error) ? 'persistenceFailed' : 'sendMessageFailed'))
   }
 }
 
@@ -214,6 +216,7 @@ async function handleToggleFavorite(messageId: string) {
 }
 
 function handleQuickStart(prompt: string) {
+  if (chatStore.isLoading || !isConfigured.value) return
   handleSend(prompt, {
     ...DEFAULT_GENERATION_OPTIONS,
   })
@@ -459,11 +462,25 @@ onUnmounted(() => {
   box-shadow: var(--shadow-lg);
 }
 
+.quick-start-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
 .quick-start-card:hover .quick-start-icon {
   background: var(--gradient-primary);
   border-color: transparent;
   color: var(--color-text-inverse);
   box-shadow: var(--shadow-primary);
+}
+
+.quick-start-card:disabled .quick-start-icon {
+  background: color-mix(in srgb, var(--color-bg-primary) 82%, var(--color-bg-secondary));
+  border-color: var(--color-border);
+  color: var(--color-text-tertiary);
+  box-shadow: none;
 }
 
 .quick-start-icon {

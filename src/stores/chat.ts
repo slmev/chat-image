@@ -1,7 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ChatMessage, GeneratedImage } from '../types'
-import { getChatHistory, setChatHistory, clearChatHistory, generateId } from '../utils/storage'
+import {
+  PersistenceError,
+  getChatHistory,
+  setChatHistory,
+  clearChatHistory,
+  generateId,
+} from '../utils/storage'
 import {
   resolveStoredImageUrls,
   reviveStoredImageUrls,
@@ -62,7 +68,9 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     messages.value.push(newMessage)
-    saveHistory()
+    void saveHistory().catch((error) => {
+      console.error('Save chat history failed:', error)
+    })
 
     return newMessage
   }
@@ -116,8 +124,17 @@ export const useChatStore = defineStore('chat', () => {
   async function updateMessage(messageId: string, updates: Partial<ChatMessage>): Promise<void> {
     const index = messages.value.findIndex((msg) => msg.id === messageId)
     if (index !== -1) {
-      messages.value[index] = { ...messages.value[index], ...updates }
-      await saveHistory()
+      const previousMessage = messages.value[index]
+      const nextMessage = { ...previousMessage, ...updates }
+      messages.value[index] = nextMessage
+      try {
+        await saveHistory()
+      } catch (error) {
+        if (toRaw(messages.value[index]) === nextMessage) {
+          messages.value[index] = previousMessage
+        }
+        throw error
+      }
     }
   }
 
@@ -133,6 +150,26 @@ export const useChatStore = defineStore('chat', () => {
       status: 'error',
       error,
     })
+  }
+
+  async function setMessageCanceled(messageId: string, content: string): Promise<void> {
+    await updateMessage(messageId, {
+      status: 'canceled',
+      content,
+      error: undefined,
+    })
+  }
+
+  function setMessageErrorInMemory(messageId: string, error: string): void {
+    const index = messages.value.findIndex((message) => message.id === messageId)
+    if (index === -1) return
+
+    messages.value[index] = {
+      ...messages.value[index],
+      status: 'error',
+      error,
+      images: undefined,
+    }
   }
 
   async function clearMessages(): Promise<void> {
@@ -153,14 +190,15 @@ export const useChatStore = defineStore('chat', () => {
       if (!hasHydratedDesktopHistory.value) return Promise.resolve()
       const snapshot = cloneMessages()
       const save = pendingHistorySave.then(() =>
-        setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, snapshot),
+        setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, snapshot).catch((error) => {
+          throw new PersistenceError('Failed to save chat history', { cause: error })
+        }),
       )
       pendingHistorySave = save.catch(() => undefined)
       return save
     }
 
-    setChatHistory(messages.value)
-    return Promise.resolve()
+    return setChatHistory(messages.value)
   }
 
   async function flushHistorySave(): Promise<void> {
@@ -187,6 +225,8 @@ export const useChatStore = defineStore('chat', () => {
     updateMessage,
     addImagesToMessage,
     setMessageError,
+    setMessageCanceled,
+    setMessageErrorInMemory,
     clearMessages,
     setLoading,
     deleteMessage,

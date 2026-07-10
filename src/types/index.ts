@@ -51,7 +51,7 @@ export interface ChatMessage {
   attachments?: ChatAttachment[]
   images?: GeneratedImage[]
   generation?: GenerationMetadata
-  status: 'pending' | 'success' | 'error'
+  status: 'pending' | 'success' | 'error' | 'canceled'
   error?: string
   isFavorite?: boolean
 }

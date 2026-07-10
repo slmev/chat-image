@@ -10,6 +10,13 @@ import { isTauriRuntime } from './runtime'
 
 const ZIP_HISTORY_FILE = 'history.json'
 const ZIP_IMAGE_DIR = 'images'
+const MAX_ZIP_BYTES = 250 * 1024 * 1024
+const MAX_HISTORY_JSON_BYTES = 10 * 1024 * 1024
+const MAX_HISTORY_COUNT = 500
+const MAX_TOTAL_MESSAGES = 5000
+const MAX_IMAGE_COUNT = 1000
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024
+const MAX_TOTAL_IMAGE_BYTES = 1024 * 1024 * 1024
 
 export interface DesktopHistoryImportData {
   currentMessages: ChatMessage[]
@@ -27,6 +34,60 @@ export interface DesktopHistoryImportOptions {
 }
 
 class DesktopHistoryImportError extends Error {}
+
+interface StreamableZipEntry extends JSZip.JSZipObject {
+  internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>
+}
+
+function readZipEntryLimited(
+  entry: JSZip.JSZipObject,
+  maxBytes: number,
+  tooLargeMessage: string,
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const stream = (entry as StreamableZipEntry).internalStream('uint8array')
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+    let settled = false
+
+    stream
+      .on('data', (chunk) => {
+        if (settled) return
+
+        totalBytes += chunk.byteLength
+        if (totalBytes > maxBytes) {
+          settled = true
+          stream.pause()
+          reject(new DesktopHistoryImportError(tooLargeMessage))
+          return
+        }
+        chunks.push(chunk)
+      })
+      .on('end', () => {
+        if (settled) return
+        settled = true
+
+        if (chunks.length === 1) {
+          resolve(chunks[0])
+          return
+        }
+
+        const bytes = new Uint8Array(totalBytes)
+        let offset = 0
+        chunks.forEach((chunk) => {
+          bytes.set(chunk, offset)
+          offset += chunk.byteLength
+        })
+        resolve(bytes)
+      })
+      .on('error', (error) => {
+        if (settled) return
+        settled = true
+        reject(error)
+      })
+      .resume()
+  })
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -90,7 +151,10 @@ function validateMessage(value: unknown): ChatMessage {
     typeof value.content !== 'string' ||
     value.content.length > 10000 ||
     typeof value.timestamp !== 'number' ||
-    (value.status !== 'pending' && value.status !== 'success' && value.status !== 'error')
+    (value.status !== 'pending' &&
+      value.status !== 'success' &&
+      value.status !== 'error' &&
+      value.status !== 'canceled')
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
@@ -122,7 +186,7 @@ function validateMessage(value: unknown): ChatMessage {
 }
 
 function validateMessages(value: unknown): ChatMessage[] {
-  if (!Array.isArray(value) || value.length > 1000) {
+  if (!Array.isArray(value)) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
   return value.map(validateMessage)
@@ -173,6 +237,9 @@ function validateExportData(value: unknown): Omit<
 
   const currentMessages = validateMessages(value.currentMessages)
   const historyList = value.historyList.map(validateHistory)
+  if (historyList.length > MAX_HISTORY_COUNT) {
+    throw new DesktopHistoryImportError(`历史记录数量超过限制（最多 ${MAX_HISTORY_COUNT} 条）`)
+  }
   const historyIds = new Set(historyList.map((history) => history.id))
   const historyMessages = Object.fromEntries(
     Object.entries(value.historyMessages).map(([historyId, messages]) => {
@@ -187,6 +254,13 @@ function validateExportData(value: unknown): Omit<
     if (!Object.prototype.hasOwnProperty.call(historyMessages, history.id)) {
       throw new DesktopHistoryImportError('history.json 格式不正确')
     }
+  }
+
+  const totalMessages =
+    currentMessages.length +
+    Object.values(historyMessages).reduce((sum, messages) => sum + messages.length, 0)
+  if (totalMessages > MAX_TOTAL_MESSAGES) {
+    throw new DesktopHistoryImportError(`消息数量超过限制（最多 ${MAX_TOTAL_MESSAGES} 条）`)
   }
 
   return {
@@ -338,6 +412,10 @@ export async function importDesktopHistoryZip(
   const writtenImagePaths: string[] = []
 
   try {
+    if (file.size > MAX_ZIP_BYTES) {
+      return { success: false, message: 'ZIP 包超过大小限制（最多 250MB）' }
+    }
+
     let zip: JSZip
     try {
       zip = await JSZip.loadAsync(await file.arrayBuffer())
@@ -352,8 +430,16 @@ export async function importDesktopHistoryZip(
 
     let parsedData: unknown
     try {
-      parsedData = JSON.parse(await historyFile.async('string'))
-    } catch {
+      const historyBytes = await readZipEntryLimited(
+        historyFile,
+        MAX_HISTORY_JSON_BYTES,
+        'history.json 超过大小限制（最多 10MB）',
+      )
+      parsedData = JSON.parse(new TextDecoder().decode(historyBytes))
+    } catch (error) {
+      if (error instanceof DesktopHistoryImportError) {
+        return { success: false, message: error.message }
+      }
       return { success: false, message: 'history.json 格式不正确' }
     }
 
@@ -363,6 +449,9 @@ export async function importDesktopHistoryZip(
     Object.values(data.historyMessages).forEach((messages) =>
       collectImagePaths(messages, imagePaths),
     )
+    if (imagePaths.size > MAX_IMAGE_COUNT) {
+      return { success: false, message: `图片数量超过限制（最多 ${MAX_IMAGE_COUNT} 张）` }
+    }
 
     const imageFiles = new Map<string, JSZip.JSZipObject>()
     for (const imagePath of imagePaths) {
@@ -373,13 +462,23 @@ export async function importDesktopHistoryZip(
       imageFiles.set(imagePath, imageFile)
     }
 
+    let totalImageBytes = 0
     const pathMap = new Map<string, { localPath: string; byteSize: number }>()
     const usedPaths = new Set<string>()
     const timestamp = options.now ?? Date.now()
     let index = 0
 
     for (const [sourcePath, imageFile] of imageFiles) {
-      const bytes = await imageFile.async('uint8array')
+      const bytes = await readZipEntryLimited(
+        imageFile,
+        MAX_IMAGE_BYTES,
+        `图片文件超过大小限制（最多 25MB）：${sourcePath}`,
+      )
+      totalImageBytes += bytes.byteLength
+      if (totalImageBytes > MAX_TOTAL_IMAGE_BYTES) {
+        throw new DesktopHistoryImportError('图片文件总大小超过限制（最多 1GB）')
+      }
+
       const localPath = await uniqueImportPath(sourcePath, index, timestamp, usedPaths)
       try {
         await writeImageFile(localPath, bytes)

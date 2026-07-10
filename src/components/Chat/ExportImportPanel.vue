@@ -73,6 +73,9 @@ function localizedImportMessage(message: string): string {
     'ZIP 包缺少 history.json': 'missingHistoryJson',
     'history.json 格式不正确': 'invalidHistoryJson',
     '导入 ZIP 包失败，请检查文件内容': 'importZipFailed',
+    'ZIP 包超过大小限制（最多 250MB）': 'zipTooLarge',
+    'history.json 超过大小限制（最多 10MB）': 'historyJsonTooLarge',
+    '图片文件总大小超过限制（最多 1GB）': 'zipImagesTooLarge',
   }
   if (exactMatches[message]) {
     return t(exactMatches[message])
@@ -81,6 +84,15 @@ function localizedImportMessage(message: string): string {
   const missingImagePrefix = 'ZIP 包缺少图片文件：'
   if (message.startsWith(missingImagePrefix)) {
     return t('missingZipImage', { path: message.slice(missingImagePrefix.length) })
+  }
+
+  if (message.startsWith('历史记录数量超过限制')) return t('tooManyHistories')
+  if (message.startsWith('消息数量超过限制')) return t('tooManyMessages')
+  if (message.startsWith('图片数量超过限制')) return t('tooManyImages')
+
+  const imageTooLargePrefix = '图片文件超过大小限制（最多 25MB）：'
+  if (message.startsWith(imageTooLargePrefix)) {
+    return t('zipImageTooLarge', { path: message.slice(imageTooLargePrefix.length) })
   }
 
   return message
@@ -124,7 +136,12 @@ async function handleImport(event: Event) {
 
 <template>
   <div class="export-import-wrapper">
-    <button class="btn-icon" :title="t('exportImportHistory')" @click="togglePanel">
+    <button
+      class="btn-icon"
+      :title="t('exportImportHistory')"
+      :aria-label="t('exportImportHistory')"
+      @click="togglePanel"
+    >
       <FileJson :size="20" />
     </button>
 
@@ -138,7 +155,12 @@ async function handleImport(event: Event) {
       <div v-if="isOpen" class="panel">
         <div class="panel-header">
           <h3 class="panel-title">{{ t('importExport') }}</h3>
-          <button class="close-btn" @click="isOpen = false">
+          <button
+            class="close-btn"
+            :title="t('close')"
+            :aria-label="t('close')"
+            @click="isOpen = false"
+          >
             <X :size="16" />
           </button>
         </div>

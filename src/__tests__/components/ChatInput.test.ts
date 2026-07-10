@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import ChatInput from '../../components/Chat/ChatInput.vue'
 
 const mockState = vi.hoisted(() => ({
   showError: vi.fn(),
   addStyle: vi.fn(),
   deleteStyle: vi.fn(),
+  resolveDisplayUrl: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -21,6 +22,12 @@ vi.mock('../../platform/runtime', () => ({
 vi.mock('../../platform/metadataStore', () => ({
   getMetadataValue: vi.fn(),
   setMetadataValue: vi.fn(),
+}))
+
+vi.mock('../../platform/imageRepository', () => ({
+  getImageRepository: () => ({
+    resolveDisplayUrl: mockState.resolveDisplayUrl,
+  }),
 }))
 
 vi.mock('../../composables/useToast', () => ({
@@ -85,6 +92,7 @@ describe('ChatInput attachments', () => {
     mockState.showError.mockReset()
     mockState.addStyle.mockReset()
     mockState.deleteStyle.mockReset()
+    mockState.resolveDisplayUrl.mockReset()
     createObjectURL = vi.fn((file: File) => `blob:${file.name}`)
     revokeObjectURL = vi.fn()
     Object.defineProperty(URL, 'createObjectURL', {
@@ -186,6 +194,85 @@ describe('ChatInput attachments', () => {
     expect(event?.[0]).toBe('try this prompt')
     expect(event?.[1]).toMatchObject({ size: '1024x1024', quality: 'high', n: 2 })
     expect(event?.[2]).toEqual([reference])
+  })
+
+  it('uses a resolved thumbnail for local reference images and revokes it on clear', async () => {
+    mockState.resolveDisplayUrl.mockResolvedValueOnce({
+      id: 'local-reference',
+      url: 'blob:resolved-reference',
+      localPath: 'images/reference.png',
+      timestamp: 1,
+    })
+    const wrapper = mountInput()
+    const exposed = wrapper.vm as unknown as {
+      addReferenceImage: (image: {
+        id: string
+        url: string
+        localPath: string
+        timestamp: number
+      }) => void
+    }
+    const reference = {
+      id: 'local-reference',
+      url: 'images/reference.png',
+      localPath: 'images/reference.png',
+      timestamp: 1,
+    }
+
+    exposed.addReferenceImage(reference)
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.attachment-preview').attributes('src')).toBe('blob:resolved-reference')
+
+    await wrapper.find('textarea').setValue('use local reference')
+    await wrapper.find('.send-btn').trigger('click')
+
+    const event = wrapper.emitted('send')?.[0]
+    expect(event?.[2]).toEqual([
+      expect.objectContaining({
+        id: 'local-reference',
+        url: 'images/reference.png',
+        localPath: 'images/reference.png',
+      }),
+    ])
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:resolved-reference')
+  })
+
+  it('sends a local reference image even when thumbnail resolution is still pending', async () => {
+    mockState.resolveDisplayUrl.mockReturnValueOnce(new Promise(() => undefined))
+    const wrapper = mountInput()
+    const exposed = wrapper.vm as unknown as {
+      addReferenceImage: (image: {
+        id: string
+        url: string
+        localPath: string
+        timestamp: number
+      }) => void
+    }
+    const reference = {
+      id: 'local-reference',
+      url: 'images/reference.png',
+      localPath: 'images/reference.png',
+      timestamp: 1,
+    }
+
+    exposed.addReferenceImage(reference)
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.attachment-preview').attributes('src')).toBe('images/reference.png')
+
+    await wrapper.find('textarea').setValue('send immediately')
+    await wrapper.find('.send-btn').trigger('click')
+
+    const event = wrapper.emitted('send')?.[0]
+    expect(event?.[2]).toEqual([
+      expect.objectContaining({
+        id: 'local-reference',
+        url: 'images/reference.png',
+        localPath: 'images/reference.png',
+      }),
+    ])
   })
 
   it('sends auto size and selected quality', async () => {

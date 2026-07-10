@@ -9,6 +9,18 @@ import type {
 } from '../types'
 import { reviveStoredImageUrls, stripBase64FromMessages } from './imagePersistence'
 
+export class PersistenceError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message)
+    this.name = 'PersistenceError'
+    this.cause = options?.cause
+  }
+}
+
+export function isPersistenceError(error: unknown): error is PersistenceError {
+  return error instanceof PersistenceError
+}
+
 // 通用的本地存储工具函数
 export function getFromStorage<T>(key: string, defaultValue: T): T {
   try {
@@ -169,9 +181,10 @@ export function getChatHistory(): ChatMessage[] {
   return reviveStoredImageUrls(migrated)
 }
 
-export function setChatHistory(messages: ChatMessage[]): void {
+export function setChatHistory(messages: ChatMessage[]): Promise<void> {
   try {
     localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(messages))
+    return Promise.resolve()
   } catch (error) {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       // 图片 base64 可能较大，超限时优先保留最近的完整消息。
@@ -179,6 +192,7 @@ export function setChatHistory(messages: ChatMessage[]): void {
       const trimmed = messages.slice(-20)
       try {
         localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(trimmed))
+        return Promise.resolve()
       } catch {
         try {
           localStorage.setItem(
@@ -186,12 +200,17 @@ export function setChatHistory(messages: ChatMessage[]): void {
             JSON.stringify(stripBase64FromMessages(trimmed)),
           )
           console.warn('Saved trimmed history without image base64 data')
+          return Promise.resolve()
         } catch {
           console.error('Still cannot save after trimming. Consider clearing history.')
+          return Promise.reject(
+            new PersistenceError('Failed to save chat history', { cause: error }),
+          )
         }
       }
     } else {
       console.error('Error writing chat history:', error)
+      return Promise.reject(new PersistenceError('Failed to save chat history', { cause: error }))
     }
   }
 }

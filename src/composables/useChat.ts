@@ -13,10 +13,14 @@ import type {
 import { persistChatAttachments, persistGeneratedImagesFromResponse } from '../utils/images'
 import { DEFAULT_GENERATION_OPTIONS, normalizeGenerationOptions } from '../utils/constants'
 import { createGenerationMetadata } from '../utils/generation'
+import { isImageGenerationCanceledError } from '../services/api'
+import { isPersistenceError } from '../utils/storage'
+import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
 import i18n from '../i18n'
 
 // 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
 let currentHistoryId: string | null = null
+let activeGenerationToken: symbol | null = null
 
 export function useChat() {
   const chatStore = useChatStore()
@@ -24,6 +28,55 @@ export function useChat() {
   const { generateImage, cancelGeneration } = useImageGeneration()
   const { saveCurrentChat, ensureCurrentChatInHistory, loadHistoryChat } = useHistory()
   const t = i18n.global.t
+
+  function canCommitGeneration(token: symbol, messageId: string): boolean {
+    return (
+      activeGenerationToken === token &&
+      chatStore.messages.some((message) => message.id === messageId && message.status === 'pending')
+    )
+  }
+
+  async function discardGeneratedImages(images: GeneratedImage[]): Promise<void> {
+    images.forEach((image) => {
+      if (image.url.startsWith('blob:')) {
+        URL.revokeObjectURL(image.url)
+      }
+    })
+
+    try {
+      await deleteUnreferencedLocalImages(images)
+    } catch (error) {
+      console.warn('Failed to discard generated images:', error)
+    }
+  }
+
+  async function markPersistenceFailure(
+    messageId: string,
+    images: GeneratedImage[],
+  ): Promise<void> {
+    const errorMessage = t('persistenceFailed')
+    try {
+      await chatStore.updateMessage(messageId, {
+        status: 'error',
+        error: errorMessage,
+        images: undefined,
+      })
+    } catch {
+      chatStore.setMessageErrorInMemory(messageId, errorMessage)
+    }
+    await discardGeneratedImages(images)
+  }
+
+  async function markGenerationFailure(messageId: string, errorMessage: string): Promise<void> {
+    try {
+      await chatStore.setMessageError(messageId, errorMessage)
+    } catch (error) {
+      if (isPersistenceError(error)) {
+        chatStore.setMessageErrorInMemory(messageId, t('persistenceFailed'))
+      }
+      throw error
+    }
+  }
 
   async function persistInputAttachments(
     attachments: ChatInputAttachment[],
@@ -81,7 +134,7 @@ export function useChat() {
       sourceMessageId: options.sourceMessageId,
     })
 
-    chatStore.addMessage({
+    const message = chatStore.addMessage({
       type: 'assistant',
       content: options.content,
       status: 'success',
@@ -93,7 +146,15 @@ export function useChat() {
       ),
     })
 
-    currentHistoryId = await saveCurrentChat(currentHistoryId)
+    try {
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
+    } catch (error) {
+      if (isPersistenceError(error)) {
+        chatStore.setMessageErrorInMemory(message.id, t('persistenceFailed'))
+        await discardGeneratedImages(images)
+      }
+      throw error
+    }
   }
 
   async function sendMessage(
@@ -129,29 +190,57 @@ export function useChat() {
       status: 'pending',
     })
 
+    const generationToken = Symbol('generation')
+    activeGenerationToken = generationToken
     chatStore.setLoading(true)
+    let generatedImages: GeneratedImage[] = []
 
     try {
       // 生成图片
-      const images = (await generateImage(content, generationOptions, attachments)).map(
+      generatedImages = (await generateImage(content, generationOptions, attachments)).map(
         (image) => ({
           ...image,
           sourceMessageId: assistantMessage.id,
         }),
       )
 
+      if (!canCommitGeneration(generationToken, assistantMessage.id)) {
+        await discardGeneratedImages(generatedImages)
+        return
+      }
+
       // 更新助手消息
-      await chatStore.addImagesToMessage(assistantMessage.id, images)
+      await chatStore.addImagesToMessage(assistantMessage.id, generatedImages)
 
       // 自动保存到历史记录
       currentHistoryId = await saveCurrentChat(currentHistoryId)
     } catch (error) {
+      if (activeGenerationToken !== generationToken) {
+        if (generatedImages.length > 0) {
+          await discardGeneratedImages(generatedImages)
+        }
+        return
+      }
+
+      if (isImageGenerationCanceledError(error)) {
+        await chatStore.setMessageCanceled(assistantMessage.id, t('canceled'))
+        return
+      }
+
+      if (isPersistenceError(error)) {
+        await markPersistenceFailure(assistantMessage.id, generatedImages)
+        throw error
+      }
+
       // 设置错误状态
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')
-      await chatStore.setMessageError(assistantMessage.id, errorMessage)
+      await markGenerationFailure(assistantMessage.id, errorMessage)
       throw error
     } finally {
-      chatStore.setLoading(false)
+      if (activeGenerationToken === generationToken) {
+        activeGenerationToken = null
+        chatStore.setLoading(false)
+      }
     }
   }
 
@@ -179,21 +268,54 @@ export function useChat() {
       error: undefined,
       images: undefined,
     })
+    const generationToken = Symbol('generation')
+    activeGenerationToken = generationToken
     chatStore.setLoading(true)
+    let generatedImages: GeneratedImage[] = []
 
     try {
-      const images = (await generateImage(content, generationOptions, attachments)).map(
+      generatedImages = (await generateImage(content, generationOptions, attachments)).map(
         (image) => ({
           ...image,
           sourceMessageId: messageId,
         }),
       )
-      await chatStore.addImagesToMessage(messageId, images)
+
+      if (!canCommitGeneration(generationToken, messageId)) {
+        await discardGeneratedImages(generatedImages)
+        return
+      }
+
+      await chatStore.addImagesToMessage(messageId, generatedImages)
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
     } catch (error) {
+      if (activeGenerationToken !== generationToken) {
+        if (generatedImages.length > 0) {
+          await discardGeneratedImages(generatedImages)
+        }
+        return
+      }
+
+      if (isImageGenerationCanceledError(error)) {
+        await chatStore.setMessageCanceled(messageId, t('canceled'))
+        currentHistoryId = await saveCurrentChat(currentHistoryId)
+        return
+      }
+
+      if (isPersistenceError(error)) {
+        await markPersistenceFailure(messageId, generatedImages)
+        throw error
+      }
+
       const errorMessage = error instanceof Error ? error.message : t('generationFailed')
-      await chatStore.setMessageError(messageId, errorMessage)
+      await markGenerationFailure(messageId, errorMessage)
+      currentHistoryId = await saveCurrentChat(currentHistoryId)
+      throw error
     } finally {
-      chatStore.setLoading(false)
+      if (activeGenerationToken === generationToken) {
+        activeGenerationToken = null
+        chatStore.setLoading(false)
+      }
     }
   }
 
@@ -276,11 +398,10 @@ export function useChat() {
       options,
       reusableGenerationAttachments(candidateAttachments),
     )
-
-    currentHistoryId = await saveCurrentChat(currentHistoryId)
   }
 
   async function cancelCurrentGeneration(): Promise<void> {
+    activeGenerationToken = null
     cancelGeneration()
     chatStore.setLoading(false)
 
@@ -289,7 +410,14 @@ export function useChat() {
       .reverse()
       .find((msg) => msg.type === 'assistant' && msg.status === 'pending')
     if (lastPendingMessage) {
-      await chatStore.setMessageError(lastPendingMessage.id, t('canceled'))
+      try {
+        await chatStore.setMessageCanceled(lastPendingMessage.id, t('canceled'))
+      } catch (error) {
+        if (isPersistenceError(error)) {
+          chatStore.setMessageErrorInMemory(lastPendingMessage.id, t('persistenceFailed'))
+        }
+        throw error
+      }
     }
   }
 

@@ -8,7 +8,7 @@ import type {
   GeneratedImage,
 } from '../types'
 import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
-import { generateId } from '../utils/storage'
+import { PersistenceError, generateId } from '../utils/storage'
 import { stripBase64FromMessages } from '../utils/imagePersistence'
 import {
   HISTORY_LIST_KEY,
@@ -35,7 +35,11 @@ function getHistoryList(): ChatHistory[] {
 // 保存历史记录列表
 async function setHistoryList(list: ChatHistory[]): Promise<void> {
   if (isTauriRuntime()) {
-    await setMetadataValue(HISTORY_LIST_KEY, list)
+    try {
+      await setMetadataValue(HISTORY_LIST_KEY, list)
+    } catch (error) {
+      throw new PersistenceError('Failed to save history list', { cause: error })
+    }
     return
   }
 
@@ -45,6 +49,7 @@ async function setHistoryList(list: ChatHistory[]): Promise<void> {
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       console.warn('Storage quota exceeded for history list')
     }
+    throw new PersistenceError('Failed to save history list', { cause: error })
   }
 }
 
@@ -294,7 +299,11 @@ function refreshHistoryList(defaultHistoryTitle: (messages: ChatMessage[]) => st
 async function setHistoryMessages(historyId: string, messages: ChatMessage[]): Promise<void> {
   const key = HISTORY_MESSAGES_PREFIX + historyId
   if (isTauriRuntime()) {
-    await setMetadataValue(key, stripBase64FromMessages(messages))
+    try {
+      await setMetadataValue(key, stripBase64FromMessages(messages))
+    } catch (error) {
+      throw new PersistenceError('Failed to save history messages', { cause: error })
+    }
     return
   }
 
@@ -304,39 +313,52 @@ async function setHistoryMessages(historyId: string, messages: ChatMessage[]): P
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       console.warn('Storage quota exceeded, attempting to trim history...')
       // 尝试清理最旧的历史记录后重试
-      trimOldHistories()
+      trimOldHistories(historyId)
       try {
         localStorage.setItem(key, JSON.stringify(messages))
+        return
       } catch {
         try {
           localStorage.setItem(key, JSON.stringify(stripBase64FromMessages(messages)))
           console.warn('Saved history without image base64 data')
+          return
         } catch {
           console.error('Still cannot save after trimming old histories')
         }
       }
     }
+    throw new PersistenceError('Failed to save history messages', { cause: error })
   }
 }
 
 // 清理最旧的历史记录以释放空间
-function trimOldHistories(): void {
+function trimOldHistories(protectedHistoryId: string): ChatHistory[] {
   try {
     const list: ChatHistory[] = JSON.parse(localStorage.getItem(HISTORY_LIST_KEY) || '[]')
-    if (list.length <= 5) return
+    const protectedHistory = list.find((history) => history.id === protectedHistoryId)
+    const keepOtherCount = 4
+    if (list.length <= keepOtherCount + (protectedHistory ? 1 : 0)) return list
 
-    // 按时间排序，保留最近 5 条
-    const sorted = list.sort((a, b) => b.timestamp - a.timestamp)
-    const toRemove = sorted.slice(5)
+    // 保留当前正在保存的历史，以及其余最近的记录。
+    const sortedOthers = list
+      .filter((history) => history.id !== protectedHistoryId)
+      .sort((a, b) => b.timestamp - a.timestamp)
+    const kept = [
+      ...(protectedHistory ? [protectedHistory] : []),
+      ...sortedOthers.slice(0, 4),
+    ].sort((a, b) => b.timestamp - a.timestamp)
+    const keptIds = new Set(kept.map((history) => history.id))
+    const toRemove = list.filter((history) => !keptIds.has(history.id))
 
     toRemove.forEach((h) => {
       localStorage.removeItem(HISTORY_MESSAGES_PREFIX + h.id)
     })
 
-    const kept = sorted.slice(0, 5)
     localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify(kept))
+    historyList.value = kept
+    return kept
   } catch {
-    // ignore
+    return historyList.value
   }
 }
 
@@ -474,6 +496,13 @@ export function useHistory() {
         ...data.historyList.map((item) => item.id),
       ]),
     }
+    const replacedImages =
+      mode === 'replace'
+        ? [
+            ...collectImages(snapshot.currentMessages),
+            ...Object.values(snapshot.historyMessages).flatMap(collectImages),
+          ]
+        : []
 
     try {
       if (mode === 'replace') {
@@ -486,6 +515,7 @@ export function useHistory() {
         )
         historyList.value = data.historyList
         await chatStore.importMessages(data.currentMessages, 'replace')
+        await deleteUnreferencedLocalImages(replacedImages)
         return []
       }
 

@@ -219,6 +219,15 @@ describe('ImagePreview local image actions', () => {
     expect(document.querySelector('.preview-overlay')).not.toBeNull()
   })
 
+  it('labels the enlarged preview close button', async () => {
+    const wrapper = mount(ImagePreview, { props: { image: image({ localPath: undefined }) } })
+
+    await openPreview(wrapper)
+
+    const closeButton = document.querySelector('.close-btn') as HTMLButtonElement | null
+    expect(closeButton?.getAttribute('aria-label')).toBe('close')
+  })
+
   it('keeps the enlarged preview open when requesting image edit from it', async () => {
     const sourceImage = image({ localPath: undefined })
     const wrapper = mount(ImagePreview, { props: { image: sourceImage } })

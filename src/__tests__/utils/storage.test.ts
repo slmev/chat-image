@@ -232,6 +232,7 @@ describe('storage utils', () => {
             {
               id: 'image-1',
               url: `data:image/png;base64,${pngBase64}`,
+              localPath: 'images/image-1.png',
               base64: pngBase64,
               mimeType: 'image/png',
               timestamp: Date.now(),
@@ -249,8 +250,62 @@ describe('storage utils', () => {
       })
       expect(fallbackMessages[0].images?.[0]).not.toHaveProperty('base64')
       expect(fallbackMessages[0].images?.[0]).toMatchObject({
-        url: '',
+        url: 'images/image-1.png',
       })
+    })
+
+    it('keeps base64 fallback images when no durable URL is available', async () => {
+      const pngBase64 = btoa('png')
+      const writes: Array<{ key: string; value: string }> = []
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+        writes.push({ key, value })
+        if (writes.length <= 2) {
+          throw new DOMException('quota exceeded', 'QuotaExceededError')
+        }
+      })
+
+      await setChatHistory([
+        {
+          id: 'message-1',
+          type: 'assistant',
+          content: '图片已生成',
+          timestamp: Date.now(),
+          status: 'success',
+          images: [
+            {
+              id: 'image-1',
+              url: `data:image/png;base64,${pngBase64}`,
+              base64: pngBase64,
+              mimeType: 'image/png',
+              timestamp: Date.now(),
+            },
+          ],
+        },
+      ])
+
+      const fallbackMessages = JSON.parse(writes[2].value) as ChatMessage[]
+      expect(fallbackMessages[0].images?.[0]).toMatchObject({
+        url: `data:image/png;base64,${pngBase64}`,
+        base64: pngBase64,
+      })
+    })
+
+    it('rejects when all chat history save fallbacks fail', async () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('quota exceeded', 'QuotaExceededError')
+      })
+
+      await expect(
+        setChatHistory([
+          {
+            id: 'message-1',
+            type: 'user',
+            content: 'unsaved',
+            timestamp: Date.now(),
+            status: 'success',
+          },
+        ]),
+      ).rejects.toThrow('Failed to save chat history')
     })
   })
 })

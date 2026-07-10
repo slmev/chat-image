@@ -243,6 +243,52 @@ describe('history duplicate prevention', () => {
     ).toEqual(['user-1', 'assistant-1', 'user-2', 'assistant-2'])
   })
 
+  it('keeps the active history visible when quota recovery trims old histories', async () => {
+    const protectedHistory = history('protected-history', { timestamp: 0 })
+    const otherHistories = Array.from({ length: 5 }, (_, index) =>
+      history(`history-${index}`, { timestamp: index + 1 }),
+    )
+    const protectedMessages = [
+      message('protected-user', { type: 'user', content: 'protected prompt' }),
+      message('protected-assistant'),
+    ]
+    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([protectedHistory, ...otherHistories]))
+    localStorage.setItem(
+      HISTORY_MESSAGES_PREFIX + protectedHistory.id,
+      JSON.stringify(protectedMessages),
+    )
+    otherHistories.forEach((item) => {
+      localStorage.setItem(
+        HISTORY_MESSAGES_PREFIX + item.id,
+        JSON.stringify([message(`${item.id}-message`)]),
+      )
+    })
+    await useChatStore().importMessages(protectedMessages, 'replace')
+    const nativeSetItem = Storage.prototype.setItem
+    let quotaRaised = false
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === HISTORY_MESSAGES_PREFIX + protectedHistory.id && !quotaRaised) {
+        quotaRaised = true
+        throw new DOMException('quota exceeded', 'QuotaExceededError')
+      }
+      nativeSetItem.call(this, key, value)
+    })
+
+    const savedId = await useHistory().saveCurrentChat(protectedHistory.id)
+
+    expect(savedId).toBe(protectedHistory.id)
+    expect(readHistoryList()).toHaveLength(5)
+    expect(readHistoryList().map((item) => item.id)).toContain(protectedHistory.id)
+    expect(
+      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + protectedHistory.id) || '[]'),
+    ).toHaveLength(2)
+    setItem.mockRestore()
+  })
+
   it('removes existing histories with identical message id snapshots and preserves favorites', async () => {
     const newerDuplicate = history('newer-duplicate', { timestamp: 10 })
     const favoriteDuplicate = history('favorite-duplicate', {

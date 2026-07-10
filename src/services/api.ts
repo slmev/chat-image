@@ -22,6 +22,19 @@ function getApiErrorMessage(errorData: unknown): string | undefined {
   return typeof message === 'string' ? message : undefined
 }
 
+export class ImageGenerationCanceledError extends Error {
+  constructor(message = 'Image generation canceled') {
+    super(message)
+    this.name = 'ImageGenerationCanceledError'
+  }
+}
+
+export function isImageGenerationCanceledError(
+  error: unknown,
+): error is ImageGenerationCanceledError {
+  return error instanceof ImageGenerationCanceledError
+}
+
 export class ImageGenerationService {
   private config: ApiConfig
   private abortController: AbortController | null = null
@@ -86,7 +99,7 @@ export class ImageGenerationService {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('请求已取消')
+          throw new ImageGenerationCanceledError()
         }
         throw error
       }
@@ -141,7 +154,7 @@ export class ImageGenerationService {
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          throw new Error('请求已取消')
+          throw new ImageGenerationCanceledError()
         }
         throw error
       }

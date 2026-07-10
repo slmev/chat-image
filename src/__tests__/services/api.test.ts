@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ImageGenerationService } from '../../services/api'
+import {
+  ImageGenerationCanceledError,
+  ImageGenerationService,
+  isImageGenerationCanceledError,
+} from '../../services/api'
 
 const mockState = vi.hoisted(() => ({
   runtimeFetch: vi.fn(),
@@ -145,7 +149,7 @@ describe('ImageGenerationService', () => {
     expect(body.get('n')).toBe('3')
   })
 
-  it('maps abort errors to the existing cancellation message', async () => {
+  it('maps abort errors to a typed cancellation error', async () => {
     const abortError = new Error('aborted')
     abortError.name = 'AbortError'
     mockState.runtimeFetch.mockRejectedValueOnce(abortError)
@@ -155,7 +159,9 @@ describe('ImageGenerationService', () => {
       model: 'gpt-image-2',
     })
 
-    await expect(service.generateImage('draw')).rejects.toThrow('请求已取消')
+    const promise = service.generateImage('draw')
+    await expect(promise).rejects.toBeInstanceOf(ImageGenerationCanceledError)
+    await expect(promise).rejects.toSatisfy(isImageGenerationCanceledError)
   })
 
   it('maps API status errors as before', async () => {

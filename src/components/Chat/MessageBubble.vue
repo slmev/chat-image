@@ -329,6 +329,7 @@ import {
   parseImageSize,
 } from '../../utils/constants'
 import { generationAspectRatio } from '../../utils/generation'
+import { isPersistenceError } from '../../utils/storage'
 
 interface Props {
   message: ChatMessage
@@ -444,7 +445,13 @@ async function savePromptEdit() {
     editedPrompt.value = ''
     await editUserPrompt(props.message.id, trimmedPrompt)
   } catch (err) {
-    showError(err instanceof Error ? err.message : t('unknownError'))
+    showError(
+      isPersistenceError(err)
+        ? t('persistenceFailed')
+        : err instanceof Error
+          ? err.message
+          : t('unknownError'),
+    )
   }
 }
 
@@ -487,9 +494,11 @@ async function handleRetry() {
     await retryGeneration(props.message.id, props.message.generation)
   } catch (err) {
     showError(
-      t('retryFailed', {
-        message: err instanceof Error ? err.message : t('unknownError'),
-      }),
+      isPersistenceError(err)
+        ? t('persistenceFailed')
+        : t('retryFailed', {
+            message: err instanceof Error ? err.message : t('unknownError'),
+          }),
     )
   } finally {
     isRetrying.value = false
@@ -551,7 +560,7 @@ async function handleVariationResult(response: ImageGenerationResponse, options:
     })
   } catch (error) {
     console.error('Variation result failed:', error)
-    showError(t('createVariationFailed'))
+    showError(t(isPersistenceError(error) ? 'persistenceFailed' : 'createVariationFailed'))
   }
 }
 
@@ -569,7 +578,7 @@ async function handleEditResult(response: ImageGenerationResponse, prompt: strin
     })
   } catch (error) {
     console.error('Edit result failed:', error)
-    showError(t('editImageFailed'))
+    showError(t(isPersistenceError(error) ? 'persistenceFailed' : 'editImageFailed'))
   }
 }
 </script>

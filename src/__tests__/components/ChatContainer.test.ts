@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import ChatContainer from '../../components/Chat/ChatContainer.vue'
 import { useConfigStore } from '../../stores/config'
 import type { ChatMessage } from '../../types'
+import { PersistenceError } from '../../utils/storage'
 
 const mockState = vi.hoisted(() => ({
   showError: vi.fn(),
@@ -96,14 +97,16 @@ const mountedWrappers: VueWrapper[] = []
 
 mockState.chatStore = reactive(mockState.chatStore)
 
-async function mountContainer() {
+async function mountContainer(options: { configured?: boolean } = {}) {
   const pinia = createPinia()
   setActivePinia(pinia)
-  await useConfigStore().saveConfig({
-    endpoint: 'https://api.example.test',
-    apiKey: 'sk-test',
-    model: 'gpt-image-2',
-  })
+  if (options.configured !== false) {
+    await useConfigStore().saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+  }
 
   const wrapper = mount(ChatContainer, {
     attachTo: document.body,
@@ -236,6 +239,64 @@ describe('ChatContainer clipboard attachments', () => {
     expect(mockState.showError).toHaveBeenCalledWith('sendMessageFailed')
     expect(wrapper.get('textarea').element).toHaveProperty('value', 'people')
     consoleError.mockRestore()
+  })
+
+  it('shows the persistence-specific error and restores the draft when saving fails', async () => {
+    mockState.sendMessage.mockRejectedValueOnce(new PersistenceError('save failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const wrapper = await mountContainer()
+
+    await wrapper.get('.quick-start-card').trigger('click')
+    await flushPromises()
+
+    expect(mockState.showError).toHaveBeenCalledWith('persistenceFailed')
+    expect(wrapper.get('textarea').element).toHaveProperty('value', 'people')
+    consoleError.mockRestore()
+  })
+
+  it('does not restore draft or show a send failure when send resolves as canceled', async () => {
+    mockState.sendMessage.mockImplementationOnce(async (content: string) => {
+      mockState.chatStore.messages.push(
+        {
+          id: 'user-message',
+          type: 'user',
+          content,
+          timestamp: 1,
+          status: 'success',
+          isFavorite: false,
+        },
+        {
+          id: 'assistant-message',
+          type: 'assistant',
+          content: 'canceled',
+          timestamp: 2,
+          status: 'canceled',
+          isFavorite: false,
+        },
+      )
+    })
+    const wrapper = await mountContainer()
+
+    await wrapper.get('.quick-start-card').trigger('click')
+    await flushPromises()
+
+    expect(mockState.showError).not.toHaveBeenCalled()
+    expect(wrapper.get('textarea').element).toHaveProperty('value', '')
+  })
+
+  it('disables quick-start actions while unconfigured or loading', async () => {
+    const unconfigured = await mountContainer({ configured: false })
+
+    expect(unconfigured.get('.quick-start-card').attributes('disabled')).toBeDefined()
+    await unconfigured.get('.quick-start-card').trigger('click')
+    expect(mockState.sendMessage).not.toHaveBeenCalled()
+
+    mockState.chatStore.isLoading = true
+    const loading = await mountContainer()
+
+    expect(loading.get('.quick-start-card').attributes('disabled')).toBeDefined()
+    await loading.get('.quick-start-card').trigger('click')
+    expect(mockState.sendMessage).not.toHaveBeenCalled()
   })
 
   it('restores the draft after generation appends an error message and fails', async () => {

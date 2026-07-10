@@ -439,6 +439,7 @@ import {
 import { getGenerationOptions, setGenerationOptions } from '../../utils/storage'
 import { getMetadataValue, setMetadataValue } from '../../platform/metadataStore'
 import { isTauriRuntime } from '../../platform/runtime'
+import { getImageRepository } from '../../platform/imageRepository'
 import { getEnhancementSuggestions } from '../../utils/promptEnhancers'
 import { PROMPT_TEMPLATES } from '../../utils/promptTemplates'
 import { useCustomStyles } from '../../composables/useCustomStyles'
@@ -1003,13 +1004,42 @@ function addReferenceImage(image: GeneratedImage | ChatAttachment): void {
   }
 
   const name = 'name' in image && image.name ? image.name : `reference-${image.id}.png`
-  selectedAttachments.value.push({
+  const selected: SelectedAttachment = {
     id: `reference-${image.id}`,
     name,
     url: image.url,
     attachment: { ...image, name },
     ownsUrl: false,
-  })
+  }
+  selectedAttachments.value.push(selected)
+
+  if (image.localPath) {
+    void resolveReferenceImagePreview(selected.id, image)
+  }
+}
+
+async function resolveReferenceImagePreview(id: string, image: GeneratedImage): Promise<void> {
+  let resolved: GeneratedImage
+  try {
+    resolved = await getImageRepository().resolveDisplayUrl(image)
+  } catch (error) {
+    console.warn('Failed to resolve reference image thumbnail:', error)
+    return
+  }
+
+  const previewUrl = resolved.url
+  const ownsUrl = resolved.url.startsWith('blob:') && resolved.url !== image.url
+  const target = selectedAttachments.value.find((attachment) => attachment.id === id)
+  if (!target) {
+    if (ownsUrl) {
+      URL.revokeObjectURL(previewUrl)
+    }
+    return
+  }
+
+  revokeSelectedAttachment(target)
+  target.url = previewUrl
+  target.ownsUrl = ownsUrl
 }
 
 function applyGeneration(generation: GenerationMetadata): void {
