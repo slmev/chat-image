@@ -670,6 +670,120 @@ export function useHistory() {
     await chatStore.toggleFavorite(messageId)
   }
 
+  // 将历史对话中指定消息的收藏状态设为目标值，写回并同步列表。
+  async function setHistoryMessagesFavorite(
+    historyId: string,
+    messageIdsToUpdate: Set<string>,
+    isFavorite: boolean,
+  ): Promise<void> {
+    const messages = await readHistoryMessages(historyId)
+    let changed = false
+    const nextMessages = messages.map((message) => {
+      if (!messageIdsToUpdate.has(message.id) || Boolean(message.isFavorite) === isFavorite) {
+        return message
+      }
+      changed = true
+      return { ...message, isFavorite }
+    })
+    if (!changed) return
+    await setHistoryMessages(historyId, nextMessages)
+  }
+
+  // 从历史对话中删除指定图片；助手消息删空则移除，历史删空则删除整条记录。
+  async function deleteImagesFromHistory(
+    historyId: string,
+    imageIds: Set<string>,
+  ): Promise<GeneratedImage[]> {
+    const messages = await readHistoryMessages(historyId)
+    const removedImages: GeneratedImage[] = []
+    const nextMessages: ChatMessage[] = []
+
+    for (const message of messages) {
+      const originalImages = message.images
+      if (!originalImages || originalImages.length === 0) {
+        nextMessages.push(message)
+        continue
+      }
+      const keptImages = originalImages.filter((image) => !imageIds.has(image.id))
+      if (keptImages.length === originalImages.length) {
+        nextMessages.push(message)
+        continue
+      }
+      removedImages.push(...originalImages.filter((image) => imageIds.has(image.id)))
+      if (keptImages.length === 0 && message.type === 'assistant') continue
+      nextMessages.push({
+        ...message,
+        images: keptImages.length > 0 ? keptImages : undefined,
+      })
+    }
+
+    if (removedImages.length === 0) return []
+
+    if (nextMessages.length === 0) {
+      await deleteHistoryItem(historyId)
+      return removedImages
+    }
+
+    // 先更新列表中的 messageCount，再写回消息：web 端 setHistoryMessages 会用
+    // historyList 里的 history 组装 IndexedDB 记录，若不先更新则持久化的计数会是旧值。
+    const history = historyList.value.find((item) => item.id === historyId)
+    if (history) {
+      const updated: ChatHistory = { ...history, messageCount: nextMessages.length }
+      historyList.value = historyList.value.map((item) => (item.id === historyId ? updated : item))
+    }
+
+    await setHistoryMessages(historyId, nextMessages)
+    if (isTauriRuntime()) {
+      await setHistoryList(historyList.value)
+    }
+    return removedImages
+  }
+
+  // 画廊：将一组图片项的收藏状态设为目标值（消息级），覆盖当前对话与历史对话。
+  async function setGalleryItemsFavorite(
+    items: GalleryImageItem[],
+    isFavorite: boolean,
+  ): Promise<void> {
+    const currentMessageIds = new Set<string>()
+    const historyMessageIds = new Map<string, Set<string>>()
+
+    for (const item of items) {
+      const messageId = item.sourceMessage.id
+      if (item.sourceType === 'current' || !item.sourceHistoryId) {
+        currentMessageIds.add(messageId)
+      } else {
+        const ids = historyMessageIds.get(item.sourceHistoryId) || new Set<string>()
+        ids.add(messageId)
+        historyMessageIds.set(item.sourceHistoryId, ids)
+      }
+    }
+
+    for (const messageId of currentMessageIds) {
+      await chatStore.setFavorite(messageId, isFavorite)
+    }
+    for (const [historyId, ids] of historyMessageIds) {
+      await setHistoryMessagesFavorite(historyId, ids, isFavorite)
+    }
+  }
+
+  // 画廊：删除一组图片项。因去重后同一 image.id 可能同时存在于当前对话与历史，
+  // 需从所有来源删除，避免刷新后历史副本重现。
+  async function deleteGalleryItems(items: GalleryImageItem[]): Promise<void> {
+    if (items.length === 0) return
+    const imageIds = new Set(items.map((item) => item.image.id))
+
+    await chatStore.removeImages(Array.from(imageIds))
+
+    const removedImages: GeneratedImage[] = []
+    for (const history of [...historyList.value]) {
+      removedImages.push(...(await deleteImagesFromHistory(history.id, imageIds)))
+    }
+
+    if (removedImages.length > 0) {
+      await deleteUnreferencedLocalImages(removedImages)
+    }
+  }
+
   // 导出历史记录
   async function exportHistory(): Promise<{ canceled: boolean }> {
     if (isTauriRuntime()) {
@@ -803,6 +917,8 @@ export function useHistory() {
     renameHistoryItem,
     deleteMessage,
     toggleFavorite,
+    setGalleryItemsFavorite,
+    deleteGalleryItems,
     exportHistory,
     importHistory,
     clearSearch,

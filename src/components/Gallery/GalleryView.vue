@@ -160,6 +160,18 @@
         </div>
 
         <div class="toolbar-actions">
+          <div class="select-wrapper sort-wrapper">
+            <select
+              v-model="sortOrder"
+              class="time-range-select sort-select"
+              :aria-label="t('gallerySortLabel')"
+            >
+              <option v-for="option in sortOptions" :key="option.id" :value="option.id">
+                {{ option.label }}
+              </option>
+            </select>
+          </div>
+
           <div class="density-toggle" :aria-label="t('galleryDensity')">
             <button
               type="button"
@@ -183,12 +195,59 @@
             </button>
           </div>
 
+          <button
+            type="button"
+            :class="['btn-secondary', 'select-btn', { active: selectMode }]"
+            :aria-pressed="selectMode"
+            @click="toggleSelectMode"
+          >
+            <CheckSquare :size="16" />
+            <span>{{ selectMode ? t('cancel') : t('gallerySelect') }}</span>
+          </button>
+
           <button type="button" class="btn-secondary back-btn" @click="goToChat">
             <ArrowLeft :size="16" />
             <span>{{ t('backToChat') }}</span>
           </button>
         </div>
       </header>
+
+      <div v-if="selectMode" class="selection-bar" role="toolbar" :aria-label="t('gallerySelect')">
+        <button type="button" class="btn-ghost selection-toggle" @click="toggleSelectAll">
+          <component :is="allVisibleSelected ? CheckSquare : Square" :size="16" />
+          <span>{{ allVisibleSelected ? t('galleryDeselectAll') : t('gallerySelectAll') }}</span>
+        </button>
+        <span class="selection-count">{{ t('gallerySelectedCount', { count: selectedCount }) }}</span>
+        <div class="selection-actions">
+          <button
+            type="button"
+            class="btn-secondary"
+            :disabled="selectedCount === 0 || isMutating"
+            @click="downloadSelected"
+          >
+            <Download :size="15" />
+            <span>{{ t('download') }}</span>
+          </button>
+          <button
+            type="button"
+            class="btn-secondary"
+            :disabled="selectedCount === 0 || isMutating"
+            @click="favoriteSelected"
+          >
+            <Star :size="15" :fill="allSelectedFavorited ? 'currentColor' : 'none'" />
+            <span>{{ allSelectedFavorited ? t('unfavorite') : t('favorite') }}</span>
+          </button>
+          <button
+            type="button"
+            class="btn-secondary danger"
+            :disabled="selectedCount === 0 || isMutating"
+            @click="requestDeleteSelected"
+          >
+            <Trash2 :size="15" />
+            <span>{{ t('delete') }}</span>
+          </button>
+        </div>
+      </div>
 
       <div v-if="isLoading" class="gallery-state">
         <ImageIcon :size="38" aria-hidden="true" />
@@ -201,20 +260,49 @@
           :key="columnIndex"
           class="masonry-column"
         >
-          <article v-for="item in column" :key="item.id" class="gallery-card">
-            <button
-              type="button"
-              class="image-frame"
-              :aria-label="t('expandImage')"
-              @click="openPreview(item)"
-            >
-              <img
-                :src="imageUrl(item)"
-                :alt="item.prompt || t('generatedImageAlt')"
-                class="gallery-image"
-                loading="lazy"
-              />
-            </button>
+          <article
+            v-for="item in column"
+            :key="item.id"
+            :class="['gallery-card', { selected: selectMode && isSelected(item) }]"
+          >
+            <div class="image-frame-wrapper">
+              <button
+                type="button"
+                class="image-frame"
+                :aria-label="selectMode ? t('gallerySelect') : t('expandImage')"
+                @click="selectMode ? toggleSelection(item) : openPreview(item)"
+              >
+                <img
+                  :src="imageUrl(item)"
+                  :alt="item.prompt || t('generatedImageAlt')"
+                  class="gallery-image"
+                  loading="lazy"
+                />
+              </button>
+
+              <button
+                v-if="selectMode"
+                type="button"
+                class="select-checkbox"
+                :aria-label="t('gallerySelect')"
+                :aria-pressed="isSelected(item)"
+                @click.stop="toggleSelection(item)"
+              >
+                <component :is="isSelected(item) ? CheckSquare : Square" :size="18" />
+              </button>
+
+              <button
+                v-else
+                type="button"
+                :class="['favorite-toggle', { active: item.isFavorite }]"
+                :aria-label="item.isFavorite ? t('unfavorite') : t('favorite')"
+                :aria-pressed="item.isFavorite"
+                :title="item.isFavorite ? t('unfavorite') : t('favorite')"
+                @click.stop="toggleItemFavorite(item)"
+              >
+                <Star :size="16" :fill="item.isFavorite ? 'currentColor' : 'none'" />
+              </button>
+            </div>
 
             <div class="card-body">
               <p class="card-prompt">{{ item.prompt || t('noPrompt') }}</p>
@@ -252,6 +340,15 @@
                   @click="openPreview(item)"
                 >
                   <Maximize2 :size="15" />
+                </button>
+                <button
+                  type="button"
+                  class="action-btn danger"
+                  :title="t('delete')"
+                  :aria-label="t('delete')"
+                  @click="requestDeleteItem(item)"
+                >
+                  <Trash2 :size="15" />
                 </button>
               </div>
             </div>
@@ -323,6 +420,16 @@
               <Info :size="16" />
               <span>{{ t('imageInfo') }}</span>
             </button>
+            <button
+              type="button"
+              class="btn-secondary"
+              :class="{ active: previewItem.isFavorite }"
+              :aria-pressed="previewItem.isFavorite"
+              @click="toggleItemFavorite(previewItem)"
+            >
+              <Star :size="16" :fill="previewItem.isFavorite ? 'currentColor' : 'none'" />
+              <span>{{ previewItem.isFavorite ? t('unfavorite') : t('favorite') }}</span>
+            </button>
             <button type="button" class="btn-secondary" @click="downloadImage(previewItem)">
               <Download :size="16" />
               <span>{{ t('download') }}</span>
@@ -330,6 +437,14 @@
             <button type="button" class="btn-secondary" @click="shareImage(previewItem)">
               <Share2 :size="16" />
               <span>{{ t('share') }}</span>
+            </button>
+            <button
+              type="button"
+              class="btn-secondary danger"
+              @click="requestDeleteItem(previewItem)"
+            >
+              <Trash2 :size="16" />
+              <span>{{ t('delete') }}</span>
             </button>
           </div>
 
@@ -345,6 +460,17 @@
         </div>
       </div>
     </Transition>
+
+    <ConfirmModal
+      :is-open="pendingDeleteItems.length > 0"
+      type="danger"
+      :title="t('galleryDeleteConfirmTitle')"
+      :message="deleteConfirmMessage"
+      :confirm-text="t('delete')"
+      :cancel-text="t('cancel')"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </section>
 </template>
 
@@ -354,6 +480,7 @@ import { useRouter } from 'vue-router'
 import {
   ArrowLeft,
   CalendarDays,
+  CheckSquare,
   Clock,
   Columns3,
   Download,
@@ -365,7 +492,9 @@ import {
   Maximize2,
   Search,
   Share2,
+  Square,
   Star,
+  Trash2,
   X,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
@@ -374,6 +503,7 @@ import { useImageDownload } from '../../composables/useImageDownload'
 import { useToast } from '../../composables/useToast'
 import { useFocusTrap } from '../../composables/useFocusTrap'
 import { useModalLayer } from '../../composables/useModalLayer'
+import ConfirmModal from '../Common/ConfirmModal.vue'
 import type { GalleryImageItem, GeneratedImage, GenerationQuality } from '../../types'
 import { getImageRepository } from '../../platform/imageRepository'
 import { isExternalImageUrl, isValidImageUrl } from '../../utils/images'
@@ -389,11 +519,12 @@ type ScopeFilter = 'all' | 'recent' | 'favorite'
 type TimeRange = 'all' | 'today' | 'week' | 'month'
 type Density = 'comfortable' | 'compact'
 type ReferenceFilter = 'all' | 'with' | 'without'
+type SortOrder = 'newest' | 'oldest' | 'favorite'
 
 const router = useRouter()
 const { t, locale } = useI18n()
-const { loadGalleryImages } = useHistory()
-const { downloadSingleImage } = useImageDownload()
+const { loadGalleryImages, setGalleryItemsFavorite, deleteGalleryItems } = useHistory()
+const { downloadSingleImage, downloadMultipleImages } = useImageDownload()
 const { success, error: showError } = useToast()
 
 const galleryItems = ref<GalleryImageItem[]>([])
@@ -407,6 +538,11 @@ const qualityFilter = ref<'all' | GenerationQuality>('all')
 const styleFilter = ref('all')
 const referenceFilter = ref<ReferenceFilter>('all')
 const density = ref<Density>('comfortable')
+const sortOrder = ref<SortOrder>('newest')
+const selectMode = ref(false)
+const selectedIds = ref<Set<string>>(new Set())
+const pendingDeleteItems = ref<GalleryImageItem[]>([])
+const isMutating = ref(false)
 const previewItem = ref<GalleryImageItem | null>(null)
 const previewInfoVisible = ref(false)
 const previewOverlayRef = ref<HTMLElement>()
@@ -531,8 +667,17 @@ const filteredItems = computed(() => {
       if (!query) return true
       return item.prompt.toLowerCase().includes(query)
     })
-    .sort((a, b) => b.timestamp - a.timestamp)
+    .sort(compareItems)
 })
+
+function compareItems(a: GalleryImageItem, b: GalleryImageItem): number {
+  if (sortOrder.value === 'oldest') return a.timestamp - b.timestamp
+  if (sortOrder.value === 'favorite') {
+    const favoriteDelta = Number(b.isFavorite) - Number(a.isFavorite)
+    if (favoriteDelta !== 0) return favoriteDelta
+  }
+  return b.timestamp - a.timestamp
+}
 
 const masonryColumnCount = computed(() => {
   const tileSize = density.value === 'compact' ? 188 : 244
@@ -766,6 +911,146 @@ function generationSummary(item: GalleryImageItem): string {
     t('referenceCount', { count: generation.attachmentIds.length }),
   ].join(' · ')
 }
+
+const sortOptions = computed(() => [
+  { id: 'newest' as const, label: t('gallerySortNewest') },
+  { id: 'oldest' as const, label: t('gallerySortOldest') },
+  { id: 'favorite' as const, label: t('gallerySortFavorite') },
+])
+
+const selectedItems = computed(() =>
+  filteredItems.value.filter((item) => selectedIds.value.has(item.id)),
+)
+
+const selectedCount = computed(() => selectedItems.value.length)
+
+const allVisibleSelected = computed(
+  () => filteredItems.value.length > 0 && selectedCount.value === filteredItems.value.length,
+)
+
+const allSelectedFavorited = computed(
+  () => selectedCount.value > 0 && selectedItems.value.every((item) => item.isFavorite),
+)
+
+function isSelected(item: GalleryImageItem): boolean {
+  return selectedIds.value.has(item.id)
+}
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) selectedIds.value = new Set()
+}
+
+function toggleSelection(item: GalleryImageItem) {
+  const next = new Set(selectedIds.value)
+  if (next.has(item.id)) {
+    next.delete(item.id)
+  } else {
+    next.add(item.id)
+  }
+  selectedIds.value = next
+}
+
+function toggleSelectAll() {
+  if (allVisibleSelected.value) {
+    selectedIds.value = new Set()
+  } else {
+    selectedIds.value = new Set(filteredItems.value.map((item) => item.id))
+  }
+}
+
+async function toggleItemFavorite(item: GalleryImageItem) {
+  const nextValue = !item.isFavorite
+  try {
+    await setGalleryItemsFavorite([item], nextValue)
+    applyFavoriteToState([item], nextValue)
+  } catch (err) {
+    console.error('Failed to update favorite:', err)
+    showError(t('unknownError'))
+    await refreshGalleryImages()
+  }
+}
+
+async function favoriteSelected() {
+  if (selectedCount.value === 0) return
+  const items = selectedItems.value
+  const nextValue = !allSelectedFavorited.value
+  isMutating.value = true
+  try {
+    await setGalleryItemsFavorite(items, nextValue)
+    applyFavoriteToState(items, nextValue)
+  } catch (err) {
+    console.error('Failed to update favorites:', err)
+    showError(t('unknownError'))
+    await refreshGalleryImages()
+  } finally {
+    isMutating.value = false
+  }
+}
+
+// 同一消息可能对应多个画廊项（多图），收藏为消息级，需同步所有同消息的项。
+function applyFavoriteToState(items: GalleryImageItem[], isFavorite: boolean) {
+  const messageKeys = new Set(items.map((item) => favoriteScopeKey(item)))
+  galleryItems.value = galleryItems.value.map((item) =>
+    messageKeys.has(favoriteScopeKey(item)) ? { ...item, isFavorite } : item,
+  )
+}
+
+function favoriteScopeKey(item: GalleryImageItem): string {
+  return `${item.sourceHistoryId || 'current'}:${item.sourceMessage.id}`
+}
+
+function requestDeleteItem(item: GalleryImageItem) {
+  pendingDeleteItems.value = [item]
+}
+
+function requestDeleteSelected() {
+  if (selectedCount.value === 0) return
+  pendingDeleteItems.value = [...selectedItems.value]
+}
+
+function cancelDelete() {
+  pendingDeleteItems.value = []
+}
+
+async function confirmDelete() {
+  const items = pendingDeleteItems.value
+  if (items.length === 0) return
+  const removedIds = new Set(items.map((item) => item.id))
+  pendingDeleteItems.value = []
+  isMutating.value = true
+  try {
+    await deleteGalleryItems(items)
+    galleryItems.value = galleryItems.value.filter((item) => !removedIds.has(item.id))
+    selectedIds.value = new Set([...selectedIds.value].filter((id) => !removedIds.has(id)))
+    if (previewItem.value && removedIds.has(previewItem.value.id)) closePreview()
+    success(t('galleryImagesDeleted', { count: items.length }))
+  } catch (err) {
+    console.error('Failed to delete images:', err)
+    showError(t('unknownError'))
+    await refreshGalleryImages()
+  } finally {
+    isMutating.value = false
+  }
+}
+
+async function downloadSelected() {
+  if (selectedCount.value === 0) return
+  const images = selectedItems.value.map((item) => displayImage(item))
+  isMutating.value = true
+  try {
+    await downloadMultipleImages(images)
+  } catch (err) {
+    console.error('Failed to download images:', err)
+    showError(t('unknownError'))
+  } finally {
+    isMutating.value = false
+  }
+}
+
+const deleteConfirmMessage = computed(() =>
+  t('galleryDeleteConfirmMessage', { count: pendingDeleteItems.value.length }),
+)
 
 async function goToChat() {
   await router.push({ name: 'chat' })
@@ -1201,6 +1486,136 @@ async function shareImage(item: GalleryImageItem) {
 .action-btn:hover {
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
+}
+
+.action-btn.danger:hover {
+  background: color-mix(in srgb, var(--color-danger, #e5484d) 14%, var(--color-bg-secondary));
+  border-color: color-mix(in srgb, var(--color-danger, #e5484d) 40%, var(--color-border));
+  color: var(--color-danger, #e5484d);
+}
+
+.sort-wrapper {
+  min-width: 128px;
+}
+
+.sort-select {
+  height: 38px;
+  padding-left: 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.select-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-primary-light) 40%, var(--color-bg-primary));
+}
+
+.selection-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding-inline: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.selection-count {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.selection-actions .btn-secondary {
+  height: 34px;
+  padding-inline: 12px;
+  border-radius: 8px;
+}
+
+.btn-secondary.danger {
+  color: var(--color-danger, #e5484d);
+  border-color: color-mix(in srgb, var(--color-danger, #e5484d) 32%, var(--color-border));
+}
+
+.btn-secondary.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger, #e5484d) 12%, var(--color-bg-secondary));
+}
+
+.image-frame-wrapper {
+  position: relative;
+}
+
+.favorite-toggle,
+.select-checkbox {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.42);
+  color: white;
+  cursor: pointer;
+  opacity: 0;
+  backdrop-filter: blur(6px);
+  transition:
+    opacity var(--transition-base),
+    background var(--transition-base),
+    color var(--transition-base);
+}
+
+.gallery-card:hover .favorite-toggle,
+.gallery-card:focus-within .favorite-toggle {
+  opacity: 1;
+}
+
+.favorite-toggle.active {
+  opacity: 1;
+  color: var(--color-warning, #f5a623);
+}
+
+.favorite-toggle:hover {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.select-checkbox {
+  opacity: 1;
+  top: 8px;
+  left: 8px;
+  right: auto;
+}
+
+.select-checkbox[aria-pressed='true'] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.gallery-card.selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 .gallery-state {

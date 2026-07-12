@@ -95,6 +95,55 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function setFavorite(messageId: string, isFavorite: boolean): Promise<void> {
+    const message = messages.value.find((msg) => msg.id === messageId)
+    if (message && message.isFavorite !== isFavorite) {
+      message.isFavorite = isFavorite
+      await saveHistory()
+    }
+  }
+
+  // 从当前对话中删除指定图片。图片按其所属消息删除；若某条助手消息因此不再有图片，则整条删除。
+  async function removeImages(imageIds: string[]): Promise<void> {
+    const targetIds = new Set(imageIds)
+    if (targetIds.size === 0) return
+
+    const removedImages: GeneratedImage[] = []
+    const nextMessages: ChatMessage[] = []
+    let changed = false
+
+    for (const message of messages.value) {
+      const originalImages = message.images
+      if (!originalImages || originalImages.length === 0) {
+        nextMessages.push(message)
+        continue
+      }
+
+      const keptImages = originalImages.filter((image) => !targetIds.has(image.id))
+      if (keptImages.length === originalImages.length) {
+        nextMessages.push(message)
+        continue
+      }
+
+      changed = true
+      removedImages.push(...originalImages.filter((image) => targetIds.has(image.id)))
+
+      // 助手消息删空后连同消息一并移除；用户消息保留（其图片是附件语义）。
+      if (keptImages.length === 0 && message.type === 'assistant') {
+        continue
+      }
+
+      nextMessages.push({ ...message, images: keptImages.length > 0 ? keptImages : undefined })
+    }
+
+    if (!changed) return
+
+    messages.value = nextMessages
+    await saveHistory()
+    revokeRemovedWebBlobUrls(removedImages)
+    await deleteUnreferencedLocalImages(removedImages)
+  }
+
   async function importMessages(
     newMessages: ChatMessage[],
     mode: 'replace' | 'merge',
@@ -237,6 +286,8 @@ export const useChatStore = defineStore('chat', () => {
     setLoading,
     deleteMessage,
     toggleFavorite,
+    setFavorite,
+    removeImages,
     importMessages,
     flushHistorySave,
     hydrateFromPersistence,
