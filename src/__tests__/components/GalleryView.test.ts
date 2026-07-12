@@ -5,10 +5,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import GalleryView from '../../components/Gallery/GalleryView.vue'
 import i18n from '../../i18n'
 import { useChatStore } from '../../stores/chat'
+import { putWebHistoryRecord } from '../../platform/webPersistence'
 import type { ChatHistory, ChatMessage, GeneratedImage, GenerationMetadata } from '../../types'
-
-const HISTORY_LIST_KEY = 'chat-image-history-list'
-const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
 
 const mockState = vi.hoisted(() => ({
   downloadSingleImage: vi.fn(),
@@ -56,7 +54,7 @@ vi.mock('../../platform/imageRepository', () => ({
   }),
 }))
 
-const now = new Date('2026-06-26T08:00:00.000Z').getTime()
+const now = Date.now()
 const oldTimestamp = now - 10 * 24 * 60 * 60 * 1000
 
 function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
@@ -143,28 +141,24 @@ async function mountGallery() {
     title: 'Saved red city',
     isFavorite: true,
   })
-  localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-  localStorage.setItem(
-    HISTORY_MESSAGES_PREFIX + savedHistory.id,
-    JSON.stringify([
-      message('duplicate-history-message', [
-        image({
-          id: 'current-image',
-          url: 'blob:duplicate',
-          sourcePrompt: 'duplicate image',
-          timestamp: now - 1000,
-        }),
-      ]),
-      message('history-message', [
-        image({
-          id: 'history-image',
-          url: 'https://images.example.test/red-city.png',
-          sourcePrompt: 'red city at night',
-          timestamp: oldTimestamp,
-        }),
-      ]),
+  await putWebHistoryRecord(savedHistory, [
+    message('duplicate-history-message', [
+      image({
+        id: 'current-image',
+        url: 'blob:duplicate',
+        sourcePrompt: 'duplicate image',
+        timestamp: now - 1000,
+      }),
     ]),
-  )
+    message('history-message', [
+      image({
+        id: 'history-image',
+        url: 'https://images.example.test/red-city.png',
+        sourcePrompt: 'red city at night',
+        timestamp: oldTimestamp,
+      }),
+    ]),
+  ])
 
   const wrapper = mount(GalleryView, {
     attachTo: document.body,
@@ -173,14 +167,13 @@ async function mountGallery() {
     },
   })
   await flushPromises()
+  await vi.waitFor(() => expect(wrapper.findAll('.gallery-card')).toHaveLength(2))
 
   return { wrapper, router }
 }
 
 describe('GalleryView', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
     localStorage.clear()
     document.body.innerHTML = ''
     i18n.global.locale.value = 'zh-CN'
@@ -202,7 +195,6 @@ describe('GalleryView', () => {
   })
 
   afterEach(() => {
-    vi.useRealTimers()
     document.body.innerHTML = ''
   })
 
@@ -260,8 +252,7 @@ describe('GalleryView', () => {
       },
     })
     await flushPromises()
-
-    expect(emptyWrapper.text()).toContain('还没有图片')
+    await vi.waitFor(() => expect(emptyWrapper.text()).toContain('还没有图片'))
 
     emptyWrapper.unmount()
     const { wrapper } = await mountGallery()

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, defineAsyncComponent, onMounted, computed, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Header from './components/Layout/Header.vue'
 import ToastNotification from './components/Common/ToastNotification.vue'
 import UpdatePrompt from './components/Common/UpdatePrompt.vue'
@@ -15,13 +16,16 @@ const HistorySidebar = defineAsyncComponent(() => import('./components/Layout/Hi
 const ConfigModal = defineAsyncComponent(() => import('./components/Config/ConfigModal.vue'))
 
 const configStore = useConfigStore()
+const { t } = useI18n()
 const chatStore = useChatStore()
-const { ensureCurrentChatSaved } = useChat()
+const { ensureCurrentChatSaved, hydrateHistoryList } = useChat()
 const route = useRoute()
 const router = useRouter()
 const showConfigGuide = ref(false)
 const dismissedConfigGuide = ref(false)
 const showSidebar = ref(false)
+const isPersistenceReady = ref(false)
+const persistenceError = ref(false)
 const isChatRoute = computed(() => route.name === 'chat')
 
 function syncConfigGuide() {
@@ -39,13 +43,26 @@ async function syncCurrentChatHistory() {
   }
 }
 
-onMounted(async () => {
-  if (isTauriRuntime()) {
-    await initializeDesktopPersistence()
-    await Promise.all([configStore.hydrateFromPersistence(), chatStore.hydrateFromPersistence()])
+async function initializePersistence() {
+  persistenceError.value = false
+  try {
+    if (isTauriRuntime()) {
+      await initializeDesktopPersistence()
+      await configStore.hydrateFromPersistence()
+    }
+    await chatStore.hydrateFromPersistence()
+    await hydrateHistoryList()
+    await syncCurrentChatHistory()
+    syncConfigGuide()
+    isPersistenceReady.value = true
+  } catch (error) {
+    console.error('Failed to initialize persistence:', error)
+    persistenceError.value = true
   }
-  await syncCurrentChatHistory()
-  syncConfigGuide()
+}
+
+onMounted(async () => {
+  await initializePersistence()
 })
 
 function toggleConfig() {
@@ -92,8 +109,18 @@ function closeSidebar() {
         />
       </Suspense>
 
+      <div v-if="!isPersistenceReady" class="persistence-state" role="status">
+        <template v-if="persistenceError">
+          <p>{{ t('storageInitializationFailed') }}</p>
+          <button type="button" class="retry-button" @click="initializePersistence">
+            {{ t('retry') }}
+          </button>
+        </template>
+        <p v-else>{{ t('loading') }}</p>
+      </div>
+
       <!-- Routed Content -->
-      <div class="content-area">
+      <div v-else class="content-area">
         <RouterView v-slot="{ Component }">
           <Transition name="route" mode="out-in">
             <component :is="Component" />
@@ -105,7 +132,7 @@ function closeSidebar() {
     <!-- Config Modal -->
     <Suspense>
       <Transition name="modal">
-        <ConfigModal v-if="showConfigGuide" @close="closeConfigGuide" />
+        <ConfigModal v-if="isPersistenceReady && showConfigGuide" @close="closeConfigGuide" />
       </Transition>
     </Suspense>
 
@@ -151,6 +178,25 @@ function closeSidebar() {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+}
+
+.persistence-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--color-text-secondary);
+}
+
+.retry-button {
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  cursor: pointer;
 }
 
 /* Route Transition */

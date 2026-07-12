@@ -1,12 +1,11 @@
 import type { ChatHistory, ChatMessage, GenerationOptions, Theme } from '../types'
-import { STORAGE_KEYS } from '../utils/constants'
+import { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX, STORAGE_KEYS } from '../utils/constants'
 import { normalizeApiConfigState } from '../utils/storage'
 import { resolveStoredImageUrls, stripBase64FromMessages } from '../utils/imagePersistence'
 import { getImageRepository } from './imageRepository'
 import { isTauriRuntime } from './runtime'
 
-export const HISTORY_LIST_KEY = 'chat-image-history-list'
-export const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
+export { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX } from '../utils/constants'
 
 const STORE_FILE = 'chat-image-store.json'
 const MIGRATION_VERSION_KEY = 'desktop-migration-version'
@@ -79,7 +78,7 @@ async function localizeMessages(messages: ChatMessage[]): Promise<ChatMessage[]>
   const repository = getImageRepository()
   const withLocalImages = await Promise.all(
     messages.map(async (msg) => {
-      if (!msg.images && !msg.attachments) {
+      if (!msg.images && !msg.attachments && !msg.generation?.attachments) {
         return {
           ...msg,
           isFavorite: msg.isFavorite ?? false,
@@ -122,11 +121,36 @@ async function localizeMessages(messages: ChatMessage[]): Promise<ChatMessage[]>
           )
         : undefined
 
+      const generation = msg.generation
+        ? {
+            ...msg.generation,
+            attachments: msg.generation.attachments
+              ? await Promise.all(
+                  msg.generation.attachments.map(async (attachment) => ({
+                    ...(attachment.localPath
+                      ? await repository.resolveDisplayUrl(attachment)
+                      : await repository.saveGeneratedImage({
+                          id: attachment.id,
+                          b64Json: attachment.base64,
+                          url: attachment.originalUrl || attachment.url,
+                          mimeType: attachment.mimeType,
+                          timestamp: attachment.timestamp,
+                          sourcePrompt: attachment.sourcePrompt,
+                          sourceMessageId: attachment.sourceMessageId,
+                        })),
+                    name: attachment.name,
+                  })),
+                )
+              : undefined,
+          }
+        : undefined
+
       return {
         ...msg,
         isFavorite: msg.isFavorite ?? false,
         attachments,
         images,
+        generation,
       }
     }),
   )

@@ -94,6 +94,7 @@ async function mountApp(initialPath = '/') {
   })
   await router.isReady()
   await flushPromises()
+  await vi.waitFor(() => expect(wrapper.find('.persistence-state').exists()).toBe(false))
   mountedWrappers.push(wrapper)
   return wrapper
 }
@@ -185,7 +186,6 @@ describe('App routing and setup guide', () => {
 
     await wrapper.get('button[aria-label="新对话"]').trigger('click')
     await flushPromises()
-
-    expect(router.currentRoute.value.name).toBe('chat')
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('chat'))
   })
 })

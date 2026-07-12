@@ -21,57 +21,42 @@ import {
 import { isTauriRuntime } from '../platform/runtime'
 import i18n from '../i18n'
 import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
-
-// 获取历史记录列表
-function getHistoryList(): ChatHistory[] {
-  try {
-    const data = localStorage.getItem(HISTORY_LIST_KEY)
-    return data ? JSON.parse(data) : []
-  } catch {
-    return []
-  }
-}
+import {
+  clearWebHistoryRecords,
+  deleteWebHistoryRecords,
+  getWebHistoryRecord,
+  getWebHistoryRecords,
+  putWebHistoryRecord,
+  syncWebHistoryRecords,
+  prepareMessagesForWebExport,
+} from '../platform/webPersistence'
 
 // 保存历史记录列表
 async function setHistoryList(list: ChatHistory[]): Promise<void> {
-  if (isTauriRuntime()) {
-    try {
-      await setMetadataValue(HISTORY_LIST_KEY, list)
-    } catch (error) {
-      throw new PersistenceError('Failed to save history list', { cause: error })
-    }
+  if (!isTauriRuntime()) {
+    await syncWebHistoryRecords(list)
     return
   }
 
   try {
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify(list))
+    await setMetadataValue(HISTORY_LIST_KEY, list)
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      console.warn('Storage quota exceeded for history list')
-    }
     throw new PersistenceError('Failed to save history list', { cause: error })
-  }
-}
-
-// 获取历史对话消息
-function getHistoryMessages(historyId: string): ChatMessage[] {
-  try {
-    const data = localStorage.getItem(HISTORY_MESSAGES_PREFIX + historyId)
-    if (!data) return []
-    return JSON.parse(data) as ChatMessage[]
-  } catch {
-    return []
   }
 }
 
 async function readHistoryMessages(historyId: string): Promise<ChatMessage[]> {
   return isTauriRuntime()
     ? await getMetadataValue<ChatMessage[]>(HISTORY_MESSAGES_PREFIX + historyId, [])
-    : getHistoryMessages(historyId)
+    : (await getWebHistoryRecord(historyId))?.messages || []
 }
 
 function collectImages(messages: ChatMessage[]) {
-  return messages.flatMap((message) => [...(message.attachments || []), ...(message.images || [])])
+  return messages.flatMap((message) => [
+    ...(message.attachments || []),
+    ...(message.images || []),
+    ...(message.generation?.attachments || []),
+  ])
 }
 
 function galleryImageDedupeKey(image: GeneratedImage): string {
@@ -130,7 +115,7 @@ function cloneData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-const historyList = ref<ChatHistory[]>(getHistoryList())
+const historyList = ref<ChatHistory[]>([])
 
 function messageIds(messages: ChatMessage[]): string[] {
   return messages.map((message) => message.id)
@@ -272,104 +257,44 @@ async function removeDuplicateHistories(
   return deduped
 }
 
-function refreshHistoryList(defaultHistoryTitle: (messages: ChatMessage[]) => string): void {
-  if (isTauriRuntime()) {
-    void getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
-      .then(async (list) => {
-        historyList.value = await removeDuplicateHistories(list, defaultHistoryTitle)
-      })
-      .catch((error) => {
-        console.error('Failed to load history list:', error)
-      })
-    return
-  }
-
-  const list = getHistoryList()
-  historyList.value = list
-  void removeDuplicateHistories(list, defaultHistoryTitle)
-    .then((deduped) => {
-      historyList.value = deduped
-    })
-    .catch((error) => {
-      console.error('Failed to clean duplicate histories:', error)
-    })
+async function refreshHistoryList(
+  defaultHistoryTitle: (messages: ChatMessage[]) => string,
+): Promise<void> {
+  const list = isTauriRuntime()
+    ? await getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
+    : (await getWebHistoryRecords()).map((record) => record.history)
+  historyList.value = await removeDuplicateHistories(list, defaultHistoryTitle)
 }
 
 // 保存历史对话消息
 async function setHistoryMessages(historyId: string, messages: ChatMessage[]): Promise<void> {
   const key = HISTORY_MESSAGES_PREFIX + historyId
-  if (isTauriRuntime()) {
-    try {
-      await setMetadataValue(key, stripBase64FromMessages(messages))
-    } catch (error) {
-      throw new PersistenceError('Failed to save history messages', { cause: error })
+  if (!isTauriRuntime()) {
+    const history =
+      historyList.value.find((item) => item.id === historyId) ||
+      (await getWebHistoryRecord(historyId))?.history
+    if (!history) {
+      throw new PersistenceError('Failed to save history messages')
     }
+    await putWebHistoryRecord(history, messages)
     return
   }
 
   try {
-    localStorage.setItem(key, JSON.stringify(messages))
+    await setMetadataValue(key, stripBase64FromMessages(messages))
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      console.warn('Storage quota exceeded, attempting to trim history...')
-      // 尝试清理最旧的历史记录后重试
-      trimOldHistories(historyId)
-      try {
-        localStorage.setItem(key, JSON.stringify(messages))
-        return
-      } catch {
-        try {
-          localStorage.setItem(key, JSON.stringify(stripBase64FromMessages(messages)))
-          console.warn('Saved history without image base64 data')
-          return
-        } catch {
-          console.error('Still cannot save after trimming old histories')
-        }
-      }
-    }
     throw new PersistenceError('Failed to save history messages', { cause: error })
-  }
-}
-
-// 清理最旧的历史记录以释放空间
-function trimOldHistories(protectedHistoryId: string): ChatHistory[] {
-  try {
-    const list: ChatHistory[] = JSON.parse(localStorage.getItem(HISTORY_LIST_KEY) || '[]')
-    const protectedHistory = list.find((history) => history.id === protectedHistoryId)
-    const keepOtherCount = 4
-    if (list.length <= keepOtherCount + (protectedHistory ? 1 : 0)) return list
-
-    // 保留当前正在保存的历史，以及其余最近的记录。
-    const sortedOthers = list
-      .filter((history) => history.id !== protectedHistoryId)
-      .sort((a, b) => b.timestamp - a.timestamp)
-    const kept = [
-      ...(protectedHistory ? [protectedHistory] : []),
-      ...sortedOthers.slice(0, 4),
-    ].sort((a, b) => b.timestamp - a.timestamp)
-    const keptIds = new Set(kept.map((history) => history.id))
-    const toRemove = list.filter((history) => !keptIds.has(history.id))
-
-    toRemove.forEach((h) => {
-      localStorage.removeItem(HISTORY_MESSAGES_PREFIX + h.id)
-    })
-
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify(kept))
-    historyList.value = kept
-    return kept
-  } catch {
-    return historyList.value
   }
 }
 
 // 删除历史对话消息
 async function deleteHistoryMessages(historyId: string): Promise<void> {
-  if (isTauriRuntime()) {
-    await removeMetadataValue(HISTORY_MESSAGES_PREFIX + historyId)
+  if (!isTauriRuntime()) {
+    await deleteWebHistoryRecords([historyId])
     return
   }
 
-  localStorage.removeItem(HISTORY_MESSAGES_PREFIX + historyId)
+  await removeMetadataValue(HISTORY_MESSAGES_PREFIX + historyId)
 }
 
 export function useHistory() {
@@ -382,7 +307,13 @@ export function useHistory() {
     const firstUserMessage = messages.find((message) => message.type === 'user')
     return firstUserMessage?.content.slice(0, 50) || t('newChat')
   }
-  refreshHistoryList(defaultHistoryTitle)
+  void refreshHistoryList(defaultHistoryTitle).catch((error) => {
+    console.error('Failed to load history list:', error)
+  })
+
+  async function hydrateHistoryList(): Promise<void> {
+    await refreshHistoryList(defaultHistoryTitle)
+  }
 
   async function ensureDesktopHistoryHydrated(): Promise<void> {
     await initializeDesktopPersistence()
@@ -430,6 +361,8 @@ export function useHistory() {
     if (isTauriRuntime()) {
       await ensureDesktopHistoryHydrated()
       historyList.value = await getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, historyList.value)
+    } else {
+      await hydrateHistoryList()
     }
 
     const seenKeys = new Set<string>()
@@ -607,17 +540,26 @@ export function useHistory() {
       preview: firstUserMessage?.content.slice(0, 100),
     }
 
-    // 保存消息内容
     await chatStore.flushHistorySave()
-    await setHistoryMessages(historyId, chatStore.messages)
+    const previousList = historyList.value
+    const nextList = historyCandidate
+      ? historyList.value.map((item) => (item.id === historyId ? history : item))
+      : [history, ...historyList.value]
 
-    // 更新历史列表
-    if (historyCandidate) {
-      historyList.value = historyList.value.map((item) => (item.id === historyId ? history : item))
+    if (!isTauriRuntime()) {
+      await putWebHistoryRecord(history, chatStore.messages)
+      historyList.value = nextList
     } else {
-      historyList.value.unshift(history)
+      await setHistoryMessages(historyId, chatStore.messages)
+      historyList.value = nextList
+      try {
+        await setHistoryList(historyList.value)
+      } catch (error) {
+        historyList.value = previousList
+        throw error
+      }
     }
-    await setHistoryList(historyList.value)
+
     historyList.value = await removeDuplicateHistories(historyList.value, defaultHistoryTitle)
 
     if (historyList.value.some((item) => item.id === historyId)) {
@@ -660,9 +602,14 @@ export function useHistory() {
   // 删除历史记录
   async function deleteHistoryItem(id: string): Promise<void> {
     const removedMessages = await readHistoryMessages(id)
-    historyList.value = historyList.value.filter((h) => h.id !== id)
-    await setHistoryList(historyList.value)
-    await deleteHistoryMessages(id)
+    const nextList = historyList.value.filter((history) => history.id !== id)
+    if (isTauriRuntime()) {
+      await setHistoryList(nextList)
+      await deleteHistoryMessages(id)
+    } else {
+      await deleteWebHistoryRecords([id])
+    }
+    historyList.value = nextList
     await deleteUnreferencedLocalImages(collectImages(removedMessages))
   }
 
@@ -671,10 +618,13 @@ export function useHistory() {
     const removedMessages = (
       await Promise.all(historyList.value.map((h) => readHistoryMessages(h.id)))
     ).flat()
-    // 删除所有历史消息
-    await Promise.all(historyList.value.map((h) => deleteHistoryMessages(h.id)))
+    if (isTauriRuntime()) {
+      await Promise.all(historyList.value.map((history) => deleteHistoryMessages(history.id)))
+      await setHistoryList([])
+    } else {
+      await clearWebHistoryRecords()
+    }
     historyList.value = []
-    await setHistoryList([])
     await deleteUnreferencedLocalImages(collectImages(removedMessages))
   }
 
@@ -742,7 +692,7 @@ export function useHistory() {
     const exportData: ChatExportData = {
       version: 1,
       exportedAt: Date.now(),
-      messages: chatStore.messages,
+      messages: await prepareMessagesForWebExport(chatStore.messages),
     }
 
     const json = JSON.stringify(exportData, null, 2)
@@ -841,6 +791,7 @@ export function useHistory() {
     filteredMessages,
     favoriteMessages,
     historyList,
+    hydrateHistoryList,
     searchHistory,
     saveCurrentChat,
     ensureCurrentChatInHistory,

@@ -46,7 +46,7 @@ export function revokeCachedBlobUrlsForImages(images: GeneratedImage[]): void {
 
 export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((msg) => {
-    if (!msg.images && !msg.attachments) return msg
+    if (!msg.images && !msg.attachments && !msg.generation?.attachments) return msg
 
     return {
       ...msg,
@@ -60,6 +60,17 @@ export function reviveStoredImageUrls(messages: ChatMessage[]): ChatMessage[] {
         ...img,
         url: img.base64 ? createDataUrlFromBase64(img.base64, img.mimeType) : img.url,
       })),
+      generation: msg.generation
+        ? {
+            ...msg.generation,
+            attachments: msg.generation.attachments?.map((attachment) => ({
+              ...attachment,
+              url: attachment.base64
+                ? createDataUrlFromBase64(attachment.base64, attachment.mimeType)
+                : attachment.url,
+            })),
+          }
+        : undefined,
     }
   })
 }
@@ -72,9 +83,14 @@ export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] 
       ? image.url
       : isDurableUrl(image.originalUrl)
         ? image.originalUrl
-        : image.localPath || image.url
+        : image.localPath || (image.webStorageKey ? '' : image.url)
 
-    if (!image.localPath && !isDurableUrl(image.url) && !isDurableUrl(image.originalUrl)) {
+    if (
+      !image.localPath &&
+      !image.webStorageKey &&
+      !isDurableUrl(image.url) &&
+      !isDurableUrl(image.originalUrl)
+    ) {
       return image
     }
 
@@ -86,12 +102,18 @@ export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] 
   }
 
   return messages.map((msg) => {
-    if (!msg.images && !msg.attachments) return msg
+    if (!msg.images && !msg.attachments && !msg.generation?.attachments) return msg
 
     return {
       ...msg,
       attachments: msg.attachments?.map(stripImageData),
       images: msg.images?.map(stripImageData),
+      generation: msg.generation
+        ? {
+            ...msg.generation,
+            attachments: msg.generation.attachments?.map(stripImageData),
+          }
+        : undefined,
     }
   })
 }
@@ -110,7 +132,7 @@ export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<C
 
   return Promise.all(
     messages.map(async (msg) => {
-      if (!msg.images && !msg.attachments) return msg
+      if (!msg.images && !msg.attachments && !msg.generation?.attachments) return msg
 
       const attachments = msg.attachments
         ? await Promise.all(
@@ -124,11 +146,25 @@ export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<C
       const images = msg.images
         ? await Promise.all(msg.images.map((image) => resolveImage(image)))
         : undefined
+      const generation = msg.generation
+        ? {
+            ...msg.generation,
+            attachments: msg.generation.attachments
+              ? await Promise.all(
+                  msg.generation.attachments.map(async (attachment) => ({
+                    ...(await resolveImage(attachment)),
+                    name: attachment.name,
+                  })),
+                )
+              : undefined,
+          }
+        : undefined
 
       return {
         ...msg,
         attachments,
         images,
+        generation,
       }
     }),
   )

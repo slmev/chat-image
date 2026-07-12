@@ -145,6 +145,7 @@ export default {
   localStorageHint: 'Review generated images saved by the desktop app and clean unused files',
   refresh: 'Refresh',
   loading: 'Loading...',
+  storageInitializationFailed: 'Failed to load local data. Please retry.',
   imageCount: 'Images',
   storageUsed: 'Storage Used',
   orphanImages: 'Orphan Images',

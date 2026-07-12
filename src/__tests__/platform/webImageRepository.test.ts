@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { webImageRepository } from '../../platform/webImageRepository'
 
 describe('web image repository', () => {
-  it('saves generated base64 images as data URLs and keeps base64', async () => {
+  it('stores generated base64 images as blobs', async () => {
     const base64 = btoa('png')
 
     const result = await webImageRepository.saveGeneratedImage({
@@ -16,16 +16,18 @@ describe('web image repository', () => {
 
     expect(result).toMatchObject({
       id: 'image-1',
-      url: `data:image/webp;base64,${base64}`,
-      base64,
+      url: expect.stringMatching(/^blob:/),
+      webStorageKey: 'web:image-1',
       mimeType: 'image/webp',
       byteSize: 3,
       sourcePrompt: 'a lake',
       sourceMessageId: 'message-1',
     })
+    expect(result).not.toHaveProperty('base64')
+    expect(await (await webImageRepository.readImageBlob(result)).text()).toBe('png')
   })
 
-  it('resolves historical base64 images as data URLs', async () => {
+  it('migrates historical base64 images to blob storage', async () => {
     const base64 = btoa('png')
 
     const result = await webImageRepository.resolveDisplayUrl({
@@ -38,8 +40,10 @@ describe('web image repository', () => {
 
     expect(result).toMatchObject({
       id: 'image-1',
-      url: `data:image/png;base64,${base64}`,
-      base64,
+      url: expect.stringMatching(/^blob:/),
+      webStorageKey: 'web:image-1',
     })
+    expect(result).not.toHaveProperty('base64')
+    expect(await (await webImageRepository.readImageBlob(result)).text()).toBe('png')
   })
 })

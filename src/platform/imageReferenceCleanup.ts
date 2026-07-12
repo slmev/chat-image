@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from '../utils/constants'
 import { getImageRepository } from './imageRepository'
 import { HISTORY_LIST_KEY, HISTORY_MESSAGES_PREFIX, getMetadataValue } from './metadataStore'
 import { isTauriRuntime } from './runtime'
+import { getWebReferencedImageKeys } from './webPersistence'
 
 const IMAGE_DIR = 'images'
 
@@ -43,6 +44,11 @@ function collectLocalPaths(messages: ChatMessage[]): Set<string> {
     for (const image of message.images || []) {
       if (image.localPath) {
         paths.add(image.localPath)
+      }
+    }
+    for (const attachment of message.generation?.attachments || []) {
+      if (attachment.localPath) {
+        paths.add(attachment.localPath)
       }
     }
   }
@@ -133,7 +139,24 @@ function uniqueImagesByLocalPath(images: GeneratedImage[]): GeneratedImage[] {
 }
 
 export async function deleteUnreferencedLocalImages(candidates: GeneratedImage[]): Promise<void> {
-  if (!isTauriRuntime()) return
+  if (!isTauriRuntime()) {
+    const webImages = candidates.filter((image) => image.webStorageKey)
+    if (webImages.length === 0) return
+    const references = await getWebReferencedImageKeys()
+    const repository = getImageRepository()
+    await Promise.all(
+      webImages.map(async (image) => {
+        if (image.webStorageKey && !references.has(image.webStorageKey)) {
+          try {
+            await repository.deleteImageFile(image)
+          } catch (error) {
+            console.warn('Failed to delete unreferenced web image:', error)
+          }
+        }
+      }),
+    )
+    return
+  }
 
   const localImages = uniqueImagesByLocalPath(candidates)
   if (localImages.length === 0) return

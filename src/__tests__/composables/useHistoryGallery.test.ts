@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useHistory } from '../../composables/useHistory'
 import { useChatStore } from '../../stores/chat'
+import { putWebHistoryRecord } from '../../platform/webPersistence'
 import type {
   ChatAttachment,
   ChatHistory,
@@ -9,9 +10,6 @@ import type {
   GeneratedImage,
   GenerationMetadata,
 } from '../../types'
-
-const HISTORY_LIST_KEY = 'chat-image-history-list'
-const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => false,
@@ -128,28 +126,24 @@ describe('useHistory gallery images', () => {
       'replace',
     )
 
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + savedHistory.id,
-      JSON.stringify([
-        message('duplicate-history-message', [
-          image({
-            id: 'shared-image',
-            url: 'blob:shared-history',
-            timestamp: 90,
-            sourcePrompt: 'duplicate prompt',
-          }),
-        ]),
-        message('unique-history-message', [
-          image({
-            id: 'history-image',
-            url: 'blob:history-image',
-            timestamp: 80,
-            sourcePrompt: 'saved prompt',
-          }),
-        ]),
+    await putWebHistoryRecord(savedHistory, [
+      message('duplicate-history-message', [
+        image({
+          id: 'shared-image',
+          url: 'blob:shared-history',
+          timestamp: 90,
+          sourcePrompt: 'duplicate prompt',
+        }),
       ]),
-    )
+      message('unique-history-message', [
+        image({
+          id: 'history-image',
+          url: 'blob:history-image',
+          timestamp: 80,
+          sourcePrompt: 'saved prompt',
+        }),
+      ]),
+    ])
 
     const items = await useHistory().loadGalleryImages()
 

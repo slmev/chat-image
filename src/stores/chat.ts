@@ -1,28 +1,27 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import type { ChatMessage, GeneratedImage } from '../types'
-import {
-  PersistenceError,
-  getChatHistory,
-  setChatHistory,
-  clearChatHistory,
-  generateId,
-} from '../utils/storage'
-import {
-  resolveStoredImageUrls,
-  reviveStoredImageUrls,
-  revokeCachedBlobUrlsForImages,
-} from '../utils/imagePersistence'
+import { PersistenceError, generateId } from '../utils/storage'
+import { resolveStoredImageUrls, revokeCachedBlobUrlsForImages } from '../utils/imagePersistence'
 import { getDesktopChatHistory, setMetadataValue } from '../platform/metadataStore'
 import { isTauriRuntime } from '../platform/runtime'
 import { STORAGE_KEYS } from '../utils/constants'
 import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
+import {
+  getWebCurrentMessages,
+  initializeWebPersistence,
+  setWebCurrentMessages,
+} from '../platform/webPersistence'
+import { revokeWebImageObjectUrls } from '../platform/webImageRepository'
 
 export const useChatStore = defineStore('chat', () => {
   // State
-  const messages = ref<ChatMessage[]>(getChatHistory())
+  const messages = ref<ChatMessage[]>([])
   const isLoading = ref(false)
-  const hasHydratedDesktopHistory = ref(!isTauriRuntime())
+  const hasHydratedPersistence = ref(false)
+  const hasHydratedDesktopHistory = computed(
+    () => !isTauriRuntime() || hasHydratedPersistence.value,
+  )
   let pendingHistorySave: Promise<void> = Promise.resolve()
 
   function cloneMessages(): ChatMessage[] {
@@ -41,6 +40,7 @@ export const useChatStore = defineStore('chat', () => {
     return chatMessages.flatMap((message) => [
       ...(message.attachments || []),
       ...(message.images || []),
+      ...(message.generation?.attachments || []),
     ])
   }
 
@@ -52,6 +52,7 @@ export const useChatStore = defineStore('chat', () => {
       collectMessageImagesForCleanup(messages.value).map((image) => image.id),
     )
     revokeCachedBlobUrlsForImages(removedImages.filter((image) => !stillReferenced.has(image.id)))
+    revokeWebImageObjectUrls(removedImages.filter((image) => !stillReferenced.has(image.id)))
   }
 
   // Computed
@@ -103,9 +104,7 @@ export const useChatStore = defineStore('chat', () => {
       ...msg,
       isFavorite: msg.isFavorite ?? false,
     }))
-    const migratedMessages = isTauriRuntime()
-      ? await resolveStoredImageUrls(normalizedMessages)
-      : reviveStoredImageUrls(normalizedMessages)
+    const migratedMessages = await resolveStoredImageUrls(normalizedMessages)
 
     if (mode === 'replace') {
       const removedImages = collectMessageImagesForCleanup(messages.value)
@@ -176,29 +175,31 @@ export const useChatStore = defineStore('chat', () => {
     await flushHistorySave()
     const removedImages = collectMessageImagesForCleanup(messages.value)
     messages.value = []
-    clearChatHistory()
-    if (isTauriRuntime()) {
-      pendingHistorySave = setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, cloneMessages())
-      await pendingHistorySave
-    }
+    pendingHistorySave = persistSnapshot(cloneMessages())
+    await pendingHistorySave
     revokeRemovedWebBlobUrls(removedImages)
     await deleteUnreferencedLocalImages(removedImages)
   }
 
   function saveHistory(): Promise<void> {
-    if (isTauriRuntime()) {
-      if (!hasHydratedDesktopHistory.value) return Promise.resolve()
-      const snapshot = cloneMessages()
-      const save = pendingHistorySave.then(() =>
-        setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, snapshot).catch((error) => {
-          throw new PersistenceError('Failed to save chat history', { cause: error })
-        }),
-      )
-      pendingHistorySave = save.catch(() => undefined)
-      return save
-    }
+    if (!hasHydratedPersistence.value) return Promise.resolve()
+    const snapshot = cloneMessages()
+    const save = pendingHistorySave.then(() => persistSnapshot(snapshot))
+    pendingHistorySave = save.catch(() => undefined)
+    return save
+  }
 
-    return setChatHistory(messages.value)
+  async function persistSnapshot(snapshot: ChatMessage[]): Promise<void> {
+    try {
+      if (isTauriRuntime()) {
+        await setMetadataValue(STORAGE_KEYS.CHAT_HISTORY, snapshot)
+      } else {
+        await setWebCurrentMessages(snapshot)
+      }
+    } catch (error) {
+      if (error instanceof PersistenceError) throw error
+      throw new PersistenceError('Failed to save chat history', { cause: error })
+    }
   }
 
   async function flushHistorySave(): Promise<void> {
@@ -210,9 +211,13 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function hydrateFromPersistence(): Promise<void> {
-    if (!isTauriRuntime()) return
-    messages.value = await getDesktopChatHistory()
-    hasHydratedDesktopHistory.value = true
+    if (isTauriRuntime()) {
+      messages.value = await getDesktopChatHistory()
+    } else {
+      await initializeWebPersistence()
+      messages.value = await resolveStoredImageUrls(await getWebCurrentMessages())
+    }
+    hasHydratedPersistence.value = true
   }
 
   return {
@@ -221,6 +226,7 @@ export const useChatStore = defineStore('chat', () => {
     messageCount,
     lastMessage,
     hasHydratedDesktopHistory,
+    hasHydratedPersistence,
     addMessage,
     updateMessage,
     addImagesToMessage,

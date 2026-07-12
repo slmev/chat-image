@@ -26,7 +26,8 @@ export function useChat() {
   const chatStore = useChatStore()
   const configStore = useConfigStore()
   const { generateImage, cancelGeneration } = useImageGeneration()
-  const { saveCurrentChat, ensureCurrentChatInHistory, loadHistoryChat } = useHistory()
+  const { saveCurrentChat, ensureCurrentChatInHistory, loadHistoryChat, hydrateHistoryList } =
+    useHistory()
   const t = i18n.global.t
 
   function canCommitGeneration(token: symbol, messageId: string): boolean {
@@ -484,6 +485,7 @@ export function useChat() {
     startNewChat,
     loadChat,
     ensureCurrentChatSaved,
+    hydrateHistoryList,
     getCurrentHistoryId,
   }
 }

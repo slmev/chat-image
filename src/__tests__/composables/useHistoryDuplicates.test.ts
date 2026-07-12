@@ -1,14 +1,15 @@
-import { flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useChat } from '../../composables/useChat'
 import { useHistory } from '../../composables/useHistory'
 import { useConfigStore } from '../../stores/config'
 import { useChatStore } from '../../stores/chat'
+import {
+  getWebHistoryRecord,
+  getWebHistoryRecords,
+  putWebHistoryRecord,
+} from '../../platform/webPersistence'
 import type { ChatHistory, ChatMessage, GeneratedImage, GenerationOptions } from '../../types'
-
-const HISTORY_LIST_KEY = 'chat-image-history-list'
-const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
 
 const generateImage = vi.fn<(...args: [string, GenerationOptions]) => Promise<GeneratedImage[]>>()
 const cancelGeneration = vi.fn()
@@ -68,8 +69,12 @@ function history(id: string, overrides: Partial<ChatHistory> = {}): ChatHistory 
   }
 }
 
-function readHistoryList(): ChatHistory[] {
-  return JSON.parse(localStorage.getItem(HISTORY_LIST_KEY) || '[]') as ChatHistory[]
+async function readHistoryList(): Promise<ChatHistory[]> {
+  return (await getWebHistoryRecords()).map((record) => record.history)
+}
+
+async function readHistoryMessageIds(historyId: string): Promise<string[]> {
+  return ((await getWebHistoryRecord(historyId))?.messages || []).map((item) => item.id)
 }
 
 async function configureApi() {
@@ -81,12 +86,14 @@ async function configureApi() {
 }
 
 describe('history duplicate prevention', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     localStorage.clear()
     generateImage.mockReset()
     generateImage.mockResolvedValue([generatedImage()])
     cancelGeneration.mockReset()
+    await useChatStore().hydrateFromPersistence()
+    await useChat().clearChat()
   })
 
   it('updates the saved current chat instead of creating a duplicate when starting a new chat', async () => {
@@ -98,12 +105,12 @@ describe('history duplicate prevention', () => {
       quality: 'auto',
       n: 1,
     })
-    const firstHistory = readHistoryList()
+    const firstHistory = await readHistoryList()
     expect(firstHistory).toHaveLength(1)
 
     await chat.startNewChat()
 
-    const nextHistory = readHistoryList()
+    const nextHistory = await readHistoryList()
     expect(nextHistory).toHaveLength(1)
     expect(nextHistory[0].id).toBe(firstHistory[0].id)
     expect(chat.chatStore.messages).toEqual([])
@@ -118,13 +125,13 @@ describe('history duplicate prevention', () => {
       quality: 'auto',
       n: 1,
     })
-    const firstHistory = readHistoryList()
+    const firstHistory = await readHistoryList()
     expect(firstHistory).toHaveLength(1)
 
     const chatForHeader = useChat()
     await chatForHeader.startNewChat()
 
-    const nextHistory = readHistoryList()
+    const nextHistory = await readHistoryList()
     expect(nextHistory).toHaveLength(1)
     expect(nextHistory[0].id).toBe(firstHistory[0].id)
   })
@@ -138,13 +145,14 @@ describe('history duplicate prevention', () => {
       quality: 'auto',
       n: 1,
     })
-    const firstHistory = readHistoryList()
+    const firstHistory = await readHistoryList()
     expect(firstHistory).toHaveLength(1)
 
     vi.resetModules()
     setActivePinia(createPinia())
     const { useChat: useFreshChat } = await import('../../composables/useChat')
     const reloadedChat = useFreshChat()
+    await reloadedChat.chatStore.hydrateFromPersistence()
 
     await reloadedChat.sendMessage('add rain reflections', {
       size: 'auto',
@@ -152,7 +160,7 @@ describe('history duplicate prevention', () => {
       n: 1,
     })
 
-    const nextHistory = readHistoryList()
+    const nextHistory = await readHistoryList()
     expect(nextHistory).toHaveLength(1)
     expect(nextHistory[0]).toMatchObject({
       id: firstHistory[0].id,
@@ -167,12 +175,12 @@ describe('history duplicate prevention', () => {
     ]
     await useChatStore().importMessages(restoredMessages, 'replace')
 
-    expect(readHistoryList()).toHaveLength(0)
+    expect(await readHistoryList()).toHaveLength(0)
 
     const chat = useChat()
     const historyId = await chat.ensureCurrentChatSaved()
 
-    const historyList = readHistoryList()
+    const historyList = await readHistoryList()
     expect(historyList).toHaveLength(1)
     expect(historyId).toBe(historyList[0].id)
     expect(historyList[0]).toMatchObject({
@@ -180,11 +188,7 @@ describe('history duplicate prevention', () => {
       messageCount: 2,
       preview: 'restored current prompt',
     })
-    expect(
-      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + historyId) || '[]').map(
-        (item: ChatMessage) => item.id,
-      ),
-    ).toEqual(['user-1', 'assistant-1'])
+    expect(await readHistoryMessageIds(historyId as string)).toEqual(['user-1', 'assistant-1'])
   })
 
   it('binds a restored current chat to matching history without rewriting it', async () => {
@@ -197,15 +201,15 @@ describe('history duplicate prevention', () => {
       message('user-1', { type: 'user', content: 'original prompt' }),
       message('assistant-1'),
     ]
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify(savedMessages))
+    await putWebHistoryRecord(savedHistory, savedMessages)
     await useChatStore().importMessages(savedMessages, 'replace')
 
     const chat = useChat()
+    await chat.hydrateHistoryList()
     const historyId = await chat.ensureCurrentChatSaved()
 
     expect(historyId).toBe(savedHistory.id)
-    expect(readHistoryList()).toEqual([savedHistory])
+    expect(await readHistoryList()).toEqual([savedHistory])
   })
 
   it('updates a prefix-matched history when saving without a current history id', async () => {
@@ -222,71 +226,26 @@ describe('history duplicate prevention', () => {
       message('user-2', { type: 'user', content: 'follow up prompt' }),
       message('assistant-2'),
     ]
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + savedHistory.id, JSON.stringify(savedMessages))
+    await putWebHistoryRecord(savedHistory, savedMessages)
     await useChatStore().importMessages(currentMessages, 'replace')
 
     const historyApi = useHistory()
-    await flushPromises()
+    await historyApi.hydrateHistoryList()
     const savedId = await historyApi.saveCurrentChat(null)
 
     expect(savedId).toBe(savedHistory.id)
-    expect(readHistoryList()).toHaveLength(1)
-    expect(readHistoryList()[0]).toMatchObject({
+    const storedHistories = await readHistoryList()
+    expect(storedHistories).toHaveLength(1)
+    expect(storedHistories[0]).toMatchObject({
       id: savedHistory.id,
       messageCount: 4,
     })
-    expect(
-      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + savedHistory.id) || '[]').map(
-        (item: ChatMessage) => item.id,
-      ),
-    ).toEqual(['user-1', 'assistant-1', 'user-2', 'assistant-2'])
-  })
-
-  it('keeps the active history visible when quota recovery trims old histories', async () => {
-    const protectedHistory = history('protected-history', { timestamp: 0 })
-    const otherHistories = Array.from({ length: 5 }, (_, index) =>
-      history(`history-${index}`, { timestamp: index + 1 }),
-    )
-    const protectedMessages = [
-      message('protected-user', { type: 'user', content: 'protected prompt' }),
-      message('protected-assistant'),
-    ]
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([protectedHistory, ...otherHistories]))
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + protectedHistory.id,
-      JSON.stringify(protectedMessages),
-    )
-    otherHistories.forEach((item) => {
-      localStorage.setItem(
-        HISTORY_MESSAGES_PREFIX + item.id,
-        JSON.stringify([message(`${item.id}-message`)]),
-      )
-    })
-    await useChatStore().importMessages(protectedMessages, 'replace')
-    const nativeSetItem = Storage.prototype.setItem
-    let quotaRaised = false
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
-      this: Storage,
-      key: string,
-      value: string,
-    ) {
-      if (key === HISTORY_MESSAGES_PREFIX + protectedHistory.id && !quotaRaised) {
-        quotaRaised = true
-        throw new DOMException('quota exceeded', 'QuotaExceededError')
-      }
-      nativeSetItem.call(this, key, value)
-    })
-
-    const savedId = await useHistory().saveCurrentChat(protectedHistory.id)
-
-    expect(savedId).toBe(protectedHistory.id)
-    expect(readHistoryList()).toHaveLength(5)
-    expect(readHistoryList().map((item) => item.id)).toContain(protectedHistory.id)
-    expect(
-      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + protectedHistory.id) || '[]'),
-    ).toHaveLength(2)
-    setItem.mockRestore()
+    expect(await readHistoryMessageIds(savedHistory.id)).toEqual([
+      'user-1',
+      'assistant-1',
+      'user-2',
+      'assistant-2',
+    ])
   })
 
   it('removes existing histories with identical message id snapshots and preserves favorites', async () => {
@@ -296,33 +255,23 @@ describe('history duplicate prevention', () => {
       isFavorite: true,
     })
     const unique = history('unique', { timestamp: 5 })
-    localStorage.setItem(
-      HISTORY_LIST_KEY,
-      JSON.stringify([newerDuplicate, favoriteDuplicate, unique]),
-    )
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + newerDuplicate.id,
-      JSON.stringify([message('same-user'), message('same-assistant')]),
-    )
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id,
-      JSON.stringify([message('same-user'), message('same-assistant')]),
-    )
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + unique.id,
-      JSON.stringify([message('unique-message')]),
-    )
+    await Promise.all([
+      putWebHistoryRecord(newerDuplicate, [message('same-user'), message('same-assistant')]),
+      putWebHistoryRecord(favoriteDuplicate, [message('same-user'), message('same-assistant')]),
+      putWebHistoryRecord(unique, [message('unique-message')]),
+    ])
 
-    const { historyList } = useHistory()
-    await flushPromises()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+    const { historyList } = historyApi
 
     expect(historyList.value.map((item) => item.id)).toEqual([newerDuplicate.id, unique.id])
-    expect(readHistoryList()[0]).toMatchObject({
+    expect((await readHistoryList())[0]).toMatchObject({
       id: newerDuplicate.id,
       isFavorite: true,
     })
-    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + favoriteDuplicate.id)).toBeNull()
-    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + newerDuplicate.id)).not.toBeNull()
+    expect(await getWebHistoryRecord(favoriteDuplicate.id)).toBeUndefined()
+    expect(await getWebHistoryRecord(newerDuplicate.id)).toBeDefined()
   })
 
   it('merges prefix-related history snapshots and keeps the complete renamed record', async () => {
@@ -346,15 +295,14 @@ describe('history duplicate prevention', () => {
       message('follow-up-user', { type: 'user', content: 'follow up prompt' }),
       message('follow-up-assistant'),
     ]
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([shorterSnapshot, longerSnapshot]))
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + shorterSnapshot.id,
-      JSON.stringify(shortMessages),
-    )
-    localStorage.setItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id, JSON.stringify(longMessages))
+    await Promise.all([
+      putWebHistoryRecord(shorterSnapshot, shortMessages),
+      putWebHistoryRecord(longerSnapshot, longMessages),
+    ])
 
-    const { historyList } = useHistory()
-    await flushPromises()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+    const { historyList } = historyApi
 
     expect(historyList.value).toHaveLength(1)
     expect(historyList.value[0]).toMatchObject({
@@ -363,54 +311,52 @@ describe('history duplicate prevention', () => {
       messageCount: 4,
       isFavorite: true,
     })
-    expect(localStorage.getItem(HISTORY_MESSAGES_PREFIX + shorterSnapshot.id)).toBeNull()
-    expect(
-      JSON.parse(localStorage.getItem(HISTORY_MESSAGES_PREFIX + longerSnapshot.id) || '[]').map(
-        (item: ChatMessage) => item.id,
-      ),
-    ).toEqual(['shared-user', 'shared-assistant', 'follow-up-user', 'follow-up-assistant'])
+    expect(await getWebHistoryRecord(shorterSnapshot.id)).toBeUndefined()
+    expect(await readHistoryMessageIds(longerSnapshot.id)).toEqual([
+      'shared-user',
+      'shared-assistant',
+      'follow-up-user',
+      'follow-up-assistant',
+    ])
   })
 
   it('does not merge separate chats with the same title and prompt', async () => {
     const first = history('first-history', { title: 'same prompt' })
     const second = history('second-history', { title: 'same prompt' })
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([first, second]))
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + first.id,
-      JSON.stringify([
+    await Promise.all([
+      putWebHistoryRecord(first, [
         message('first-user', { type: 'user', content: 'same prompt' }),
         message('first-assistant'),
       ]),
-    )
-    localStorage.setItem(
-      HISTORY_MESSAGES_PREFIX + second.id,
-      JSON.stringify([
+      putWebHistoryRecord(second, [
         message('second-user', { type: 'user', content: 'same prompt' }),
         message('second-assistant'),
       ]),
-    )
+    ])
 
-    const { historyList } = useHistory()
-    await flushPromises()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+    const { historyList } = historyApi
 
     expect(historyList.value.map((item) => item.id)).toEqual([first.id, second.id])
   })
 
   it('renames a saved history item and persists the title', async () => {
     const savedHistory = history('history-1', { title: 'Original title' })
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    await putWebHistoryRecord(savedHistory, [])
 
-    const { historyList, renameHistoryItem } = useHistory()
-    await flushPromises()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+    const { historyList, renameHistoryItem } = historyApi
     await renameHistoryItem(savedHistory.id, '  Renamed title  ')
 
     expect(historyList.value[0].title).toBe('Renamed title')
-    expect(readHistoryList()[0].title).toBe('Renamed title')
+    expect((await readHistoryList())[0].title).toBe('Renamed title')
   })
 
   it('keeps a renamed title when saving the same history again', async () => {
     const savedHistory = history('history-1', { title: 'Renamed title' })
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([savedHistory]))
+    await putWebHistoryRecord(savedHistory, [])
     await useChatStore().importMessages(
       [
         {
@@ -423,8 +369,10 @@ describe('history duplicate prevention', () => {
       'replace',
     )
 
-    await useHistory().saveCurrentChat(savedHistory.id)
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+    await historyApi.saveCurrentChat(savedHistory.id)
 
-    expect(readHistoryList()[0].title).toBe('Renamed title')
+    expect((await readHistoryList())[0].title).toBe('Renamed title')
   })
 })

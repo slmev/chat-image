@@ -60,6 +60,7 @@ export interface GeneratedImage {
   id: string
   url: string
   base64?: string
+  webStorageKey?: string
   localPath?: string
   originalUrl?: string
   mimeType?: string

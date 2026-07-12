@@ -3,9 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import HistorySidebar from '../../components/Layout/HistorySidebar.vue'
 import i18n from '../../i18n'
+import { getWebHistoryRecords, putWebHistoryRecord } from '../../platform/webPersistence'
 import type { ChatHistory } from '../../types'
-
-const HISTORY_LIST_KEY = 'chat-image-history-list'
 
 vi.mock('../../platform/runtime', () => ({
   isTauriRuntime: () => false,
@@ -43,8 +42,8 @@ function history(overrides: Partial<ChatHistory> = {}): ChatHistory {
   }
 }
 
-function readHistoryList(): ChatHistory[] {
-  return JSON.parse(localStorage.getItem(HISTORY_LIST_KEY) || '[]') as ChatHistory[]
+async function readHistoryList(): Promise<ChatHistory[]> {
+  return (await getWebHistoryRecords()).map((record) => record.history)
 }
 
 describe('HistorySidebar rename', () => {
@@ -56,7 +55,7 @@ describe('HistorySidebar rename', () => {
   })
 
   it('renames a saved conversation inline', async () => {
-    localStorage.setItem(HISTORY_LIST_KEY, JSON.stringify([history()]))
+    await putWebHistoryRecord(history(), [])
 
     const wrapper = mount(HistorySidebar, {
       props: {
@@ -70,6 +69,7 @@ describe('HistorySidebar rename', () => {
       },
     })
     await flushPromises()
+    await vi.waitFor(() => expect(wrapper.find('button[aria-label="重命名"]').exists()).toBe(true))
 
     await wrapper.get('button[aria-label="重命名"]').trigger('click')
     const input = wrapper.get('input[aria-label="对话标题"]')
@@ -78,6 +78,6 @@ describe('HistorySidebar rename', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Renamed title')
-    expect(readHistoryList()[0].title).toBe('Renamed title')
+    expect((await readHistoryList())[0].title).toBe('Renamed title')
   })
 })

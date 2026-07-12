@@ -142,6 +142,7 @@ export default {
   localStorageHint: '统计桌面端保存的生成图片和可清理文件',
   refresh: '刷新',
   loading: '加载中...',
+  storageInitializationFailed: '本地数据加载失败，请重试',
   imageCount: '图片数量',
   storageUsed: '占用空间',
   orphanImages: '孤儿图片',

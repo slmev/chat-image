@@ -3,23 +3,11 @@ import type {
   ApiConfig,
   ApiConfigProfile,
   ApiConfigState,
-  ChatMessage,
   Theme,
   GenerationOptions,
 } from '../types'
-import { reviveStoredImageUrls, stripBase64FromMessages } from './imagePersistence'
 
-export class PersistenceError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
-    super(message)
-    this.name = 'PersistenceError'
-    this.cause = options?.cause
-  }
-}
-
-export function isPersistenceError(error: unknown): error is PersistenceError {
-  return error instanceof PersistenceError
-}
+export { PersistenceError, isPersistenceError } from './persistenceError'
 
 // 通用的本地存储工具函数
 export function getFromStorage<T>(key: string, defaultValue: T): T {
@@ -168,55 +156,6 @@ export function setApiConfig(config: ApiConfig): void {
 
 export function clearApiConfig(): void {
   clearApiConfigState()
-}
-
-// 对话历史存储
-export function getChatHistory(): ChatMessage[] {
-  const messages = getFromStorage<ChatMessage[]>(STORAGE_KEYS.CHAT_HISTORY, [])
-  // Migration: ensure all messages have isFavorite field and revive persisted image data.
-  const migrated = messages.map((msg) => ({
-    ...msg,
-    isFavorite: msg.isFavorite ?? false,
-  }))
-  return reviveStoredImageUrls(migrated)
-}
-
-export function setChatHistory(messages: ChatMessage[]): Promise<void> {
-  try {
-    localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(messages))
-    return Promise.resolve()
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      // 图片 base64 可能较大，超限时优先保留最近的完整消息。
-      console.warn('Storage quota exceeded, trimming history...')
-      const trimmed = messages.slice(-20)
-      try {
-        localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(trimmed))
-        return Promise.resolve()
-      } catch {
-        try {
-          localStorage.setItem(
-            STORAGE_KEYS.CHAT_HISTORY,
-            JSON.stringify(stripBase64FromMessages(trimmed)),
-          )
-          console.warn('Saved trimmed history without image base64 data')
-          return Promise.resolve()
-        } catch {
-          console.error('Still cannot save after trimming. Consider clearing history.')
-          return Promise.reject(
-            new PersistenceError('Failed to save chat history', { cause: error }),
-          )
-        }
-      }
-    } else {
-      console.error('Error writing chat history:', error)
-      return Promise.reject(new PersistenceError('Failed to save chat history', { cause: error }))
-    }
-  }
-}
-
-export function clearChatHistory(): void {
-  removeFromStorage(STORAGE_KEYS.CHAT_HISTORY)
 }
 
 // 主题存储

@@ -1,7 +1,9 @@
 import type { GeneratedImage } from '../types'
-import { createDataUrlFromBase64 } from '../utils/imagePersistence'
 import { isBrowserReadableImageUrl, isExternalImageUrl } from '../utils/images'
 import type { ImageRepository, SaveGeneratedImageInput } from './imageRepository'
+import { deleteWebImages, getWebImage, putWebImage } from './webPersistence'
+
+const objectUrlCache = new Map<string, string>()
 
 function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
   const byteChars = atob(base64)
@@ -12,22 +14,38 @@ function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
   return new Blob([byteArray], { type: mimeType })
 }
 
+async function displayUrlForStorageKey(key: string): Promise<string> {
+  const cached = objectUrlCache.get(key)
+  if (cached) return cached
+
+  const blob = await getWebImage(key)
+  if (!blob) {
+    throw new Error('Stored image data is missing')
+  }
+  const url = URL.createObjectURL(blob)
+  objectUrlCache.set(key, url)
+  return url
+}
+
 export const webImageRepository: ImageRepository = {
   async saveGeneratedImage(input: SaveGeneratedImageInput): Promise<GeneratedImage> {
     const mimeType = input.mimeType || 'image/png'
     let url = input.url || ''
     let byteSize: number | undefined
+    let webStorageKey: string | undefined
 
     if (input.b64Json) {
       const blob = base64ToBlob(input.b64Json, mimeType)
       byteSize = blob.size
-      url = createDataUrlFromBase64(input.b64Json, mimeType)
+      webStorageKey = `web:${input.id}`
+      await putWebImage(webStorageKey, blob, input.timestamp, mimeType)
+      url = await displayUrlForStorageKey(webStorageKey)
     }
 
     return {
       id: input.id,
       url,
-      base64: input.b64Json,
+      webStorageKey,
       originalUrl: input.url,
       mimeType,
       byteSize,
@@ -38,16 +56,33 @@ export const webImageRepository: ImageRepository = {
   },
 
   async resolveDisplayUrl(image: GeneratedImage): Promise<GeneratedImage> {
-    if (image.base64) {
+    if (image.webStorageKey) {
       return {
         ...image,
-        url: createDataUrlFromBase64(image.base64, image.mimeType),
+        url: await displayUrlForStorageKey(image.webStorageKey),
+        base64: undefined,
       }
+    }
+    if (image.base64) {
+      return this.saveGeneratedImage({
+        id: image.id,
+        b64Json: image.base64,
+        url: image.originalUrl,
+        mimeType: image.mimeType,
+        timestamp: image.timestamp,
+        sourcePrompt: image.sourcePrompt,
+        sourceMessageId: image.sourceMessageId,
+      })
     }
     return image
   },
 
   async readImageBlob(image: GeneratedImage): Promise<Blob> {
+    if (image.webStorageKey) {
+      const blob = await getWebImage(image.webStorageKey)
+      if (!blob) throw new Error('图片数据不存在')
+      return blob
+    }
     if (image.base64) {
       return base64ToBlob(image.base64, image.mimeType)
     }
@@ -90,7 +125,23 @@ export const webImageRepository: ImageRepository = {
     URL.revokeObjectURL(blobUrl)
   },
 
-  async deleteImageFile(): Promise<void> {
-    return
+  async deleteImageFile(image: GeneratedImage): Promise<void> {
+    if (!image.webStorageKey) return
+    const url = objectUrlCache.get(image.webStorageKey)
+    if (url) {
+      URL.revokeObjectURL(url)
+      objectUrlCache.delete(image.webStorageKey)
+    }
+    await deleteWebImages([image.webStorageKey])
   },
+}
+
+export function revokeWebImageObjectUrls(images: GeneratedImage[]): void {
+  images.forEach((image) => {
+    if (!image.webStorageKey) return
+    const url = objectUrlCache.get(image.webStorageKey)
+    if (!url) return
+    URL.revokeObjectURL(url)
+    objectUrlCache.delete(image.webStorageKey)
+  })
 }

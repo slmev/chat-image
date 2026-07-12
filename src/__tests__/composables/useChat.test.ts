@@ -20,6 +20,7 @@ const mockState = vi.hoisted(() => ({
   persistChatAttachments: vi.fn(),
   persistGeneratedImagesFromResponse: vi.fn(),
   deleteUnreferencedLocalImages: vi.fn(),
+  setWebCurrentMessages: vi.fn(),
 }))
 
 vi.mock('../../platform/runtime', () => ({
@@ -36,6 +37,11 @@ vi.mock('../../platform/metadataStore', () => ({
 
 vi.mock('../../platform/imageReferenceCleanup', () => ({
   deleteUnreferencedLocalImages: mockState.deleteUnreferencedLocalImages,
+}))
+
+vi.mock('../../platform/webPersistence', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../platform/webPersistence')>()),
+  setWebCurrentMessages: mockState.setWebCurrentMessages,
 }))
 
 vi.mock('../../composables/useImageGeneration', () => ({
@@ -105,10 +111,13 @@ describe('useChat', () => {
     mockState.persistGeneratedImagesFromResponse.mockReset()
     mockState.deleteUnreferencedLocalImages.mockReset()
     mockState.deleteUnreferencedLocalImages.mockResolvedValue(undefined)
+    mockState.setWebCurrentMessages.mockReset()
+    mockState.setWebCurrentMessages.mockResolvedValue(undefined)
     Object.defineProperty(URL, 'revokeObjectURL', {
       configurable: true,
       value: vi.fn(),
     })
+    await useChatStore().hydrateFromPersistence()
     await useChat().clearChat()
   })
 
@@ -381,9 +390,9 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('quota exceeded', 'QuotaExceededError')
-    })
+    mockState.setWebCurrentMessages.mockRejectedValue(
+      new PersistenceError('Failed to save chat history'),
+    )
     const chatStore = useChatStore()
 
     await expect(
@@ -402,7 +411,6 @@ describe('useChat', () => {
     expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'image-1' }),
     ])
-    setItem.mockRestore()
     consoleError.mockRestore()
   })
 
@@ -421,9 +429,9 @@ describe('useChat', () => {
       error: 'previous failure',
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new DOMException('quota exceeded', 'QuotaExceededError')
-    })
+    mockState.setWebCurrentMessages.mockRejectedValue(
+      new PersistenceError('Failed to save chat history'),
+    )
 
     await expect(
       useChat().retryMessage(assistantMessage.id, 'retry without storage', {
@@ -440,7 +448,6 @@ describe('useChat', () => {
     })
     expect(mockState.generateImage).not.toHaveBeenCalled()
     expect(chatStore.isLoading).toBe(false)
-    setItem.mockRestore()
     consoleError.mockRestore()
   })
 

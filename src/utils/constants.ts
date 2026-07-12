@@ -151,6 +151,9 @@ export const STORAGE_KEYS = {
   CUSTOM_STYLES: 'chat-image-custom-styles',
 } as const
 
+export const HISTORY_LIST_KEY = 'chat-image-history-list'
+export const HISTORY_MESSAGES_PREFIX = 'chat-image-history-messages-'
+
 // API 错误消息
 export const API_ERROR_MESSAGES = {
   INVALID_KEY: 'API Key 无效，请检查您的密钥',

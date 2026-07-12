@@ -118,4 +118,48 @@ describe('image persistence', () => {
     })
     expect(result[0].images?.[0].base64).toBeUndefined()
   })
+
+  it('resolves and strips generation-only attachments', async () => {
+    const storedAttachment = {
+      id: 'generation-reference',
+      name: 'reference.png',
+      url: 'images/reference.png',
+      localPath: 'images/reference.png',
+      base64: 'image-data',
+      timestamp: 1,
+    }
+    mockState.resolveDisplayUrl.mockResolvedValue({
+      ...storedAttachment,
+      url: 'blob:generation-reference',
+    })
+    const messages: ChatMessage[] = [
+      {
+        id: 'message-1',
+        type: 'assistant',
+        content: 'done',
+        timestamp: 1,
+        status: 'success',
+        generation: {
+          prompt: 'use the reference',
+          size: 'auto',
+          quality: 'auto',
+          n: 1,
+          attachmentIds: [storedAttachment.id],
+          attachments: [storedAttachment],
+        },
+      },
+    ]
+
+    const { resolveStoredImageUrls, stripBase64FromMessages } =
+      await import('../../utils/imagePersistence')
+    const resolved = await resolveStoredImageUrls(messages)
+    const stripped = stripBase64FromMessages(resolved)
+
+    expect(mockState.resolveDisplayUrl).toHaveBeenCalledWith(storedAttachment)
+    expect(stripped[0].generation?.attachments?.[0]).toMatchObject({
+      url: 'images/reference.png',
+      localPath: 'images/reference.png',
+    })
+    expect(stripped[0].generation?.attachments?.[0].base64).toBeUndefined()
+  })
 })
