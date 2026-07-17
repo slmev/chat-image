@@ -20,8 +20,6 @@ import { imageStorageIdentity } from '../utils/imagePersistence'
 import { deleteUnreferencedLocalImages } from '../platform/imageReferenceCleanup'
 import i18n from '../i18n'
 
-// 当前加载或已保存的历史记录 ID。useChat 会被多个组件调用，需要跨实例共享。
-let currentHistoryId: string | null = null
 let activeGenerationToken: symbol | null = null
 
 export function useChat() {
@@ -191,7 +189,7 @@ export function useChat() {
     }
 
     try {
-      currentHistoryId = await saveCurrentChat(currentHistoryId)
+      chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
     } catch (error) {
       if (isPersistenceError(error)) {
         await markPersistenceFailure(message.id, images)
@@ -284,7 +282,7 @@ export function useChat() {
         await chatStore.addImagesToMessage(assistantMessage.id, generatedImages)
 
         // 自动保存到历史记录
-        currentHistoryId = await saveCurrentChat(currentHistoryId)
+        chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
       } catch (error) {
         if (activeGenerationToken !== generationToken) {
           if (generatedImages.length > 0) {
@@ -333,6 +331,9 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
+    const retryTarget = chatStore.messages.find((message) => message.id === messageId)
+    if (!retryTarget || retryTarget.type !== 'assistant') return
+
     const generationOptions = normalizeGenerationOptions(options)
     const generation = createGenerationMetadata(content, generationOptions, attachments)
     const generationToken = Symbol('generation')
@@ -354,6 +355,7 @@ export function useChat() {
         }
         return
       }
+      if (!canCommitGeneration(generationToken, messageId)) return
       let generatedImages: GeneratedImage[] = []
 
       try {
@@ -370,7 +372,7 @@ export function useChat() {
         }
 
         await chatStore.addImagesToMessage(messageId, generatedImages)
-        currentHistoryId = await saveCurrentChat(currentHistoryId)
+        chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
       } catch (error) {
         if (activeGenerationToken !== generationToken) {
           if (generatedImages.length > 0) {
@@ -381,7 +383,7 @@ export function useChat() {
 
         if (isImageGenerationCanceledError(error)) {
           await chatStore.setMessageCanceled(messageId, t('canceled'))
-          currentHistoryId = await saveCurrentChat(currentHistoryId)
+          chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
           return
         }
 
@@ -392,7 +394,7 @@ export function useChat() {
 
         const errorMessage = error instanceof Error ? error.message : t('generationFailed')
         await markGenerationFailure(messageId, errorMessage)
-        currentHistoryId = await saveCurrentChat(currentHistoryId)
+        chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
         throw error
       }
     } finally {
@@ -516,7 +518,7 @@ export function useChat() {
   async function clearChat(): Promise<void> {
     requireChatMessageWritesAvailable()
     await chatStore.clearMessages()
-    currentHistoryId = null
+    chatStore.setCurrentHistoryId(null)
   }
 
   // 开始新对话
@@ -526,27 +528,27 @@ export function useChat() {
 
     // 保存当前对话
     if (chatStore.messages.length > 0) {
-      currentHistoryId = await saveCurrentChat(currentHistoryId)
+      chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
     }
     // 清空当前消息
     await chatStore.clearMessages()
-    currentHistoryId = null
+    chatStore.setCurrentHistoryId(null)
   }
 
   // 加载历史对话
   async function loadChat(historyId: string): Promise<boolean> {
     requireChatMessageWritesAvailable()
-    if (currentHistoryId !== historyId) {
+    if (chatStore.currentHistoryId !== historyId) {
       await cancelActiveGenerationBeforeLeavingChat()
     }
 
-    if (chatStore.messages.length > 0 && currentHistoryId !== historyId) {
-      currentHistoryId = await saveCurrentChat(currentHistoryId)
+    if (chatStore.messages.length > 0 && chatStore.currentHistoryId !== historyId) {
+      chatStore.setCurrentHistoryId(await saveCurrentChat(chatStore.currentHistoryId))
     }
 
     const messages = await loadHistoryChat(historyId)
     if (messages) {
-      currentHistoryId = historyId
+      chatStore.setCurrentHistoryId(historyId)
       return true
     }
     return false
@@ -554,13 +556,13 @@ export function useChat() {
 
   // 获取当前历史记录 ID
   function getCurrentHistoryId(): string | null {
-    return currentHistoryId
+    return chatStore.currentHistoryId
   }
 
   async function ensureCurrentChatSaved(): Promise<string | null> {
     requireChatMessageWritesAvailable()
-    currentHistoryId = await ensureCurrentChatInHistory(currentHistoryId)
-    return currentHistoryId
+    chatStore.setCurrentHistoryId(await ensureCurrentChatInHistory(chatStore.currentHistoryId))
+    return chatStore.currentHistoryId
   }
 
   return {

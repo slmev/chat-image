@@ -110,11 +110,14 @@ function importFile(): File {
   return new File(['zip'], 'history.zip', { type: 'application/zip' })
 }
 
-async function runImport(mode: 'replace' | 'merge') {
+async function runImport(mode: 'replace' | 'merge', currentHistoryId?: string) {
   const { useHistory } = await import('../../composables/useHistory')
   const { useChatStore } = await import('../../stores/chat')
   const chatStore = useChatStore()
   await chatStore.hydrateFromPersistence()
+  if (currentHistoryId) {
+    chatStore.setCurrentHistoryId(currentHistoryId)
+  }
   return {
     chatStore,
     result: await useHistory().importHistory(importFile(), mode),
@@ -281,6 +284,22 @@ describe('useHistory desktop ZIP import', () => {
     ])
   })
 
+  it('keeps a committed merge successful when unused image cleanup fails', async () => {
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    const data = importedData()
+    importDesktopHistoryZip.mockResolvedValue({ success: true, data })
+    const cleanupError = new Error('cleanup module unavailable')
+    cleanupDesktopImportedImages.mockRejectedValue(cleanupError)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const { chatStore, result } = await runImport('merge')
+
+    expect(result).toEqual({ success: true, message: '历史记录已合并' })
+    expect(chatStore.messages.map((item) => item.id)).toEqual(['old-current', 'new-current'])
+    expect(warn).toHaveBeenCalledWith('Failed to clean up unused imported images:', cleanupError)
+    warn.mockRestore()
+  })
+
   it('does not mutate data when ZIP validation fails', async () => {
     metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
     metadata.set(HISTORY_LIST_KEY, [history('old-history')])
@@ -295,6 +314,62 @@ describe('useHistory desktop ZIP import', () => {
     expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([message('old-current')])
     expect(metadata.get(HISTORY_LIST_KEY)).toEqual([history('old-history')])
     expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
+  })
+
+  it('rejects JSON messages with invalid scalar fields', async () => {
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    const { useChatStore } = await import('../../stores/chat')
+    const { useHistory } = await import('../../composables/useHistory')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const file = new File(
+      [
+        JSON.stringify({
+          version: 1,
+          messages: [
+            {
+              id: 123,
+              type: 'system',
+              content: 'malformed',
+              timestamp: 1,
+              status: 'done',
+            },
+          ],
+        }),
+      ],
+      'history.json',
+      { type: 'application/json' },
+    )
+
+    await expect(useHistory().importHistory(file, 'replace')).resolves.toEqual({
+      success: false,
+      message: '文件数据格式不正确',
+    })
+    expect(chatStore.messages.map((item) => item.id)).toEqual(['old-current'])
+  })
+
+  it('rejects duplicate message IDs in a JSON import', async () => {
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    const { useChatStore } = await import('../../stores/chat')
+    const { useHistory } = await import('../../composables/useHistory')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const file = new File(
+      [
+        JSON.stringify({
+          version: 1,
+          messages: [message('duplicate'), message('duplicate')],
+        }),
+      ],
+      'history.json',
+      { type: 'application/json' },
+    )
+
+    await expect(useHistory().importHistory(file, 'replace')).resolves.toEqual({
+      success: false,
+      message: '文件数据格式不正确',
+    })
+    expect(chatStore.messages.map((item) => item.id)).toEqual(['old-current'])
   })
 
   it('blocks history writes for the entire ZIP import workflow', async () => {
@@ -428,6 +503,58 @@ describe('useHistory desktop ZIP import', () => {
     expect(importDesktopHistoryZip).toHaveBeenCalledTimes(1)
   })
 
+  it('waits for every replace deletion to settle before rolling back', async () => {
+    const firstHistory = history('old-history-1')
+    const secondHistory = history('old-history-2')
+    const firstMessages = [message('old-history-message-1')]
+    const secondMessages = [message('old-history-message-2')]
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [firstHistory, secondHistory])
+    metadata.set(HISTORY_MESSAGES_PREFIX + firstHistory.id, firstMessages)
+    metadata.set(HISTORY_MESSAGES_PREFIX + secondHistory.id, secondMessages)
+    importDesktopHistoryZip.mockResolvedValue({ success: true, data: importedData() })
+    const { useHistory } = await import('../../composables/useHistory')
+    const { useChatStore } = await import('../../stores/chat')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+
+    let finishSecondDelete: () => void = () => undefined
+    const secondDeleteGate = new Promise<void>((resolve) => {
+      finishSecondDelete = resolve
+    })
+    removeMetadataValue.mockImplementation(async (key: string): Promise<void> => {
+      if (key === HISTORY_MESSAGES_PREFIX + firstHistory.id) {
+        throw new Error('first delete failed')
+      }
+      if (key === HISTORY_MESSAGES_PREFIX + secondHistory.id) {
+        await secondDeleteGate
+      }
+      metadata.delete(key)
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    let importSettled = false
+    const importPromise = historyApi.importHistory(importFile(), 'replace').then((result) => {
+      importSettled = true
+      return result
+    })
+    await vi.waitFor(() => expect(removeMetadataValue).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(importSettled).toBe(false)
+
+    finishSecondDelete()
+    await expect(importPromise).resolves.toEqual({
+      success: false,
+      message: '导入失败，现有数据已保持不变',
+    })
+    expect(metadata.get(HISTORY_LIST_KEY)).toEqual([firstHistory, secondHistory])
+    expect(metadata.get(HISTORY_MESSAGES_PREFIX + firstHistory.id)).toEqual(firstMessages)
+    expect(metadata.get(HISTORY_MESSAGES_PREFIX + secondHistory.id)).toEqual(secondMessages)
+    consoleError.mockRestore()
+  })
+
   it('waits for an active history clear before reading a history to load', async () => {
     const oldHistory = history('old-history')
     const currentMessage = message('current-message')
@@ -492,6 +619,7 @@ describe('useHistory desktop ZIP import', () => {
       }
       metadata.set(key, value)
     })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     const { result } = await runImport('replace')
 
@@ -504,6 +632,8 @@ describe('useHistory desktop ZIP import', () => {
       expect.objectContaining({ id: 'old-history-message' }),
     ])
     expect(cleanupDesktopImportedImages).toHaveBeenCalledWith(['images/imported.png'])
+    expect(consoleError).toHaveBeenCalledWith('Desktop ZIP import commit error:', expect.any(Error))
+    consoleError.mockRestore()
   })
 
   it('keeps imported images when ZIP rollback is incomplete', async () => {
@@ -552,12 +682,13 @@ describe('useHistory desktop ZIP import', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
-    const { result } = await runImport('replace')
+    const { chatStore, result } = await runImport('replace', oldHistory.id)
 
     expect(result).toEqual({
       success: false,
       message: '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留',
     })
+    expect(chatStore.currentHistoryId).toBeNull()
     expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
     expect(metadata.get(HISTORY_LIST_KEY)).toEqual([newHistory])
     expect(metadata.get(HISTORY_MESSAGES_PREFIX + oldHistory.id)).toEqual([
@@ -578,6 +709,7 @@ describe('useHistory desktop ZIP import', () => {
     const { useHistory } = await import('../../composables/useHistory')
     const chatStore = useChatStore()
     await chatStore.hydrateFromPersistence()
+    chatStore.setCurrentHistoryId('old-history')
     setMetadataValue.mockRejectedValue(new Error('disk unavailable'))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const file = new File(
@@ -597,6 +729,7 @@ describe('useHistory desktop ZIP import', () => {
       success: false,
       message: '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留',
     })
+    expect(chatStore.currentHistoryId).toBeNull()
     expect(chatStore.messages.map((item) => item.id)).toEqual(['old-current'])
     expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
     consoleError.mockRestore()

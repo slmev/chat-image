@@ -114,6 +114,7 @@ async function mountContainer(options: { configured?: boolean } = {}) {
     global: {
       plugins: [pinia],
       stubs: {
+        ConfigSwitcher: true,
         SearchBar: true,
         MessageBubble: true,
         PromptPanel: true,

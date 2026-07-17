@@ -172,6 +172,28 @@ describe('useChat', () => {
     expect(mockState.saveCurrentChat).toHaveBeenCalledTimes(1)
   })
 
+  it('does not call the image API when the retry target no longer exists', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chatStore = useChatStore()
+
+    await expect(
+      useChat().retryMessage('missing-message', 'retry stale message', {
+        size: 'auto',
+        quality: 'auto',
+        n: 1,
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(chatStore.messages).toEqual([])
+    expect(chatStore.isLoading).toBe(false)
+  })
+
   it('passes retry attachments through to image generation', async () => {
     const reference = attachment()
     mockState.generateImage.mockResolvedValueOnce([generatedImage()])

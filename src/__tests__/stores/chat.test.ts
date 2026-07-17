@@ -203,6 +203,36 @@ describe('chat store', () => {
     expect(order).toEqual(['first:start', 'first:fail', 'second:start', 'second:finish'])
   })
 
+  it('waits for an active history write when flushing from outside the queue', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    let markWriteStarted: () => void = () => undefined
+    const writeStarted = new Promise<void>((resolve) => {
+      markWriteStarted = resolve
+    })
+    let finishWrite: () => void = () => undefined
+    const writeGate = new Promise<void>((resolve) => {
+      finishWrite = resolve
+    })
+    const historyWrite = store.runHistoryWrite(async () => {
+      markWriteStarted()
+      await writeGate
+    })
+    await writeStarted
+
+    let flushFinished = false
+    const flush = store.flushHistorySave().then(() => {
+      flushFinished = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(flushFinished).toBe(false)
+
+    finishWrite()
+    await historyWrite
+    await flush
+    expect(flushFinished).toBe(true)
+  })
+
   it('keeps an external message update queued behind a history rollback', async () => {
     const { useChatStore } = await import('../../stores/chat')
     const store = useChatStore()
@@ -491,11 +521,12 @@ describe('chat store', () => {
     ).rejects.toThrow('Failed to save chat history')
 
     expect(store.messages).toEqual([])
-    expect(setMetadataValue).toHaveBeenCalledTimes(1)
+    expect(setMetadataValue).toHaveBeenCalledTimes(2)
     expect(setMetadataValue.mock.calls[0][1]).toMatchObject([
       { type: 'user', content: 'prompt' },
       { type: 'assistant', content: 'generating' },
     ])
+    expect(setMetadataValue.mock.calls[1][1]).toEqual([])
   })
 
   it('rolls back a message update when desktop persistence fails', async () => {
@@ -524,6 +555,51 @@ describe('chat store', () => {
       status: 'error',
       error: 'previous failure',
     })
+  })
+
+  it('restores the persisted desktop snapshot after an ordinary write fails', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+    const message = await store.addMessage({
+      type: 'assistant',
+      content: 'before update',
+      status: 'success',
+    })
+    setMetadataValue.mockClear()
+    setMetadataValue.mockRejectedValueOnce(new Error('save failed after applying value'))
+
+    await expect(store.updateMessage(message.id, { content: 'partial update' })).rejects.toThrow(
+      'Failed to save chat history',
+    )
+
+    expect(setMetadataValue).toHaveBeenCalledTimes(2)
+    expect(setMetadataValue.mock.calls[0][1]).toMatchObject([{ content: 'partial update' }])
+    expect(setMetadataValue.mock.calls[1][1]).toMatchObject([{ content: 'before update' }])
+    expect(store.messages[0].content).toBe('before update')
+  })
+
+  it('cleans images removed by a successful message update', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+    const image = {
+      id: 'old-image',
+      url: '',
+      localPath: 'images/old-image.png',
+      timestamp: 1,
+    }
+    const message = await store.addMessage({
+      type: 'assistant',
+      content: 'generated',
+      status: 'success',
+      images: [image],
+    })
+    deleteUnreferencedLocalImages.mockClear()
+
+    await store.updateMessage(message.id, { images: undefined, status: 'pending' })
+
+    expect(deleteUnreferencedLocalImages).toHaveBeenCalledWith([image])
   })
 
   it('rolls back a favorite update when persistence fails', async () => {
@@ -891,6 +967,27 @@ describe('chat store', () => {
     )
 
     expect(resolveDisplayUrl).not.toHaveBeenCalled()
+    expect(setMetadataValue).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate IDs within a direct message import', async () => {
+    const { useChatStore } = await import('../../stores/chat')
+    const store = useChatStore()
+    await store.hydrateFromPersistence()
+    setMetadataValue.mockClear()
+    const duplicate = {
+      id: 'duplicate',
+      type: 'assistant' as const,
+      content: 'duplicate',
+      timestamp: 1,
+      status: 'success' as const,
+    }
+
+    await expect(store.importMessages([duplicate, { ...duplicate }], 'replace')).rejects.toThrow(
+      'duplicate IDs',
+    )
+
+    expect(store.messages).toEqual([])
     expect(setMetadataValue).not.toHaveBeenCalled()
   })
 

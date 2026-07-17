@@ -153,6 +153,7 @@ describe('history duplicate prevention', () => {
     const { useChat: useFreshChat } = await import('../../composables/useChat')
     const reloadedChat = useFreshChat()
     await reloadedChat.chatStore.hydrateFromPersistence()
+    await reloadedChat.hydrateHistoryList()
 
     await reloadedChat.sendMessage('add rain reflections', {
       size: 'auto',
@@ -374,5 +375,46 @@ describe('history duplicate prevention', () => {
     await historyApi.saveCurrentChat(savedHistory.id)
 
     expect((await readHistoryList())[0].title).toBe('Renamed title')
+  })
+
+  it('detaches a replace import from the previously loaded history', async () => {
+    const savedHistory = history('history-before-import', {
+      title: 'Original saved chat',
+      messageCount: 2,
+    })
+    const savedMessages = [
+      message('old-user', { type: 'user', content: 'old prompt' }),
+      message('old-assistant'),
+    ]
+    await putWebHistoryRecord(savedHistory, savedMessages)
+
+    const chat = useChat()
+    await chat.hydrateHistoryList()
+    await expect(chat.loadChat(savedHistory.id)).resolves.toBe(true)
+
+    const importedMessages = [
+      message('imported-user', { type: 'user', content: 'imported prompt' }),
+      message('imported-assistant'),
+    ]
+    const importResult = await useHistory().importHistory(
+      new File(
+        [JSON.stringify({ version: 1, exportedAt: 1, messages: importedMessages })],
+        'history.json',
+        { type: 'application/json' },
+      ),
+      'replace',
+    )
+    expect(importResult.success).toBe(true)
+
+    const importedHistoryId = await chat.ensureCurrentChatSaved()
+    const storedHistories = await readHistoryList()
+
+    expect(importedHistoryId).not.toBe(savedHistory.id)
+    expect(storedHistories).toHaveLength(2)
+    expect(await readHistoryMessageIds(savedHistory.id)).toEqual(['old-user', 'old-assistant'])
+    expect(await readHistoryMessageIds(importedHistoryId as string)).toEqual([
+      'imported-user',
+      'imported-assistant',
+    ])
   })
 })

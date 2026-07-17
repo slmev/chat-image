@@ -11,6 +11,7 @@ import type {
 import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
 import { PersistenceError, generateId } from '../utils/storage'
 import { imageStorageIdentity, stripBase64FromMessages } from '../utils/imagePersistence'
+import { parseImportedMessages } from '../utils/chatImportValidation'
 import {
   HISTORY_LIST_KEY,
   HISTORY_MESSAGES_PREFIX,
@@ -117,8 +118,61 @@ function cloneData<T>(value: T): T {
 const historyList = ref<ChatHistory[]>([])
 
 class DesktopZipImportRollbackError extends PersistenceError {}
+class HistoryDeduplicationRollbackError extends PersistenceError {}
 const IMPORT_ROLLBACK_INCOMPLETE_MESSAGE =
   '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留'
+
+async function waitForAllOrThrow(promises: Promise<unknown>[]): Promise<void> {
+  const results = await Promise.allSettled(promises)
+  const failure = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  )
+  if (failure) throw failure.reason
+}
+
+async function restoreHistoryRecordsSnapshot(
+  snapshotList: ChatHistory[],
+  snapshotMessages: Map<string, ChatMessage[]>,
+  newHistoryIds: Iterable<string> = [],
+): Promise<unknown[]> {
+  const rollbackErrors: unknown[] = []
+  historyList.value = cloneData(snapshotList)
+
+  try {
+    await setHistoryList(snapshotList)
+  } catch (error) {
+    rollbackErrors.push(error)
+  }
+
+  for (const [historyId, messages] of snapshotMessages) {
+    try {
+      await setHistoryMessages(historyId, messages)
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+  }
+
+  for (const historyId of newHistoryIds) {
+    if (snapshotMessages.has(historyId)) continue
+    try {
+      await deleteHistoryMessages(historyId)
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+  }
+
+  historyList.value = cloneData(snapshotList)
+  return rollbackErrors
+}
+
+async function cleanupRemovedHistoryImages(images: GeneratedImage[]): Promise<void> {
+  if (images.length === 0) return
+  try {
+    await deleteUnreferencedLocalImages(images)
+  } catch (error) {
+    console.warn('Failed to clean up removed history images:', error)
+  }
+}
 
 function messageIds(messages: ChatMessage[]): string[] {
   return messages.map((message) => message.id)
@@ -246,18 +300,44 @@ async function removeDuplicateHistories(
 
   if (idsToRemove.size === 0) return list
 
-  await Promise.all(
-    Array.from(mergedSnapshots.values()).map(async ({ item, messages }) => {
-      await setHistoryMessages(item.id, messages)
-    }),
-  )
-
-  await Promise.all(Array.from(idsToRemove).map((id) => deleteHistoryMessages(id)))
   const deduped = list
     .filter((item) => !idsToRemove.has(item.id))
     .map((item) => mergedSnapshots.get(item.id)?.item || item)
-  await setHistoryList(deduped)
-  return deduped
+  const snapshotMessages = new Map(
+    snapshots.map(({ item, messages }) => [item.id, cloneData(messages)] as const),
+  )
+  const removedImages = snapshots
+    .filter(({ item }) => idsToRemove.has(item.id))
+    .flatMap(({ messages }) => collectImages(messages))
+
+  try {
+    await waitForAllOrThrow(
+      Array.from(mergedSnapshots.values()).map(async ({ item, messages }) => {
+        await setHistoryMessages(item.id, messages)
+      }),
+    )
+
+    const deleteResults = await Promise.allSettled(
+      Array.from(idsToRemove).map((id) => deleteHistoryMessages(id)),
+    )
+    const failedDelete = deleteResults.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    )
+    if (failedDelete) throw failedDelete.reason
+    await setHistoryList(deduped)
+    await cleanupRemovedHistoryImages(removedImages)
+    return deduped
+  } catch (originalError) {
+    const rollbackErrors = await restoreHistoryRecordsSnapshot(list, snapshotMessages)
+    if (rollbackErrors.length > 0) {
+      console.error('History deduplication rollback failed:', rollbackErrors)
+      throw new HistoryDeduplicationRollbackError(
+        'History deduplication failed and rollback was incomplete',
+        { cause: { originalError, rollbackErrors } },
+      )
+    }
+    throw originalError
+  }
 }
 
 async function refreshHistoryList(
@@ -324,9 +404,11 @@ export function useHistory() {
     const firstUserMessage = messages.find((message) => message.type === 'user')
     return firstUserMessage?.content.slice(0, 50) || t('newChat')
   }
-  void runHistoryWrite(() => refreshHistoryList(defaultHistoryTitle)).catch((error) => {
-    console.error('Failed to load history list:', error)
-  })
+  if (chatStore.hasHydratedPersistence) {
+    void runHistoryWrite(() => refreshHistoryList(defaultHistoryTitle)).catch((error) => {
+      console.error('Failed to load history list:', error)
+    })
+  }
 
   async function hydrateHistoryList(): Promise<void> {
     await runHistoryWrite(() => refreshHistoryList(defaultHistoryTitle))
@@ -337,7 +419,6 @@ export function useHistory() {
     if (!chatStore.hasHydratedDesktopHistory) {
       await chatStore.hydrateFromPersistence()
     }
-    await chatStore.flushHistorySave()
   }
 
   async function findMatchingHistory(messages: ChatMessage[]): Promise<ChatHistory | undefined> {
@@ -372,6 +453,26 @@ export function useHistory() {
         list.map(async (item) => [item.id, await readHistoryMessages(item.id)] as const),
       ),
     )
+  }
+
+  async function rollbackDesktopHistoryWrite(
+    snapshotList: ChatHistory[],
+    snapshotMessages: Map<string, ChatMessage[]>,
+    originalError: unknown,
+    newHistoryIds: Iterable<string> = [],
+  ): Promise<never> {
+    const rollbackErrors = await restoreHistoryRecordsSnapshot(
+      snapshotList,
+      snapshotMessages,
+      newHistoryIds,
+    )
+    if (rollbackErrors.length > 0) {
+      console.error('Desktop history write rollback failed:', rollbackErrors)
+      throw new PersistenceError('Desktop history write failed and rollback was incomplete', {
+        cause: { originalError, rollbackErrors },
+      })
+    }
+    throw originalError
   }
 
   interface GalleryMutationSnapshot {
@@ -569,9 +670,9 @@ export function useHistory() {
 
     try {
       if (mode === 'replace') {
-        await Promise.all(currentHistoryList.map((item) => deleteHistoryMessages(item.id)))
+        await waitForAllOrThrow(currentHistoryList.map((item) => deleteHistoryMessages(item.id)))
         await setHistoryList(data.historyList)
-        await Promise.all(
+        await waitForAllOrThrow(
           data.historyList.map((item) =>
             setHistoryMessages(item.id, data.historyMessages[item.id] || []),
           ),
@@ -594,7 +695,7 @@ export function useHistory() {
         })
 
         await setHistoryList(mergedHistoryList)
-        await Promise.all(
+        await waitForAllOrThrow(
           newHistoryItems.map((item) =>
             setHistoryMessages(item.id, data.historyMessages[item.id] || []),
           ),
@@ -685,27 +786,41 @@ export function useHistory() {
       preview: firstUserMessage?.content.slice(0, 100),
     }
 
-    await chatStore.flushHistorySave()
-    const previousList = historyList.value
+    const previousList = cloneData(historyList.value)
     const nextList = historyCandidate
       ? historyList.value.map((item) => (item.id === historyId ? history : item))
       : [history, ...historyList.value]
+    const replacedMessages = historyCandidate ? cloneData(await readHistoryMessages(historyId)) : []
 
     if (!isTauriRuntime()) {
       await putWebHistoryRecord(history, chatStore.messages)
       historyList.value = nextList
     } else {
-      await setHistoryMessages(historyId, chatStore.messages)
-      historyList.value = nextList
+      const snapshotMessages = new Map<string, ChatMessage[]>()
+      if (historyCandidate) {
+        snapshotMessages.set(historyId, replacedMessages)
+      }
       try {
-        await setHistoryList(historyList.value)
+        await setHistoryMessages(historyId, chatStore.messages)
+        historyList.value = nextList
+        await setHistoryList(nextList)
       } catch (error) {
-        historyList.value = previousList
-        throw error
+        await rollbackDesktopHistoryWrite(
+          previousList,
+          snapshotMessages,
+          error,
+          historyCandidate ? [] : [historyId],
+        )
       }
     }
 
-    historyList.value = await removeDuplicateHistories(historyList.value, defaultHistoryTitle)
+    try {
+      historyList.value = await removeDuplicateHistories(historyList.value, defaultHistoryTitle)
+    } catch (error) {
+      if (error instanceof HistoryDeduplicationRollbackError) throw error
+      console.warn('Failed to deduplicate saved histories:', error)
+    }
+    await cleanupRemovedHistoryImages(collectImages(replacedMessages))
 
     if (historyList.value.some((item) => item.id === historyId)) {
       return historyId
@@ -723,7 +838,6 @@ export function useHistory() {
   ): Promise<string | null> {
     if (chatStore.messages.length === 0) return null
 
-    await chatStore.flushHistorySave()
     const existingHistory = existingHistoryId
       ? historyList.value.find((item) => item.id === existingHistoryId)
       : undefined
@@ -752,34 +866,52 @@ export function useHistory() {
   // 删除历史记录
   function deleteHistoryItem(id: string): Promise<void> {
     return runHistoryWrite(async () => {
-      const removedMessages = await readHistoryMessages(id)
-      const nextList = historyList.value.filter((history) => history.id !== id)
+      const removedMessages = cloneData(await readHistoryMessages(id))
+      const previousList = cloneData(historyList.value)
+      const nextList = previousList.filter((history) => history.id !== id)
       if (isTauriRuntime()) {
-        await setHistoryList(nextList)
-        await deleteHistoryMessages(id)
+        try {
+          await setHistoryList(nextList)
+          await deleteHistoryMessages(id)
+        } catch (error) {
+          await rollbackDesktopHistoryWrite(previousList, new Map([[id, removedMessages]]), error)
+        }
       } else {
         await deleteWebHistoryRecords([id])
       }
       historyList.value = nextList
-      await deleteUnreferencedLocalImages(collectImages(removedMessages))
+      await cleanupRemovedHistoryImages(collectImages(removedMessages))
     })
   }
 
   // 清空所有历史记录
   function clearHistory(): Promise<void> {
     return runHistoryWrite(async () => {
-      const targetHistories = [...historyList.value]
-      const removedMessages = (
-        await Promise.all(targetHistories.map((h) => readHistoryMessages(h.id)))
-      ).flat()
+      const targetHistories = cloneData(historyList.value)
+      const removedMessageEntries = await Promise.all(
+        targetHistories.map(
+          async (item) => [item.id, cloneData(await readHistoryMessages(item.id))] as const,
+        ),
+      )
+      const removedMessages = removedMessageEntries.flatMap(([, messages]) => messages)
       if (isTauriRuntime()) {
-        await Promise.all(targetHistories.map((history) => deleteHistoryMessages(history.id)))
-        await setHistoryList([])
+        try {
+          const deleteResults = await Promise.allSettled(
+            targetHistories.map((history) => deleteHistoryMessages(history.id)),
+          )
+          const failedDelete = deleteResults.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected',
+          )
+          if (failedDelete) throw failedDelete.reason
+          await setHistoryList([])
+        } catch (error) {
+          await rollbackDesktopHistoryWrite(targetHistories, new Map(removedMessageEntries), error)
+        }
       } else {
         await clearWebHistoryRecords()
       }
       historyList.value = []
-      await deleteUnreferencedLocalImages(collectImages(removedMessages))
+      await cleanupRemovedHistoryImages(collectImages(removedMessages))
     })
   }
 
@@ -1053,21 +1185,36 @@ export function useHistory() {
             return result
           }
 
+          let unusedImagePaths: string[]
           try {
-            const unusedImagePaths = await commitDesktopZipImport(result.data, mode, commitMessages)
-            if (unusedImagePaths.length > 0) {
-              await cleanupDesktopImportedImages(unusedImagePaths)
-            }
+            unusedImagePaths = await commitDesktopZipImport(result.data, mode, commitMessages)
           } catch (error) {
             if (error instanceof DesktopZipImportRollbackError) {
+              chatStore.setCurrentHistoryId(null)
               return {
                 success: false,
                 message: IMPORT_ROLLBACK_INCOMPLETE_MESSAGE,
               }
             }
-            await cleanupDesktopImportedImages(result.data.writtenImagePaths)
+            try {
+              await cleanupDesktopImportedImages(result.data.writtenImagePaths)
+            } catch (cleanupError) {
+              console.warn('Failed to clean up imported images after rollback:', cleanupError)
+            }
             console.error('Desktop ZIP import commit error:', error)
             return { success: false, message: '导入失败，现有数据已保持不变' }
+          }
+
+          if (unusedImagePaths.length > 0) {
+            try {
+              await cleanupDesktopImportedImages(unusedImagePaths)
+            } catch (error) {
+              console.warn('Failed to clean up unused imported images:', error)
+            }
+          }
+
+          if (mode === 'replace') {
+            chatStore.setCurrentHistoryId(null)
           }
 
           return {
@@ -1079,7 +1226,7 @@ export function useHistory() {
         const text = await file.text()
         const data = JSON.parse(text) as ChatExportData
 
-        if (!data.version || !Array.isArray(data.messages)) {
+        if (data.version !== 1 || !Array.isArray(data.messages)) {
           return { success: false, message: '无效的文件格式' }
         }
 
@@ -1088,23 +1235,15 @@ export function useHistory() {
           return { success: false, message: '消息数量超过限制（最多 1000 条）' }
         }
 
-        // 验证每条消息
-        const isValid = data.messages.every((msg) => {
-          if (!msg.id || !msg.type || !msg.content || !msg.timestamp || !msg.status) {
-            return false
-          }
-          // 字段长度限制
-          if (msg.id.length > 100 || msg.content.length > 10000) {
-            return false
-          }
-          return true
-        })
-
-        if (!isValid) {
+        const importedMessages = parseImportedMessages(data.messages)
+        if (!importedMessages) {
           return { success: false, message: '文件数据格式不正确' }
         }
 
-        await commitMessages(data.messages, mode)
+        await commitMessages(importedMessages, mode)
+        if (mode === 'replace') {
+          chatStore.setCurrentHistoryId(null)
+        }
         return {
           success: true,
           message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并',
@@ -1115,6 +1254,7 @@ export function useHistory() {
           error instanceof PersistenceError &&
           error.message === 'Chat import failed and rollback was incomplete'
         ) {
+          chatStore.setCurrentHistoryId(null)
           return { success: false, message: IMPORT_ROLLBACK_INCOMPLETE_MESSAGE }
         }
         return { success: false, message: '导入失败，请检查文件格式' }

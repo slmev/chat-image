@@ -289,6 +289,32 @@ describe('desktop history ZIP import', () => {
     ])
   })
 
+  it('normalizes legacy generation metadata while validating an import', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+    const legacyMessage = message('legacy-message')
+    legacyMessage.generation = {
+      prompt: 'legacy prompt',
+      size: '1024x1024',
+      quality: 'hd',
+      n: 2,
+    } as unknown as ChatMessage['generation']
+
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          currentMessages: [legacyMessage],
+        }),
+      ),
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error(result.message)
+    expect(result.data.currentMessages[0].generation).toMatchObject({
+      quality: 'high',
+      attachmentIds: [],
+    })
+  })
+
   it('allows more than 1000 messages in one message array when the total limit is not exceeded', async () => {
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
     const currentMessages = Array.from({ length: 1001 }, (_, index) => message(`current-${index}`))
@@ -305,6 +331,102 @@ describe('desktop history ZIP import', () => {
     if (!result.success) throw new Error(result.message)
     expect(result.data.currentMessages).toHaveLength(1001)
     expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate message IDs within one conversation', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+
+    await expect(
+      importDesktopHistoryZip(
+        await zipFile(
+          exportData({
+            currentMessages: [message('duplicate'), message('duplicate')],
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: 'history.json 格式不正确',
+    })
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate history IDs', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+    const duplicateHistory: ChatHistory = {
+      id: 'duplicate-history',
+      title: 'duplicate',
+      timestamp: 1,
+      messageCount: 0,
+      isFavorite: false,
+    }
+
+    await expect(
+      importDesktopHistoryZip(
+        await zipFile(
+          exportData({
+            currentMessages: [],
+            historyList: [duplicateHistory, { ...duplicateHistory }],
+            historyMessages: { [duplicateHistory.id]: [] },
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: 'history.json 格式不正确',
+    })
+    expect(writeFile).not.toHaveBeenCalled()
+  })
+
+  it('rejects an empty history ID', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+    const invalidHistory: ChatHistory = {
+      id: '',
+      title: 'invalid',
+      timestamp: 1,
+      messageCount: 0,
+      isFavorite: false,
+    }
+
+    await expect(
+      importDesktopHistoryZip(
+        await zipFile(
+          exportData({
+            currentMessages: [],
+            historyList: [invalidHistory],
+            historyMessages: { '': [] },
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      success: false,
+      message: 'history.json 格式不正确',
+    })
+  })
+
+  it('normalizes imported history message counts from validated messages', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+    const savedHistory: ChatHistory = {
+      id: 'history-1',
+      title: 'saved',
+      timestamp: 1,
+      messageCount: 99,
+      isFavorite: false,
+    }
+
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          currentMessages: [],
+          historyList: [savedHistory],
+          historyMessages: { [savedHistory.id]: [message('history-message')] },
+        }),
+      ),
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error(result.message)
+    expect(result.data.historyList[0].messageCount).toBe(1)
   })
 
   it('fails when total message count exceeds the import limit', async () => {

@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import HistorySidebar from '../../components/Layout/HistorySidebar.vue'
 import i18n from '../../i18n'
 import { getWebHistoryRecords, putWebHistoryRecord } from '../../platform/webPersistence'
+import { useChatStore } from '../../stores/chat'
 import type { ChatHistory } from '../../types'
 
 vi.mock('../../platform/runtime', () => ({
@@ -57,6 +58,7 @@ describe('HistorySidebar rename', () => {
 
   it('renames a saved conversation inline', async () => {
     await putWebHistoryRecord(history(), [])
+    await useChatStore().hydrateFromPersistence()
 
     const wrapper = mount(HistorySidebar, {
       props: {

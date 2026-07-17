@@ -1,11 +1,6 @@
 import JSZip from 'jszip'
-import type {
-  ChatAttachment,
-  ChatHistory,
-  ChatMessage,
-  DesktopHistoryExportData,
-  GeneratedImage,
-} from '../types'
+import type { ChatHistory, ChatMessage, DesktopHistoryExportData, GeneratedImage } from '../types'
+import { parseImportedMessages } from '../utils/chatImportValidation'
 import { isTauriRuntime } from './runtime'
 
 const ZIP_HISTORY_FILE = 'history.json'
@@ -116,111 +111,12 @@ function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
   }))
 }
 
-function validateImage(value: unknown): GeneratedImage {
-  if (!isRecord(value)) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (
-    typeof value.id !== 'string' ||
-    typeof value.url !== 'string' ||
-    typeof value.timestamp !== 'number'
-  ) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (value.localPath !== undefined && typeof value.localPath !== 'string') {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  return value as unknown as GeneratedImage
-}
-
-function validateAttachment(value: unknown): ChatAttachment {
-  const image = validateImage(value)
-  if (!isRecord(value) || typeof value.name !== 'string' || value.name.length > 255) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  return {
-    ...image,
-    name: value.name,
-  }
-}
-
-function validateMessage(value: unknown): ChatMessage {
-  if (!isRecord(value)) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (
-    typeof value.id !== 'string' ||
-    value.id.length > 100 ||
-    (value.type !== 'user' && value.type !== 'assistant') ||
-    typeof value.content !== 'string' ||
-    value.content.length > 10000 ||
-    typeof value.timestamp !== 'number' ||
-    (value.status !== 'pending' &&
-      value.status !== 'success' &&
-      value.status !== 'error' &&
-      value.status !== 'canceled')
-  ) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (value.images !== undefined && !Array.isArray(value.images)) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (value.attachments !== undefined && !Array.isArray(value.attachments)) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (value.error !== undefined && typeof value.error !== 'string') {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (value.isFavorite !== undefined && typeof value.isFavorite !== 'boolean') {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  const generationValue = value.generation
-  if (generationValue !== undefined && !isRecord(generationValue)) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  if (
-    isRecord(generationValue) &&
-    generationValue.attachments !== undefined &&
-    !Array.isArray(generationValue.attachments)
-  ) {
-    throw new DesktopHistoryImportError('history.json 格式不正确')
-  }
-
-  const attachments = value.attachments?.map(validateAttachment)
-  const images = value.images?.map(validateImage)
-  const generation = isRecord(generationValue)
-    ? {
-        ...generationValue,
-        attachments: Array.isArray(generationValue.attachments)
-          ? generationValue.attachments.map(validateAttachment)
-          : undefined,
-      }
-    : undefined
-  return {
-    ...value,
-    attachments,
-    images,
-    generation,
-    isFavorite: value.isFavorite ?? false,
-  } as ChatMessage
-}
-
 function validateMessages(value: unknown): ChatMessage[] {
-  if (!Array.isArray(value)) {
+  const messages = parseImportedMessages(value)
+  if (!messages) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
-  return value.map(validateMessage)
+  return messages
 }
 
 function validateHistory(value: unknown): ChatHistory {
@@ -230,16 +126,26 @@ function validateHistory(value: unknown): ChatHistory {
 
   if (
     typeof value.id !== 'string' ||
+    value.id.length === 0 ||
     value.id.length > 100 ||
     typeof value.title !== 'string' ||
+    value.title.length === 0 ||
+    value.title.length > 1000 ||
     typeof value.timestamp !== 'number' ||
+    !Number.isFinite(value.timestamp) ||
+    value.timestamp <= 0 ||
     typeof value.messageCount !== 'number' ||
+    !Number.isInteger(value.messageCount) ||
+    value.messageCount < 0 ||
     typeof value.isFavorite !== 'boolean'
   ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
-  if (value.preview !== undefined && typeof value.preview !== 'string') {
+  if (
+    value.preview !== undefined &&
+    (typeof value.preview !== 'string' || value.preview.length > 10000)
+  ) {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
@@ -271,6 +177,9 @@ function validateExportData(value: unknown): Omit<
   if (historyList.length > MAX_HISTORY_COUNT) {
     throw new DesktopHistoryImportError(`历史记录数量超过限制（最多 ${MAX_HISTORY_COUNT} 条）`)
   }
+  if (new Set(historyList.map((history) => history.id)).size !== historyList.length) {
+    throw new DesktopHistoryImportError('history.json 格式不正确')
+  }
   const historyIds = new Set(historyList.map((history) => history.id))
   const historyMessages = Object.fromEntries(
     Object.entries(value.historyMessages).map(([historyId, messages]) => {
@@ -293,13 +202,17 @@ function validateExportData(value: unknown): Omit<
   if (totalMessages > MAX_TOTAL_MESSAGES) {
     throw new DesktopHistoryImportError(`消息数量超过限制（最多 ${MAX_TOTAL_MESSAGES} 条）`)
   }
+  const normalizedHistoryList = historyList.map((history) => ({
+    ...history,
+    messageCount: historyMessages[history.id].length,
+  }))
 
   return {
     version: 2,
     exportedAt: value.exportedAt,
     kind: 'desktop-zip',
     currentMessages,
-    historyList,
+    historyList: normalizedHistoryList,
     historyMessages,
   }
 }

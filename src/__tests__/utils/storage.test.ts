@@ -32,7 +32,12 @@ describe('storage utils', () => {
 
     it('returns default on invalid JSON', () => {
       localStorage.setItem('bad-json', '{invalid')
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       expect(getFromStorage('bad-json', 'fallback')).toBe('fallback')
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error reading from localStorage key bad-json:',
+        expect.any(SyntaxError),
+      )
     })
   })
 

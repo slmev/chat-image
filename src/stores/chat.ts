@@ -35,11 +35,11 @@ export const useChatStore = defineStore('chat', () => {
   const isLoading = ref(false)
   const isImportingMessages = ref(false)
   const isExportingHistory = ref(false)
+  const currentHistoryId = ref<string | null>(null)
   const hasHydratedPersistence = ref(false)
   const hasHydratedDesktopHistory = computed(
     () => !isTauriRuntime() || hasHydratedPersistence.value,
   )
-  let pendingHistorySave: Promise<void> = Promise.resolve()
   let pendingMutation: Promise<void> = Promise.resolve()
   let mutationCount = 0
   let activeMutationToken: symbol | null = null
@@ -119,18 +119,29 @@ export const useChatStore = defineStore('chat', () => {
     return enqueueMutation(operation, writeToken ?? Symbol('message-write'))
   }
 
-  async function commitMessageState(nextMessages: ChatMessage[]): Promise<void> {
+  async function commitMessageState(
+    nextMessages: ChatMessage[],
+    restoreDesktopSnapshotOnFailure = true,
+  ): Promise<void> {
     const previousMessages = cloneMessages()
     messages.value = nextMessages
     const appliedSnapshot = cloneMessages()
     const save = persistSnapshot(appliedSnapshot)
-    pendingHistorySave = save.catch(() => undefined)
 
     try {
       await save
     } catch (error) {
       if (messageStateMatches(appliedSnapshot)) {
         messages.value = previousMessages
+      }
+      if (restoreDesktopSnapshotOnFailure && isTauriRuntime()) {
+        try {
+          await persistSnapshot(previousMessages)
+        } catch (rollbackError) {
+          throw new PersistenceError('Chat write failed and rollback was incomplete', {
+            cause: { originalError: error, rollbackError },
+          })
+        }
       }
       throw error
     }
@@ -284,6 +295,15 @@ export const useChatStore = defineStore('chat', () => {
   ): Promise<void> {
     await runMessageMutation(async () => {
       const previousMessages = cloneMessages()
+      const importedIds = new Set<string>()
+      const hasDuplicateId = newMessages.some((message) => {
+        if (importedIds.has(message.id)) return true
+        importedIds.add(message.id)
+        return false
+      })
+      if (hasDuplicateId) {
+        throw new Error('Imported chat messages contain duplicate IDs')
+      }
       // Migrate imported messages to ensure isFavorite field exists.
       const normalizedMessages = newMessages.map((msg) => ({
         ...msg,
@@ -305,7 +325,7 @@ export const useChatStore = defineStore('chat', () => {
         mode === 'replace' ? migratedMessages : [...messages.value, ...migratedMessages]
 
       try {
-        await commitMessageState(nextMessages)
+        await commitMessageState(nextMessages, false)
       } catch (originalError) {
         try {
           await restoreMessagesSnapshotInternal(previousMessages)
@@ -402,9 +422,18 @@ export const useChatStore = defineStore('chat', () => {
     await runMessageMutation(async () => {
       const index = messages.value.findIndex((msg) => msg.id === messageId)
       if (index !== -1) {
+        const previousMessage = messages.value[index]
+        const nextMessage = { ...previousMessage, ...updates }
+        const nextImageKeys = new Set(
+          collectMessageImagesForCleanup([nextMessage]).map(imageStorageIdentity),
+        )
+        const removedImages = collectMessageImagesForCleanup([previousMessage]).filter(
+          (image) => !nextImageKeys.has(imageStorageIdentity(image)),
+        )
         const nextMessages = [...messages.value]
-        nextMessages[index] = { ...messages.value[index], ...updates }
+        nextMessages[index] = nextMessage
         await commitMessageState(nextMessages)
+        await cleanupRemovedImages(removedImages)
       }
     })
   }
@@ -480,7 +509,6 @@ export const useChatStore = defineStore('chat', () => {
     const restoredSnapshot = cloneMessageList(snapshot)
     messages.value = restoredSnapshot
     const save = persistSnapshot(cloneMessageList(restoredSnapshot))
-    pendingHistorySave = save.catch(() => undefined)
     await save
   }
 
@@ -508,15 +536,15 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function flushHistorySave(): Promise<void> {
-    if (activeMutationToken) {
-      await pendingHistorySave
-      return
-    }
     await pendingMutation
   }
 
   function setLoading(value: boolean): void {
     isLoading.value = value
+  }
+
+  function setCurrentHistoryId(value: string | null): void {
+    currentHistoryId.value = value
   }
 
   async function hydrateFromPersistence(): Promise<void> {
@@ -534,6 +562,7 @@ export const useChatStore = defineStore('chat', () => {
     isLoading,
     isImportingMessages,
     isExportingHistory,
+    currentHistoryId,
     messageCount,
     lastMessage,
     hasHydratedDesktopHistory,
@@ -548,6 +577,7 @@ export const useChatStore = defineStore('chat', () => {
     setMessageErrorInMemory,
     clearMessages,
     setLoading,
+    setCurrentHistoryId,
     deleteMessage,
     toggleFavorite,
     setFavorite,
