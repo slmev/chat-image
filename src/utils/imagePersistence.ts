@@ -1,6 +1,12 @@
 import type { ChatMessage, GeneratedImage } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
 
+export function imageStorageIdentity(image: GeneratedImage): string {
+  if (image.webStorageKey) return `web:${image.webStorageKey}`
+  if (image.localPath) return `local:${image.localPath}`
+  return `id:${image.id}`
+}
+
 export function createBlobUrlFromBase64(base64: string, mimeType = 'image/png'): string {
   const byteChars = atob(base64)
   const byteArray = new Uint8Array(byteChars.length)
@@ -118,19 +124,40 @@ export function stripBase64FromMessages(messages: ChatMessage[]): ChatMessage[] 
   })
 }
 
-export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<ChatMessage[]> {
+interface ResolveImageResult {
+  messages: ChatMessage[]
+  persistedImages: GeneratedImage[]
+}
+
+async function resolveMessageImageUrls(
+  messages: ChatMessage[],
+  storageIdPrefix?: string,
+): Promise<ResolveImageResult> {
   const repository = getImageRepository()
+  const persistedImages: GeneratedImage[] = []
+  let storageIndex = 0
 
   async function resolveImage<T extends GeneratedImage>(image: T): Promise<T> {
     try {
-      return (await repository.resolveDisplayUrl(image)) as T
+      const storageId = storageIdPrefix ? `${storageIdPrefix}-${storageIndex++}` : undefined
+      const resolved = (await (storageId
+        ? repository.resolveDisplayUrl(image, { storageId })
+        : repository.resolveDisplayUrl(image))) as T
+      if (
+        storageId &&
+        ((resolved.webStorageKey && resolved.webStorageKey !== image.webStorageKey) ||
+          (resolved.localPath && resolved.localPath !== image.localPath))
+      ) {
+        persistedImages.push(resolved)
+      }
+      return resolved
     } catch (error) {
       console.warn('Failed to resolve stored image URL:', error)
       return image
     }
   }
 
-  return Promise.all(
+  const resolvedMessages = await Promise.all(
     messages.map(async (msg) => {
       if (!msg.images && !msg.attachments && !msg.generation?.attachments) return msg
 
@@ -168,4 +195,17 @@ export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<C
       }
     }),
   )
+
+  return { messages: resolvedMessages, persistedImages }
+}
+
+export async function resolveStoredImageUrls(messages: ChatMessage[]): Promise<ChatMessage[]> {
+  return (await resolveMessageImageUrls(messages)).messages
+}
+
+export async function resolveImportedImageUrls(
+  messages: ChatMessage[],
+  storageIdPrefix: string,
+): Promise<ResolveImageResult> {
+  return resolveMessageImageUrls(messages, storageIdPrefix)
 }

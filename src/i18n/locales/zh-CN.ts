@@ -350,6 +350,7 @@ export default {
   selectFileToImport: '选择文件导入',
   importFailed: '导入失败',
   importFailedRollback: '导入失败，现有数据已保持不变',
+  importFailedRollbackIncomplete: '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留',
   historyReplaced: '历史记录已替换',
   historyMerged: '历史记录已合并',
   invalidFileFormat: '无效的文件格式',

@@ -221,6 +221,74 @@ describe('desktop history ZIP import', () => {
     expect(result.data.writtenImagePaths).toEqual(['images/import-1000-0-reference.webp'])
   })
 
+  it('imports and rewrites generation attachments in current and saved history', async () => {
+    const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
+    const currentReference = attachment('current-reference', 'images/current-reference.png')
+    const historyReference = attachment('history-reference', 'images/history-reference.png')
+    const currentMessage = message('current-message')
+    currentMessage.generation = {
+      prompt: 'current prompt',
+      size: '1024x1024',
+      quality: 'auto',
+      n: 1,
+      attachmentIds: [currentReference.id],
+      attachments: [currentReference],
+    }
+    const historyMessage = message('history-message')
+    historyMessage.generation = {
+      prompt: 'history prompt',
+      size: '1024x1024',
+      quality: 'auto',
+      n: 1,
+      attachmentIds: [historyReference.id],
+      attachments: [historyReference],
+    }
+    const savedHistory: ChatHistory = {
+      id: 'history-1',
+      title: 'saved',
+      timestamp: 1,
+      messageCount: 1,
+      isFavorite: false,
+    }
+
+    const result = await importDesktopHistoryZip(
+      await zipFile(
+        exportData({
+          currentMessages: [currentMessage],
+          historyList: [savedHistory],
+          historyMessages: { [savedHistory.id]: [historyMessage] },
+        }),
+        {
+          'images/current-reference.png': 'current-reference-bytes',
+          'images/history-reference.png': 'history-reference-bytes',
+        },
+      ),
+      { now: 1000 },
+    )
+
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error(result.message)
+
+    expect(result.data.currentMessages[0].generation?.attachments?.[0]).toMatchObject({
+      id: currentReference.id,
+      name: currentReference.name,
+      localPath: 'images/import-1000-0-current-reference.png',
+      byteSize: 23,
+    })
+    expect(
+      result.data.historyMessages[savedHistory.id][0].generation?.attachments?.[0],
+    ).toMatchObject({
+      id: historyReference.id,
+      name: historyReference.name,
+      localPath: 'images/import-1000-1-history-reference.png',
+      byteSize: 23,
+    })
+    expect(result.data.writtenImagePaths).toEqual([
+      'images/import-1000-0-current-reference.png',
+      'images/import-1000-1-history-reference.png',
+    ])
+  })
+
   it('allows more than 1000 messages in one message array when the total limit is not exceeded', async () => {
     const { importDesktopHistoryZip } = await import('../../platform/desktopHistoryImport')
     const currentMessages = Array.from({ length: 1001 }, (_, index) => message(`current-${index}`))

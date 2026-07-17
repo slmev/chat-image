@@ -1,9 +1,20 @@
 import type { GeneratedImage } from '../types'
 import { isBrowserReadableImageUrl, isExternalImageUrl } from '../utils/images'
-import type { ImageRepository, SaveGeneratedImageInput } from './imageRepository'
+import type {
+  ImageRepository,
+  ResolveDisplayUrlOptions,
+  SaveGeneratedImageInput,
+} from './imageRepository'
 import { deleteWebImages, getWebImage, putWebImage } from './webPersistence'
 
 const objectUrlCache = new Map<string, string>()
+
+function revokeCachedObjectUrl(key: string): void {
+  const url = objectUrlCache.get(key)
+  if (!url) return
+  URL.revokeObjectURL(url)
+  objectUrlCache.delete(key)
+}
 
 function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
   const byteChars = atob(base64)
@@ -37,7 +48,8 @@ export const webImageRepository: ImageRepository = {
     if (input.b64Json) {
       const blob = base64ToBlob(input.b64Json, mimeType)
       byteSize = blob.size
-      webStorageKey = `web:${input.id}`
+      webStorageKey = `web:${input.storageId || input.id}`
+      revokeCachedObjectUrl(webStorageKey)
       await putWebImage(webStorageKey, blob, input.timestamp, mimeType)
       url = await displayUrlForStorageKey(webStorageKey)
     }
@@ -55,7 +67,10 @@ export const webImageRepository: ImageRepository = {
     }
   },
 
-  async resolveDisplayUrl(image: GeneratedImage): Promise<GeneratedImage> {
+  async resolveDisplayUrl(
+    image: GeneratedImage,
+    options?: ResolveDisplayUrlOptions,
+  ): Promise<GeneratedImage> {
     if (image.webStorageKey) {
       return {
         ...image,
@@ -66,6 +81,7 @@ export const webImageRepository: ImageRepository = {
     if (image.base64) {
       return this.saveGeneratedImage({
         id: image.id,
+        storageId: options?.storageId,
         b64Json: image.base64,
         url: image.originalUrl,
         mimeType: image.mimeType,
@@ -127,11 +143,7 @@ export const webImageRepository: ImageRepository = {
 
   async deleteImageFile(image: GeneratedImage): Promise<void> {
     if (!image.webStorageKey) return
-    const url = objectUrlCache.get(image.webStorageKey)
-    if (url) {
-      URL.revokeObjectURL(url)
-      objectUrlCache.delete(image.webStorageKey)
-    }
+    revokeCachedObjectUrl(image.webStorageKey)
     await deleteWebImages([image.webStorageKey])
   },
 }
@@ -139,9 +151,6 @@ export const webImageRepository: ImageRepository = {
 export function revokeWebImageObjectUrls(images: GeneratedImage[]): void {
   images.forEach((image) => {
     if (!image.webStorageKey) return
-    const url = objectUrlCache.get(image.webStorageKey)
-    if (!url) return
-    URL.revokeObjectURL(url)
-    objectUrlCache.delete(image.webStorageKey)
+    revokeCachedObjectUrl(image.webStorageKey)
   })
 }

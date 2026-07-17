@@ -4,17 +4,17 @@ import { Download, Upload, FileJson, Check, AlertCircle, X } from 'lucide-vue-ne
 import { useI18n } from 'vue-i18n'
 import { useHistory } from '../../composables/useHistory'
 import { isTauriRuntime } from '../../platform/runtime'
+import { useChatStore } from '../../stores/chat'
 
 const { exportHistory, importHistory } = useHistory()
 const { t } = useI18n()
+const chatStore = useChatStore()
 
 const isDesktopRuntime = isTauriRuntime()
 const isOpen = ref(false)
 const importMode = ref<'replace' | 'merge'>('merge')
 const exportStatus = ref<{ type: 'success' | 'error'; message: string } | null>(null)
 const importStatus = ref<{ type: 'success' | 'error'; message: string } | null>(null)
-const isExporting = ref(false)
-const isImporting = ref(false)
 const fileInput = ref<HTMLInputElement>()
 
 function togglePanel() {
@@ -24,7 +24,7 @@ function togglePanel() {
 }
 
 async function handleExport() {
-  isExporting.value = true
+  if (chatStore.isExportingHistory || chatStore.isImportingMessages) return
   exportStatus.value = null
 
   try {
@@ -50,18 +50,20 @@ async function handleExport() {
       type: 'error',
       message: t('exportFailed'),
     }
-  } finally {
-    isExporting.value = false
   }
 }
 
 function triggerFileInput() {
+  if (chatStore.isExportingHistory || chatStore.isLoading || chatStore.isImportingMessages) {
+    return
+  }
   fileInput.value?.click()
 }
 
 function localizedImportMessage(message: string): string {
   const exactMatches: Record<string, string> = {
     '导入失败，现有数据已保持不变': 'importFailedRollback',
+    '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留': 'importFailedRollbackIncomplete',
     历史记录已替换: 'historyReplaced',
     历史记录已合并: 'historyMerged',
     无效的文件格式: 'invalidFileFormat',
@@ -100,11 +102,14 @@ function localizedImportMessage(message: string): string {
 
 async function handleImport(event: Event) {
   const target = event.target as HTMLInputElement
+  if (chatStore.isExportingHistory || chatStore.isLoading || chatStore.isImportingMessages) {
+    target.value = ''
+    return
+  }
   const file = target.files?.[0]
 
   if (!file) return
 
-  isImporting.value = true
   importStatus.value = null
 
   try {
@@ -126,7 +131,6 @@ async function handleImport(event: Event) {
       message: t('importFailed'),
     }
   } finally {
-    isImporting.value = false
     if (fileInput.value) {
       fileInput.value.value = ''
     }
@@ -174,9 +178,13 @@ async function handleImport(event: Event) {
                 t('exportHistoryAs', { format: isDesktopRuntime ? t('zipPackage') : t('jsonFile') })
               }}
             </p>
-            <button class="btn-primary export-btn" :disabled="isExporting" @click="handleExport">
+            <button
+              class="btn-primary export-btn"
+              :disabled="chatStore.isExportingHistory || chatStore.isImportingMessages"
+              @click="handleExport"
+            >
               <Download :size="16" />
-              <span>{{ isExporting ? t('exporting') : t('exportHistory') }}</span>
+              <span>{{ chatStore.isExportingHistory ? t('exporting') : t('exportHistory') }}</span>
             </button>
 
             <Transition name="slide-up">
@@ -203,14 +211,34 @@ async function handleImport(event: Event) {
 
             <div class="import-mode">
               <label class="mode-option">
-                <input v-model="importMode" type="radio" value="merge" name="importMode" />
+                <input
+                  v-model="importMode"
+                  type="radio"
+                  value="merge"
+                  name="importMode"
+                  :disabled="
+                    chatStore.isExportingHistory ||
+                    chatStore.isLoading ||
+                    chatStore.isImportingMessages
+                  "
+                />
                 <span class="mode-label">
                   <strong>{{ t('merge') }}</strong>
                   <small>{{ t('mergeDescription') }}</small>
                 </span>
               </label>
               <label class="mode-option">
-                <input v-model="importMode" type="radio" value="replace" name="importMode" />
+                <input
+                  v-model="importMode"
+                  type="radio"
+                  value="replace"
+                  name="importMode"
+                  :disabled="
+                    chatStore.isExportingHistory ||
+                    chatStore.isLoading ||
+                    chatStore.isImportingMessages
+                  "
+                />
                 <span class="mode-label">
                   <strong>{{ t('replace') }}</strong>
                   <small>{{ t('replaceDescription') }}</small>
@@ -220,11 +248,15 @@ async function handleImport(event: Event) {
 
             <button
               class="btn-secondary import-btn"
-              :disabled="isImporting"
+              :disabled="
+                chatStore.isExportingHistory || chatStore.isLoading || chatStore.isImportingMessages
+              "
               @click="triggerFileInput"
             >
               <Upload :size="16" />
-              <span>{{ isImporting ? t('importing') : t('selectFileToImport') }}</span>
+              <span>{{
+                chatStore.isImportingMessages ? t('importing') : t('selectFileToImport')
+              }}</span>
             </button>
 
             <input
@@ -232,6 +264,9 @@ async function handleImport(event: Event) {
               type="file"
               :accept="isDesktopRuntime ? '.zip,.json' : '.json'"
               class="hidden-input"
+              :disabled="
+                chatStore.isExportingHistory || chatStore.isLoading || chatStore.isImportingMessages
+              "
               @change="handleImport"
             />
 

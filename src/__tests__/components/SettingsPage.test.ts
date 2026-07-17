@@ -39,6 +39,7 @@ vi.mock('../../platform/metadataStore', () => ({
 }))
 
 vi.mock('../../composables/useConfig', () => ({
+  localizeApiTestResult: (result: { message?: string }) => result.message || 'unknownError',
   useConfig: () => ({
     testApiConnection: mockState.testApiConnection,
   }),
@@ -166,6 +167,7 @@ describe('SettingsPage', () => {
       apiKey: 'sk-test',
       model: 'gpt-image-2',
     })
+    expect(document.body.textContent).toContain('API 连接成功')
   })
 
   it('blocks switching configs while the current form is dirty', async () => {

@@ -1,6 +1,10 @@
 import type { GeneratedImage } from '../types'
 import { isExternalImageUrl } from '../utils/images'
-import type { ImageRepository, SaveGeneratedImageInput } from './imageRepository'
+import type {
+  ImageRepository,
+  ResolveDisplayUrlOptions,
+  SaveGeneratedImageInput,
+} from './imageRepository'
 import { openLocalImage } from './localImageActions'
 
 const IMAGE_DIR = 'images'
@@ -111,7 +115,7 @@ export const tauriImageRepository: ImageRepository = {
       }
 
       const extension = extensionFromMimeType(downloaded.mimeType)
-      const localPath = `${IMAGE_DIR}/${input.id}.${extension}`
+      const localPath = `${IMAGE_DIR}/${input.storageId || input.id}.${extension}`
       await writeLocalBytes(localPath, downloaded.bytes)
 
       return {
@@ -131,7 +135,10 @@ export const tauriImageRepository: ImageRepository = {
     }
   },
 
-  async resolveDisplayUrl(image: GeneratedImage): Promise<GeneratedImage> {
+  async resolveDisplayUrl(
+    image: GeneratedImage,
+    options?: ResolveDisplayUrlOptions,
+  ): Promise<GeneratedImage> {
     if (image.localPath) {
       return {
         ...image,
@@ -143,6 +150,7 @@ export const tauriImageRepository: ImageRepository = {
     if (image.base64) {
       return this.saveGeneratedImage({
         id: image.id,
+        storageId: options?.storageId,
         b64Json: image.base64,
         url: image.originalUrl,
         mimeType: image.mimeType,
@@ -155,6 +163,7 @@ export const tauriImageRepository: ImageRepository = {
     if (isExternalImageUrl(image.url)) {
       return this.saveGeneratedImage({
         id: image.id,
+        storageId: options?.storageId,
         url: image.url,
         timestamp: image.timestamp,
         sourcePrompt: image.sourcePrompt,

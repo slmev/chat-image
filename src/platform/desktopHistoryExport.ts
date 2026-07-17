@@ -18,7 +18,7 @@ export type DesktopHistoryExportResult =
   | { canceled: true }
   | { canceled: false; path: string; imageCount: number; missingImageCount: number }
 
-interface ZipBuildResult {
+export interface DesktopHistoryExportArchive {
   bytes: Uint8Array
   imageCount: number
   missingImageCount: number
@@ -34,6 +34,12 @@ function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
     ...message,
     attachments: message.attachments?.map((attachment) => ({ ...attachment })),
     images: message.images?.map((image) => ({ ...image })),
+    generation: message.generation
+      ? {
+          ...message.generation,
+          attachments: message.generation.attachments?.map((attachment) => ({ ...attachment })),
+        }
+      : undefined,
   }))
 }
 
@@ -73,6 +79,11 @@ function collectLocalImages(
         imagesByPath.set(image.localPath, image)
       }
     })
+    message.generation?.attachments?.forEach((attachment) => {
+      if (attachment.localPath && !imagesByPath.has(attachment.localPath)) {
+        imagesByPath.set(attachment.localPath, attachment)
+      }
+    })
   })
 }
 
@@ -105,12 +116,18 @@ function rewriteImagePaths(
   preparedImages: Map<string, PreparedExportImage>,
 ): ChatMessage[] {
   return messages.map((message) => {
-    if (!message.images && !message.attachments) return message
+    if (!message.images && !message.attachments && !message.generation?.attachments) return message
 
     return {
       ...message,
       attachments: rewriteImageList(message.attachments, preparedImages),
       images: rewriteImageList(message.images, preparedImages),
+      generation: message.generation
+        ? {
+            ...message.generation,
+            attachments: rewriteImageList(message.generation.attachments, preparedImages),
+          }
+        : undefined,
     }
   })
 }
@@ -137,7 +154,7 @@ async function addImagesToZip(
 
 export async function buildDesktopHistoryExportZip(
   input: DesktopHistoryExportInput,
-): Promise<ZipBuildResult> {
+): Promise<DesktopHistoryExportArchive> {
   const zip = new JSZip()
   const currentMessages = cloneMessages(input.currentMessages)
   const historyList = input.historyList.map((item) => ({ ...item }))
@@ -188,31 +205,41 @@ export async function buildDesktopHistoryExportZip(
   }
 }
 
-export async function exportDesktopHistoryZip(
-  input: DesktopHistoryExportInput,
-): Promise<DesktopHistoryExportResult> {
+export async function selectDesktopHistoryExportPath(): Promise<string | null> {
   if (!isTauriRuntime()) {
     throw new Error('桌面 ZIP 导出仅支持桌面端')
   }
 
   const { save } = await import('@tauri-apps/plugin-dialog')
-  const { writeFile } = await import('@tauri-apps/plugin-fs')
-
-  const target = await save({
+  return await save({
     title: '导出历史记录',
     defaultPath: `chat-image-history-${new Date().toISOString().slice(0, 10)}.zip`,
     filters: [{ name: 'ZIP Archive', extensions: ['zip'] }],
   })
+}
 
-  if (!target) return { canceled: true }
+export async function writeDesktopHistoryExportZip(
+  target: string,
+  archive: DesktopHistoryExportArchive,
+): Promise<DesktopHistoryExportResult> {
+  if (!isTauriRuntime()) {
+    throw new Error('桌面 ZIP 导出仅支持桌面端')
+  }
 
-  const zip = await buildDesktopHistoryExportZip(input)
-  await writeFile(target, zip.bytes)
-
+  const { writeFile } = await import('@tauri-apps/plugin-fs')
+  await writeFile(target, archive.bytes)
   return {
     canceled: false,
     path: target,
-    imageCount: zip.imageCount,
-    missingImageCount: zip.missingImageCount,
+    imageCount: archive.imageCount,
+    missingImageCount: archive.missingImageCount,
   }
+}
+
+export async function exportDesktopHistoryZip(
+  input: DesktopHistoryExportInput,
+): Promise<DesktopHistoryExportResult> {
+  const target = await selectDesktopHistoryExportPath()
+  if (!target) return { canceled: true }
+  return writeDesktopHistoryExportZip(target, await buildDesktopHistoryExportZip(input))
 }

@@ -119,6 +119,23 @@ describe('App routing and setup guide', () => {
     vi.clearAllMocks()
   })
 
+  it('does not expose header actions before persistence is ready', async () => {
+    await router.push('/')
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: {
+        plugins: [createPinia(), router, i18n],
+      },
+    })
+    mountedWrappers.push(wrapper)
+
+    expect(wrapper.find('.header').exists()).toBe(false)
+    expect(wrapper.find('.persistence-state').exists()).toBe(true)
+
+    await vi.waitFor(() => expect(wrapper.find('.persistence-state').exists()).toBe(false))
+    expect(wrapper.find('.header').exists()).toBe(true)
+  })
+
   it('opens the settings page from the header settings action', async () => {
     const wrapper = await mountApp('/')
 

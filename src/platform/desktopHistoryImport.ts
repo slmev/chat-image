@@ -104,6 +104,15 @@ function cloneMessages(messages: ChatMessage[]): ChatMessage[] {
       ...image,
       base64: undefined,
     })),
+    generation: message.generation
+      ? {
+          ...message.generation,
+          attachments: message.generation.attachments?.map((attachment) => ({
+            ...attachment,
+            base64: undefined,
+          })),
+        }
+      : undefined,
   }))
 }
 
@@ -175,12 +184,34 @@ function validateMessage(value: unknown): ChatMessage {
     throw new DesktopHistoryImportError('history.json 格式不正确')
   }
 
+  const generationValue = value.generation
+  if (generationValue !== undefined && !isRecord(generationValue)) {
+    throw new DesktopHistoryImportError('history.json 格式不正确')
+  }
+
+  if (
+    isRecord(generationValue) &&
+    generationValue.attachments !== undefined &&
+    !Array.isArray(generationValue.attachments)
+  ) {
+    throw new DesktopHistoryImportError('history.json 格式不正确')
+  }
+
   const attachments = value.attachments?.map(validateAttachment)
   const images = value.images?.map(validateImage)
+  const generation = isRecord(generationValue)
+    ? {
+        ...generationValue,
+        attachments: Array.isArray(generationValue.attachments)
+          ? generationValue.attachments.map(validateAttachment)
+          : undefined,
+      }
+    : undefined
   return {
     ...value,
     attachments,
     images,
+    generation,
     isFavorite: value.isFavorite ?? false,
   } as ChatMessage
 }
@@ -298,6 +329,11 @@ function collectImagePaths(messages: ChatMessage[], paths: Set<string>): void {
       assertSafeZipImagePath(image.localPath)
       paths.add(image.localPath)
     })
+    message.generation?.attachments?.forEach((attachment) => {
+      if (!attachment.localPath) return
+      assertSafeZipImagePath(attachment.localPath)
+      paths.add(attachment.localPath)
+    })
   })
 }
 
@@ -391,12 +427,18 @@ function rewriteMessages(
   pathMap: Map<string, { localPath: string; byteSize: number }>,
 ): ChatMessage[] {
   return cloneMessages(messages).map((message) => {
-    if (!message.images && !message.attachments) return message
+    if (!message.images && !message.attachments && !message.generation?.attachments) return message
 
     return {
       ...message,
       attachments: rewriteImageList(message.attachments, pathMap),
       images: rewriteImageList(message.images, pathMap),
+      generation: message.generation
+        ? {
+            ...message.generation,
+            attachments: rewriteImageList(message.generation.attachments, pathMap),
+          }
+        : undefined,
     }
   })
 }

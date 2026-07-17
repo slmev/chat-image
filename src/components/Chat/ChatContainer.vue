@@ -32,7 +32,7 @@
             :key="template.id"
             class="quick-start-card"
             :style="{ '--card-index': index }"
-            :disabled="chatStore.isLoading || !isConfigured"
+            :disabled="chatStore.isLoading || chatStore.isImportingMessages || !isConfigured"
             @click="handleQuickStart(template.prompt)"
           >
             <div class="quick-start-icon">
@@ -70,7 +70,7 @@
     <!-- Input Area -->
     <ChatInput
       ref="chatInputRef"
-      :disabled="chatStore.isLoading || !isConfigured"
+      :disabled="chatStore.isLoading || chatStore.isImportingMessages || !isConfigured"
       @send="handleSend"
     />
   </div>
@@ -124,7 +124,7 @@ useKeyboardShortcuts(
           key: 'n',
           ctrl: true,
           handler: () => {
-            if (chatStore.messages.length > 0) {
+            if (chatStore.messages.length > 0 && !chatStore.isImportingMessages) {
               startNewChat()
             }
           },
@@ -216,7 +216,7 @@ async function handleToggleFavorite(messageId: string) {
 }
 
 function handleQuickStart(prompt: string) {
-  if (chatStore.isLoading || !isConfigured.value) return
+  if (chatStore.isLoading || chatStore.isImportingMessages || !isConfigured.value) return
   handleSend(prompt, {
     ...DEFAULT_GENERATION_OPTIONS,
   })

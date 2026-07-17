@@ -1,8 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useHistory } from '../../composables/useHistory'
 import { useChatStore } from '../../stores/chat'
-import { getWebHistoryRecords, putWebHistoryRecord } from '../../platform/webPersistence'
+import * as webPersistence from '../../platform/webPersistence'
+import {
+  getWebHistoryRecords,
+  putWebHistoryRecord,
+  putWebImage,
+} from '../../platform/webPersistence'
+import { PersistenceError } from '../../utils/persistenceError'
 import type {
   ChatAttachment,
   ChatHistory,
@@ -25,9 +31,11 @@ vi.mock('../../platform/metadataStore', () => ({
   setMetadataValue: vi.fn(),
 }))
 
-vi.mock('../../platform/imageReferenceCleanup', () => ({
-  deleteUnreferencedLocalImages: vi.fn(),
-}))
+const deleteUnreferencedLocalImages = vi.hoisted(() => vi.fn(async () => undefined))
+
+vi.mock('../../platform/imageReferenceCleanup', () => ({ deleteUnreferencedLocalImages }))
+
+const persistWebHistoryRecord = putWebHistoryRecord
 
 function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
   return {
@@ -93,9 +101,52 @@ function history(id: string, overrides: Partial<ChatHistory> = {}): ChatHistory 
 }
 
 describe('useHistory gallery images', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     localStorage.clear()
+    deleteUnreferencedLocalImages.mockClear()
+    await useChatStore().hydrateFromPersistence()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('waits for an active import before reading a web gallery snapshot', async () => {
+    const chatStore = useChatStore()
+    const historyApi = useHistory()
+    await historyApi.loadGalleryImages()
+    const importedHistory = history('imported-history', { title: 'Imported session' })
+    let markImportStarted: () => void = () => undefined
+    const importStarted = new Promise<void>((resolve) => {
+      markImportStarted = resolve
+    })
+    let finishImport: () => void = () => undefined
+    const importGate = new Promise<void>((resolve) => {
+      finishImport = resolve
+    })
+    const importPromise = chatStore.runMessageImport(async () => {
+      markImportStarted()
+      await importGate
+      await putWebHistoryRecord(importedHistory, [
+        message('imported-message', [image({ id: 'imported-image' })]),
+      ])
+    })
+    await importStarted
+
+    let readFinished = false
+    const readPromise = historyApi.loadGalleryImages().then((items) => {
+      readFinished = true
+      return items
+    })
+    await Promise.resolve()
+    expect(readFinished).toBe(false)
+
+    finishImport()
+    await importPromise
+    await expect(readPromise).resolves.toMatchObject([
+      { sourceHistoryId: importedHistory.id, image: { id: 'imported-image' } },
+    ])
   })
 
   it('aggregates current and saved history images while deduping shared images', async () => {
@@ -159,7 +210,37 @@ describe('useHistory gallery images', () => {
       sourceHistoryId: 'history-1',
       sourceHistoryTitle: 'Saved session',
       prompt: 'saved prompt',
-      isFavorite: true,
+      isFavorite: false,
+    })
+  })
+
+  it('keeps the same image id distinct by web storage key and deletes only one entity', async () => {
+    await putWebImage('web:entity-a', new Blob(['a']), 1)
+    await putWebImage('web:entity-b', new Blob(['b']), 1)
+    const entityA = image({ id: 'shared-id', webStorageKey: 'web:entity-a', url: '' })
+    const entityB = image({ id: 'shared-id', webStorageKey: 'web:entity-b', url: '' })
+    await useChatStore().importMessages([message('current-a', [entityA])], 'replace')
+    await putWebHistoryRecord(history('history-a'), [message('history-a-message', [entityA])])
+    await putWebHistoryRecord(history('history-b'), [message('history-b-message', [entityB])])
+
+    const chat = useHistory()
+    const items = await chat.loadGalleryImages()
+
+    expect(items).toHaveLength(2)
+    expect(items.map((item) => item.image.webStorageKey).sort()).toEqual([
+      'web:entity-a',
+      'web:entity-b',
+    ])
+
+    await chat.deleteGalleryItems(
+      items.filter((item) => item.image.webStorageKey === 'web:entity-a'),
+    )
+
+    const remaining = await chat.loadGalleryImages()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].image).toMatchObject({
+      id: 'shared-id',
+      webStorageKey: 'web:entity-b',
     })
   })
 
@@ -186,6 +267,26 @@ describe('useHistory gallery images', () => {
     // 历史中同 id 的副本也应被清除，避免刷新后重现。
     const remaining = await useHistory().loadGalleryImages()
     expect(remaining.map((item) => item.image.id)).toEqual(['other'])
+    expect(deleteUnreferencedLocalImages).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a committed gallery deletion successful when cleanup fails', async () => {
+    await useChatStore().importMessages(
+      [message('current-message', [image({ id: 'remove', url: 'blob:remove' })])],
+      'replace',
+    )
+    const chat = useHistory()
+    const items = await chat.loadGalleryImages()
+    deleteUnreferencedLocalImages.mockRejectedValueOnce(new Error('reference scan failed'))
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    await expect(chat.deleteGalleryItems(items)).resolves.toBeUndefined()
+
+    expect(useChatStore().messages).toEqual([])
+    expect(consoleWarn).toHaveBeenCalledWith(
+      'Failed to clean up removed images:',
+      expect.any(Error),
+    )
   })
 
   it('persists the updated messageCount after deleting a history image', async () => {
@@ -223,17 +324,133 @@ describe('useHistory gallery images', () => {
     expect(await getWebHistoryRecords()).toHaveLength(0)
   })
 
-  it('sets favorite on history messages at the message level', async () => {
-    await useChatStore().importMessages([], 'replace')
-    await putWebHistoryRecord(history('h1', { messageCount: 1 }), [
+  it('rolls back all favorite changes when the second history write fails', async () => {
+    await putWebHistoryRecord(history('h1', { timestamp: 2 }), [
       message('m1', [image({ id: 'a', url: 'blob:a' })], { isFavorite: false }),
+    ])
+    await putWebHistoryRecord(history('h2', { timestamp: 1 }), [
+      message('m2', [image({ id: 'b', url: 'blob:b' })], { isFavorite: false }),
     ])
 
     const chat = useHistory()
     const items = await chat.loadGalleryImages()
+    let writeCount = 0
+    vi.spyOn(webPersistence, 'putWebHistoryRecord').mockImplementation(async (...args) => {
+      writeCount += 1
+      if (writeCount === 2) throw new Error('second history write failed')
+      await persistWebHistoryRecord(...args)
+    })
+
+    await expect(chat.setGalleryItemsFavorite(items, true)).rejects.toThrow(
+      'second history write failed',
+    )
+
+    const records = await getWebHistoryRecords()
+    expect(records.map((record) => record.messages[0].isFavorite)).toEqual([false, false])
+  })
+
+  it('rolls back all image deletions and skips cleanup when a later history write fails', async () => {
+    await putWebHistoryRecord(history('h1', { timestamp: 2, messageCount: 2 }), [
+      message('shared-1', [image({ id: 'shared', url: 'blob:shared-1' })]),
+      message('keep-1', [image({ id: 'keep-1', url: 'blob:keep-1' })]),
+    ])
+    await putWebHistoryRecord(history('h2', { timestamp: 1, messageCount: 2 }), [
+      message('shared-2', [image({ id: 'shared', url: 'blob:shared-2' })]),
+      message('keep-2', [image({ id: 'keep-2', url: 'blob:keep-2' })]),
+    ])
+
+    const chat = useHistory()
+    const items = await chat.loadGalleryImages()
+    let writeCount = 0
+    vi.spyOn(webPersistence, 'putWebHistoryRecord').mockImplementation(async (...args) => {
+      writeCount += 1
+      if (writeCount === 2) throw new Error('second history write failed')
+      await persistWebHistoryRecord(...args)
+    })
+
+    await expect(
+      chat.deleteGalleryItems(items.filter((item) => item.image.id === 'shared')),
+    ).rejects.toThrow('second history write failed')
+
+    const records = await getWebHistoryRecords()
+    expect(records).toHaveLength(2)
+    expect(records.every((record) => record.history.messageCount === 2)).toBe(true)
+    expect(
+      records.every((record) =>
+        record.messages.some((item) => item.images?.some((entry) => entry.id === 'shared')),
+      ),
+    ).toBe(true)
+    expect(deleteUnreferencedLocalImages).not.toHaveBeenCalled()
+  })
+
+  it('restores in-memory snapshots and reports both errors when rollback also fails', async () => {
+    await useChatStore().importMessages(
+      [message('current-shared', [image({ id: 'shared', url: 'blob:current-shared' })])],
+      'replace',
+    )
+    await putWebHistoryRecord(history('h1', { timestamp: 2, messageCount: 2 }), [
+      message('shared-1', [image({ id: 'shared', url: 'blob:shared-1' })]),
+      message('keep-1', [image({ id: 'keep-1', url: 'blob:keep-1' })]),
+    ])
+    await putWebHistoryRecord(history('h2', { timestamp: 1, messageCount: 2 }), [
+      message('shared-2', [image({ id: 'shared', url: 'blob:shared-2' })]),
+      message('keep-2', [image({ id: 'keep-2', url: 'blob:keep-2' })]),
+    ])
+
+    const chat = useHistory()
+    const items = await chat.loadGalleryImages()
+    let writeCount = 0
+    vi.spyOn(webPersistence, 'putWebHistoryRecord').mockImplementation(async (...args) => {
+      writeCount += 1
+      if (writeCount === 2) throw new Error('original write failed')
+      if (writeCount === 3) throw new Error('rollback write failed')
+      await persistWebHistoryRecord(...args)
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    let caughtError: unknown
+    try {
+      await chat.deleteGalleryItems(items.filter((item) => item.image.id === 'shared'))
+    } catch (error) {
+      caughtError = error
+    }
+
+    expect(caughtError).toBeInstanceOf(PersistenceError)
+    const cause = (caughtError as PersistenceError).cause as {
+      originalError: unknown
+      rollbackErrors: unknown[]
+    }
+    expect(cause.originalError).toEqual(expect.any(Error))
+    expect(cause.rollbackErrors).toEqual([expect.any(Error)])
+    expect(useChatStore().messages[0].images?.[0].id).toBe('shared')
+    expect(chat.historyList.value.map((item) => item.messageCount)).toEqual([2, 2])
+    expect(deleteUnreferencedLocalImages).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith(
+      'Gallery mutation rollback failed:',
+      expect.any(Array),
+    )
+  })
+
+  it('keeps gallery favorites independent from the history favorite', async () => {
+    await useChatStore().importMessages([], 'replace')
+    await putWebHistoryRecord(history('h1', { messageCount: 1, isFavorite: true }), [
+      message('m1', [image({ id: 'a', url: 'blob:a' })], { isFavorite: false }),
+    ])
+
+    const chat = useHistory()
+    let items = await chat.loadGalleryImages()
+    expect(items[0].isFavorite).toBe(false)
+
     await chat.setGalleryItemsFavorite(items, true)
+    items = await chat.loadGalleryImages()
+    expect(items[0].isFavorite).toBe(true)
+
+    await chat.setGalleryItemsFavorite(items, false)
+    items = await chat.loadGalleryImages()
+    expect(items[0].isFavorite).toBe(false)
 
     const record = (await getWebHistoryRecords()).find((r) => r.id === 'h1')
-    expect(record?.messages[0].isFavorite).toBe(true)
+    expect(record?.history.isFavorite).toBe(true)
+    expect(record?.messages[0].isFavorite).toBe(false)
   })
 })

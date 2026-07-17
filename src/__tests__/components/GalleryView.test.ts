@@ -125,7 +125,9 @@ async function mountGallery() {
   await router.push('/gallery')
   await router.isReady()
 
-  await useChatStore().importMessages(
+  const chatStore = useChatStore()
+  await chatStore.hydrateFromPersistence()
+  await chatStore.importMessages(
     [
       message('current-message', [
         image({
@@ -152,14 +154,18 @@ async function mountGallery() {
         timestamp: now - 1000,
       }),
     ]),
-    message('history-message', [
-      image({
-        id: 'history-image',
-        url: 'https://images.example.test/red-city.png',
-        sourcePrompt: 'red city at night',
-        timestamp: oldTimestamp,
-      }),
-    ]),
+    message(
+      'history-message',
+      [
+        image({
+          id: 'history-image',
+          url: 'https://images.example.test/red-city.png',
+          sourcePrompt: 'red city at night',
+          timestamp: oldTimestamp,
+        }),
+      ],
+      { isFavorite: true },
+    ),
   ])
 
   const wrapper = mount(GalleryView, {
@@ -194,7 +200,8 @@ describe('GalleryView', () => {
     mockState.downloadMultipleImages.mockResolvedValue(undefined)
     mockState.success.mockReset()
     mockState.showError.mockReset()
-    mockState.resolveDisplayUrl.mockClear()
+    mockState.resolveDisplayUrl.mockReset()
+    mockState.resolveDisplayUrl.mockImplementation(async (image: GeneratedImage) => image)
     mockState.readImageBlob.mockClear()
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -299,6 +306,33 @@ describe('GalleryView', () => {
     expect(wrapper.find('.preview-panel').text()).toContain('silver moon over water')
   })
 
+  it('only revokes temporary blob URLs owned by the gallery', async () => {
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL')
+    let currentImageResolveCount = 0
+    mockState.resolveDisplayUrl.mockImplementation(async (storedImage: GeneratedImage) => {
+      if (storedImage.id === 'history-image') {
+        return {
+          ...storedImage,
+          url: 'blob:repository-history',
+          webStorageKey: 'web:history-image',
+        }
+      }
+      if (storedImage.id === 'current-image') {
+        currentImageResolveCount += 1
+        if (currentImageResolveCount === 1) return storedImage
+        return { ...storedImage, url: 'blob:gallery-temporary' }
+      }
+      return storedImage
+    })
+    const { wrapper } = await mountGallery()
+
+    wrapper.unmount()
+
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:gallery-temporary')
+    expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:repository-history')
+    revokeObjectUrl.mockRestore()
+  })
+
   it('toggles favorite on a current-chat image and persists to the store', async () => {
     const { wrapper } = await mountGallery()
     const chatStore = useChatStore()
@@ -321,9 +355,7 @@ describe('GalleryView', () => {
     expect(wrapper.findAll('.gallery-card')).toHaveLength(2)
 
     // 删除当前对话图片。
-    const deleteButton = wrapper
-      .findAll('.card-actions button[aria-label="删除"]')
-      .at(0)
+    const deleteButton = wrapper.findAll('.card-actions button[aria-label="删除"]').at(0)
     if (!deleteButton) throw new Error('Missing delete button')
     await deleteButton.trigger('click')
 

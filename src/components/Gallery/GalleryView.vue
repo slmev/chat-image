@@ -217,7 +217,9 @@
           <component :is="allVisibleSelected ? CheckSquare : Square" :size="16" />
           <span>{{ allVisibleSelected ? t('galleryDeselectAll') : t('gallerySelectAll') }}</span>
         </button>
-        <span class="selection-count">{{ t('gallerySelectedCount', { count: selectedCount }) }}</span>
+        <span class="selection-count">{{
+          t('gallerySelectedCount', { count: selectedCount })
+        }}</span>
         <div class="selection-actions">
           <button
             type="button"
@@ -766,7 +768,11 @@ async function resolveDisplayImages(items: GalleryImageItem[]) {
     items.map(async (item) => {
       try {
         const resolved = await getImageRepository().resolveDisplayUrl(item.image)
-        if (resolved.url.startsWith('blob:') && resolved.url !== item.image.url) {
+        if (
+          resolved.url.startsWith('blob:') &&
+          resolved.url !== item.image.url &&
+          !resolved.webStorageKey
+        ) {
           ownedObjectUrls.add(resolved.url)
         }
         return [item.id, resolved] as const

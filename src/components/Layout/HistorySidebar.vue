@@ -265,7 +265,7 @@ const {
   toggleHistoryFavorite,
   renameHistoryItem,
 } = useHistory()
-const { clearChat, loadChat } = useChat()
+const { chatStore, clearChat, loadChat } = useChat()
 const { error: showError } = useToast()
 
 const searchQuery = ref('')
@@ -325,6 +325,7 @@ function formatTime(timestamp: number): string {
 }
 
 async function handleSelectHistory(item: ChatHistory) {
+  if (chatStore.isImportingMessages) return
   currentChatId.value = item.id
   await loadChat(item.id)
   emit('close')
@@ -396,6 +397,7 @@ function clearAll() {
 }
 
 async function confirmClearAll() {
+  if (chatStore.isImportingMessages) return
   try {
     await clearHistory()
     currentChatId.value = null

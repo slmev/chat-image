@@ -75,6 +75,22 @@ describe('tauri image repository', () => {
     expect(result.base64).toBeUndefined()
   })
 
+  it('uses an independent storage path without changing the imported image id', async () => {
+    const { tauriImageRepository } = await import('../../platform/tauriImageRepository')
+
+    const result = await tauriImageRepository.saveGeneratedImage({
+      id: 'shared-id',
+      storageId: 'import-batch-0',
+      b64Json: btoa('png'),
+      timestamp: 1,
+    })
+
+    expect(writeFile).toHaveBeenCalledWith('images/import-batch-0.png', expect.any(Uint8Array), {
+      baseDir: 'AppData',
+    })
+    expect(result).toMatchObject({ id: 'shared-id', localPath: 'images/import-batch-0.png' })
+  })
+
   it('keeps generated base64 displayable when local persistence fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     writeFile.mockRejectedValueOnce(new Error('permission denied'))

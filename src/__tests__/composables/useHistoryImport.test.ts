@@ -110,6 +110,17 @@ function importFile(): File {
   return new File(['zip'], 'history.zip', { type: 'application/zip' })
 }
 
+async function runImport(mode: 'replace' | 'merge') {
+  const { useHistory } = await import('../../composables/useHistory')
+  const { useChatStore } = await import('../../stores/chat')
+  const chatStore = useChatStore()
+  await chatStore.hydrateFromPersistence()
+  return {
+    chatStore,
+    result: await useHistory().importHistory(importFile(), mode),
+  }
+}
+
 describe('useHistory desktop ZIP import', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -121,8 +132,18 @@ describe('useHistory desktop ZIP import', () => {
       async () => (metadata.get(STORAGE_KEYS.CHAT_HISTORY) as ChatMessage[]) || [],
     )
     getMetadataValue.mockClear()
+    getMetadataValue.mockImplementation(
+      async <T>(key: string, defaultValue: T): Promise<T> =>
+        metadata.has(key) ? (metadata.get(key) as T) : defaultValue,
+    )
     setMetadataValue.mockClear()
+    setMetadataValue.mockImplementation(async (key: string, value: unknown): Promise<void> => {
+      metadata.set(key, value)
+    })
     removeMetadataValue.mockClear()
+    removeMetadataValue.mockImplementation(async (key: string): Promise<void> => {
+      metadata.delete(key)
+    })
     importDesktopHistoryZip.mockReset()
     importDesktopHistoryZip.mockResolvedValue({
       success: true,
@@ -143,12 +164,10 @@ describe('useHistory desktop ZIP import', () => {
     const data = importedData()
     importDesktopHistoryZip.mockResolvedValue({ success: true, data })
 
-    const { useHistory } = await import('../../composables/useHistory')
-    const { useChatStore } = await import('../../stores/chat')
-    const result = await useHistory().importHistory(importFile(), 'replace')
+    const { chatStore, result } = await runImport('replace')
 
     expect(result).toEqual({ success: true, message: '历史记录已替换' })
-    expect(useChatStore().messages).toEqual([expect.objectContaining({ id: 'new-current' })])
+    expect(chatStore.messages).toEqual([expect.objectContaining({ id: 'new-current' })])
     expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([
       expect.objectContaining({ id: 'new-current' }),
     ])
@@ -157,6 +176,33 @@ describe('useHistory desktop ZIP import', () => {
       expect.objectContaining({ id: 'new-history-message' }),
     ])
     expect(metadata.has(HISTORY_MESSAGES_PREFIX + 'old-history')).toBe(false)
+  })
+
+  it('keeps a completed replace import when old image cleanup fails', async () => {
+    const oldHistory = history('old-history')
+    const cleanupError = new Error('reference scan failed')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [oldHistory])
+    metadata.set(HISTORY_MESSAGES_PREFIX + oldHistory.id, [
+      messageWithImage('old-history-message', 'images/old-history.png'),
+    ])
+    deleteUnreferencedLocalImages.mockRejectedValueOnce(cleanupError)
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const { chatStore, result } = await runImport('replace')
+
+    expect(result).toEqual({ success: true, message: '历史记录已替换' })
+    expect(chatStore.messages).toEqual([expect.objectContaining({ id: 'new-current' })])
+    expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([
+      expect.objectContaining({ id: 'new-current' }),
+    ])
+    expect(metadata.get(HISTORY_LIST_KEY)).toEqual([expect.objectContaining({ id: 'new-history' })])
+    expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
+    expect(consoleWarn).toHaveBeenCalledWith(
+      'Failed to clean up images replaced by desktop ZIP import:',
+      cleanupError,
+    )
+    consoleWarn.mockRestore()
   })
 
   it('merges current messages and only new saved histories from a desktop ZIP', async () => {
@@ -179,15 +225,10 @@ describe('useHistory desktop ZIP import', () => {
       }),
     })
 
-    const { useHistory } = await import('../../composables/useHistory')
-    const { useChatStore } = await import('../../stores/chat')
-    const result = await useHistory().importHistory(importFile(), 'merge')
+    const { chatStore, result } = await runImport('merge')
 
     expect(result).toEqual({ success: true, message: '历史记录已合并' })
-    expect(useChatStore().messages.map((item) => item.id)).toEqual([
-      'shared-current',
-      'new-current',
-    ])
+    expect(chatStore.messages.map((item) => item.id)).toEqual(['shared-current', 'new-current'])
     expect((metadata.get(HISTORY_LIST_KEY) as ChatHistory[]).map((item) => item.id)).toEqual([
       'existing-history',
       'new-history',
@@ -231,8 +272,7 @@ describe('useHistory desktop ZIP import', () => {
       }),
     })
 
-    const { useHistory } = await import('../../composables/useHistory')
-    const result = await useHistory().importHistory(importFile(), 'merge')
+    const { result } = await runImport('merge')
 
     expect(result).toEqual({ success: true, message: '历史记录已合并' })
     expect(cleanupDesktopImportedImages).toHaveBeenCalledWith([
@@ -249,13 +289,191 @@ describe('useHistory desktop ZIP import', () => {
       message: 'ZIP 包缺少 history.json',
     })
 
-    const { useHistory } = await import('../../composables/useHistory')
-    const result = await useHistory().importHistory(importFile(), 'replace')
+    const { result } = await runImport('replace')
 
     expect(result).toEqual({ success: false, message: 'ZIP 包缺少 history.json' })
     expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([message('old-current')])
     expect(metadata.get(HISTORY_LIST_KEY)).toEqual([history('old-history')])
     expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
+  })
+
+  it('blocks history writes for the entire ZIP import workflow', async () => {
+    const existingHistory = history('old-history')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [existingHistory])
+
+    let finishImport: () => void = () => undefined
+    importDesktopHistoryZip.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishImport = () => resolve({ success: false, message: 'ZIP 包缺少 history.json' })
+        }),
+    )
+    const { useHistory } = await import('../../composables/useHistory')
+    const { useChatStore } = await import('../../stores/chat')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const historyApi = useHistory()
+
+    const importPromise = historyApi.importHistory(importFile(), 'replace')
+    await vi.waitFor(() => expect(chatStore.isImportingMessages).toBe(true))
+    await vi.waitFor(() => expect(importDesktopHistoryZip).toHaveBeenCalledTimes(1))
+
+    await expect(historyApi.clearHistory()).rejects.toThrow('import is in progress')
+    await expect(historyApi.toggleHistoryFavorite(existingHistory.id)).rejects.toThrow(
+      'import is in progress',
+    )
+    expect(metadata.get(HISTORY_LIST_KEY)).toEqual([existingHistory])
+
+    finishImport()
+    await expect(importPromise).resolves.toEqual({
+      success: false,
+      message: 'ZIP 包缺少 history.json',
+    })
+    expect(chatStore.isImportingMessages).toBe(false)
+  })
+
+  it('waits for a history save that started before the ZIP import lock', async () => {
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [])
+    importDesktopHistoryZip.mockResolvedValue({
+      success: false,
+      message: 'ZIP 包缺少 history.json',
+    })
+
+    let markWriteStarted: () => void = () => undefined
+    const writeStarted = new Promise<void>((resolve) => {
+      markWriteStarted = resolve
+    })
+    let finishWrite: () => void = () => undefined
+    const writeGate = new Promise<void>((resolve) => {
+      finishWrite = resolve
+    })
+    setMetadataValue.mockImplementation(async (key: string, value: unknown): Promise<void> => {
+      if (key.startsWith(HISTORY_MESSAGES_PREFIX)) {
+        markWriteStarted()
+        await writeGate
+      }
+      metadata.set(key, value)
+    })
+
+    const { useHistory } = await import('../../composables/useHistory')
+    const { useChatStore } = await import('../../stores/chat')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const historyApi = useHistory()
+    const savePromise = historyApi.saveCurrentChat()
+    await writeStarted
+
+    const importPromise = historyApi.importHistory(importFile(), 'replace')
+    await vi.waitFor(() => expect(chatStore.isImportingMessages).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(importDesktopHistoryZip).not.toHaveBeenCalled()
+
+    finishWrite()
+    await expect(savePromise).resolves.toEqual(expect.any(String))
+    await expect(importPromise).resolves.toEqual({
+      success: false,
+      message: 'ZIP 包缺少 history.json',
+    })
+    expect(importDesktopHistoryZip).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for a clear operation that started before the ZIP import lock', async () => {
+    const oldHistory = history('old-history')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [oldHistory])
+    metadata.set(HISTORY_MESSAGES_PREFIX + oldHistory.id, [message('old-history-message')])
+    importDesktopHistoryZip.mockResolvedValue({
+      success: false,
+      message: 'ZIP 包缺少 history.json',
+    })
+
+    const { useHistory } = await import('../../composables/useHistory')
+    const { useChatStore } = await import('../../stores/chat')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+
+    let markReadStarted: () => void = () => undefined
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve
+    })
+    let finishRead: () => void = () => undefined
+    const readGate = new Promise<void>((resolve) => {
+      finishRead = resolve
+    })
+    getMetadataValue.mockImplementation(async <T>(key: string, defaultValue: T): Promise<T> => {
+      if (key === HISTORY_MESSAGES_PREFIX + oldHistory.id) {
+        markReadStarted()
+        await readGate
+      }
+      return metadata.has(key) ? (metadata.get(key) as T) : defaultValue
+    })
+
+    const clearPromise = historyApi.clearHistory()
+    await readStarted
+    const importPromise = historyApi.importHistory(importFile(), 'replace')
+    await vi.waitFor(() => expect(chatStore.isImportingMessages).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(importDesktopHistoryZip).not.toHaveBeenCalled()
+
+    finishRead()
+    await expect(clearPromise).resolves.toBeUndefined()
+    await expect(importPromise).resolves.toEqual({
+      success: false,
+      message: 'ZIP 包缺少 history.json',
+    })
+    expect(importDesktopHistoryZip).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for an active history clear before reading a history to load', async () => {
+    const oldHistory = history('old-history')
+    const currentMessage = message('current-message')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [currentMessage])
+    metadata.set(HISTORY_LIST_KEY, [oldHistory])
+    metadata.set(HISTORY_MESSAGES_PREFIX + oldHistory.id, [message('old-history-message')])
+
+    const { useHistory } = await import('../../composables/useHistory')
+    const { useChatStore } = await import('../../stores/chat')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    const historyApi = useHistory()
+    await historyApi.hydrateHistoryList()
+
+    let markReadStarted: () => void = () => undefined
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve
+    })
+    let finishRead: () => void = () => undefined
+    const readGate = new Promise<void>((resolve) => {
+      finishRead = resolve
+    })
+    let historyReadCount = 0
+    getMetadataValue.mockImplementation(async <T>(key: string, defaultValue: T): Promise<T> => {
+      if (key === HISTORY_MESSAGES_PREFIX + oldHistory.id) {
+        historyReadCount += 1
+        if (historyReadCount === 1) {
+          markReadStarted()
+          await readGate
+        }
+      }
+      return metadata.has(key) ? (metadata.get(key) as T) : defaultValue
+    })
+
+    const clearPromise = historyApi.clearHistory()
+    await readStarted
+    const loadPromise = historyApi.loadHistoryChat(oldHistory.id)
+    await vi.waitFor(() => expect(chatStore.isImportingMessages).toBe(true))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(historyReadCount).toBe(1)
+
+    finishRead()
+    await expect(clearPromise).resolves.toBeUndefined()
+    await expect(loadPromise).resolves.toBeNull()
+    expect(historyReadCount).toBe(2)
+    expect(chatStore.messages).toEqual([currentMessage])
   })
 
   it('rolls back metadata and cleans imported images when commit fails', async () => {
@@ -275,8 +493,7 @@ describe('useHistory desktop ZIP import', () => {
       metadata.set(key, value)
     })
 
-    const { useHistory } = await import('../../composables/useHistory')
-    const result = await useHistory().importHistory(importFile(), 'replace')
+    const { result } = await runImport('replace')
 
     expect(result).toEqual({ success: false, message: '导入失败，现有数据已保持不变' })
     expect(metadata.get(STORAGE_KEYS.CHAT_HISTORY)).toEqual([
@@ -287,5 +504,101 @@ describe('useHistory desktop ZIP import', () => {
       expect.objectContaining({ id: 'old-history-message' }),
     ])
     expect(cleanupDesktopImportedImages).toHaveBeenCalledWith(['images/imported.png'])
+  })
+
+  it('keeps imported images when ZIP rollback is incomplete', async () => {
+    const oldHistory = history('old-history')
+    const newHistory = history('new-history')
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    metadata.set(HISTORY_LIST_KEY, [oldHistory])
+    metadata.set(HISTORY_MESSAGES_PREFIX + oldHistory.id, [message('old-history-message')])
+    const importedPath = 'images/imported.png'
+    const data = importedData({
+      currentMessages: [message('new-current')],
+      historyList: [newHistory],
+      historyMessages: {
+        [newHistory.id]: [messageWithImage('new-history-message', importedPath)],
+      },
+      writtenImagePaths: [importedPath],
+    })
+    importDesktopHistoryZip.mockResolvedValue({ success: true, data })
+    let oldCurrentWriteCount = 0
+    setMetadataValue.mockImplementation(async (key: string, value: unknown): Promise<void> => {
+      if (
+        key === STORAGE_KEYS.CHAT_HISTORY &&
+        Array.isArray(value) &&
+        value.some((item) => item.id === 'new-current')
+      ) {
+        throw new Error('current chat commit failed')
+      }
+      if (
+        key === STORAGE_KEYS.CHAT_HISTORY &&
+        Array.isArray(value) &&
+        value.some((item) => item.id === 'old-current')
+      ) {
+        oldCurrentWriteCount += 1
+        if (oldCurrentWriteCount === 2) {
+          throw new Error('current chat rollback retry failed')
+        }
+      }
+      if (
+        key === HISTORY_LIST_KEY &&
+        Array.isArray(value) &&
+        value.some((item) => item.id === oldHistory.id)
+      ) {
+        throw new Error('history list rollback failed')
+      }
+      metadata.set(key, value)
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const { result } = await runImport('replace')
+
+    expect(result).toEqual({
+      success: false,
+      message: '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留',
+    })
+    expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
+    expect(metadata.get(HISTORY_LIST_KEY)).toEqual([newHistory])
+    expect(metadata.get(HISTORY_MESSAGES_PREFIX + oldHistory.id)).toEqual([
+      message('old-history-message'),
+    ])
+    expect(metadata.get(HISTORY_MESSAGES_PREFIX + newHistory.id)).toMatchObject([
+      { images: [{ localPath: importedPath }] },
+    ])
+    const rollbackErrors = consoleError.mock.calls.find(
+      ([message]) => message === 'Desktop ZIP import rollback failed:',
+    )?.[1]
+    expect(rollbackErrors).toEqual([expect.any(Error), expect.any(Error)])
+  })
+
+  it('maps an incomplete JSON import rollback to the retained-images result', async () => {
+    metadata.set(STORAGE_KEYS.CHAT_HISTORY, [message('old-current')])
+    const { useChatStore } = await import('../../stores/chat')
+    const { useHistory } = await import('../../composables/useHistory')
+    const chatStore = useChatStore()
+    await chatStore.hydrateFromPersistence()
+    setMetadataValue.mockRejectedValue(new Error('disk unavailable'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const file = new File(
+      [
+        JSON.stringify({
+          version: 1,
+          messages: [message('new-current')],
+        }),
+      ],
+      'history.json',
+      { type: 'application/json' },
+    )
+
+    const result = await useHistory().importHistory(file, 'replace')
+
+    expect(result).toEqual({
+      success: false,
+      message: '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留',
+    })
+    expect(chatStore.messages.map((item) => item.id)).toEqual(['old-current'])
+    expect(cleanupDesktopImportedImages).not.toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 })

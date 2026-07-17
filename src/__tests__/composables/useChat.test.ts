@@ -7,6 +7,7 @@ import { ImageGenerationCanceledError } from '../../services/api'
 import { PersistenceError } from '../../utils/storage'
 import type {
   ChatAttachment,
+  ChatMessage,
   GeneratedImage,
   ImageGenerationResponse,
   StyleTemplate,
@@ -130,12 +131,12 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const userMessage = chatStore.addMessage({
+    const userMessage = await chatStore.addMessage({
       type: 'user',
       content: 'a quiet mountain lake',
       status: 'success',
     })
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = await chatStore.addMessage({
       type: 'assistant',
       content: '正在生成图片...',
       status: 'error',
@@ -181,7 +182,7 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = await chatStore.addMessage({
       type: 'assistant',
       content: '正在生成图片...',
       status: 'error',
@@ -317,7 +318,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await Promise.resolve()
+    await vi.waitFor(() => expect(mockState.generateImage).toHaveBeenCalledOnce())
 
     await chat.cancelCurrentGeneration()
     resolveGeneration([generatedImage()])
@@ -357,7 +358,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await Promise.resolve()
+    await vi.waitFor(() => expect(mockState.generateImage).toHaveBeenCalledTimes(1))
     await chat.cancelCurrentGeneration()
 
     const secondPromise = chat.sendMessage('second prompt', {
@@ -365,7 +366,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await Promise.resolve()
+    await vi.waitFor(() => expect(mockState.generateImage).toHaveBeenCalledTimes(2))
     resolveFirst([{ ...generatedImage(), id: 'first-image', url: 'blob:first-image' }])
     await expect(firstPromise).resolves.toBeUndefined()
 
@@ -390,9 +391,9 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    mockState.setWebCurrentMessages.mockRejectedValue(
-      new PersistenceError('Failed to save chat history'),
-    )
+    mockState.setWebCurrentMessages
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValue(new PersistenceError('Failed to save chat history'))
     const chatStore = useChatStore()
 
     await expect(
@@ -414,6 +415,116 @@ describe('useChat', () => {
     consoleError.mockRestore()
   })
 
+  it('does not start generation when the initial message batch cannot be persisted', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    mockState.setWebCurrentMessages.mockRejectedValueOnce(
+      new PersistenceError('Failed to save chat history'),
+    )
+    const persistedAttachment = attachment()
+    mockState.persistChatAttachments.mockResolvedValueOnce([persistedAttachment])
+
+    await expect(
+      useChat().sendMessage(
+        'cannot persist prompt',
+        {
+          size: 'auto',
+          quality: 'auto',
+          n: 1,
+        },
+        [new File(['reference'], 'reference.png', { type: 'image/png' })],
+      ),
+    ).rejects.toBeInstanceOf(PersistenceError)
+
+    expect(useChatStore().messages).toEqual([])
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([persistedAttachment])
+  })
+
+  it('rejects import while the initial message batch is still being persisted', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    let markSaveStarted: () => void = () => undefined
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    let rejectSave: (error: Error) => void = () => undefined
+    mockState.setWebCurrentMessages.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject
+          markSaveStarted()
+        }),
+    )
+    const chatStore = useChatStore()
+    const sendPromise = useChat().sendMessage('persist before generating', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await saveStarted
+
+    await expect(chatStore.importMessages([], 'replace')).rejects.toThrow(
+      'generation is in progress',
+    )
+    rejectSave(new PersistenceError('Failed to save chat history'))
+    await expect(sendPromise).rejects.toBeInstanceOf(PersistenceError)
+
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(chatStore.messages).toEqual([])
+    expect(chatStore.isLoading).toBe(false)
+  })
+
+  it('keeps import blocked until an initial send cancellation is persisted', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    let markSaveStarted: () => void = () => undefined
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    let finishSave: () => void = () => undefined
+    mockState.setWebCurrentMessages.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve
+          markSaveStarted()
+        }),
+    )
+    const chat = useChat()
+    const chatStore = useChatStore()
+    const sendPromise = chat.sendMessage('cancel before persistence finishes', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await saveStarted
+
+    const cancelPromise = chat.cancelCurrentGeneration()
+    expect(chatStore.isLoading).toBe(true)
+    await expect(chatStore.importMessages([], 'replace')).rejects.toThrow(
+      'generation is in progress',
+    )
+
+    finishSave()
+    await Promise.all([cancelPromise, sendPromise])
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(chatStore.messages[1]).toMatchObject({ status: 'canceled' })
+    expect(chatStore.isLoading).toBe(false)
+    await expect(chatStore.importMessages([], 'replace')).resolves.toBeUndefined()
+  })
+
   it('rolls back the pending retry state and skips generation when persistence fails', async () => {
     const configStore = useConfigStore()
     await configStore.saveConfig({
@@ -422,7 +533,7 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = await chatStore.addMessage({
       type: 'assistant',
       content: 'previous failure',
       status: 'error',
@@ -451,6 +562,101 @@ describe('useChat', () => {
     consoleError.mockRestore()
   })
 
+  it('rejects import while a retry pending state is still being persisted', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chatStore = useChatStore()
+    const assistantMessage = await chatStore.addMessage({
+      type: 'assistant',
+      content: 'previous failure',
+      status: 'error',
+      error: 'previous failure',
+    })
+    let markSaveStarted: () => void = () => undefined
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    let rejectSave: (error: Error) => void = () => undefined
+    mockState.setWebCurrentMessages.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject
+          markSaveStarted()
+        }),
+    )
+    const retryPromise = useChat().retryMessage(assistantMessage.id, 'retry after save', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await saveStarted
+
+    await expect(chatStore.importMessages([], 'replace')).rejects.toThrow(
+      'generation is in progress',
+    )
+    rejectSave(new PersistenceError('Failed to save chat history'))
+    await expect(retryPromise).rejects.toBeInstanceOf(PersistenceError)
+
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(chatStore.messages[0]).toMatchObject({
+      content: 'previous failure',
+      status: 'error',
+      error: 'previous failure',
+    })
+    expect(chatStore.isLoading).toBe(false)
+  })
+
+  it('keeps import blocked until an initial retry cancellation is persisted', async () => {
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chatStore = useChatStore()
+    const assistantMessage = await chatStore.addMessage({
+      type: 'assistant',
+      content: 'previous failure',
+      status: 'error',
+      error: 'previous failure',
+    })
+    let markSaveStarted: () => void = () => undefined
+    const saveStarted = new Promise<void>((resolve) => {
+      markSaveStarted = resolve
+    })
+    let finishSave: () => void = () => undefined
+    mockState.setWebCurrentMessages.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = resolve
+          markSaveStarted()
+        }),
+    )
+    const chat = useChat()
+    const retryPromise = chat.retryMessage(assistantMessage.id, 'cancel retry', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await saveStarted
+
+    const cancelPromise = chat.cancelCurrentGeneration()
+    expect(chatStore.isLoading).toBe(true)
+    await expect(chatStore.importMessages([], 'replace')).rejects.toThrow(
+      'generation is in progress',
+    )
+
+    finishSave()
+    await Promise.all([cancelPromise, retryPromise])
+    expect(mockState.generateImage).not.toHaveBeenCalled()
+    expect(chatStore.messages[0]).toMatchObject({ status: 'canceled' })
+    expect(chatStore.isLoading).toBe(false)
+  })
+
   it('rejects retry failures after saving the failed assistant message', async () => {
     mockState.generateImage.mockRejectedValueOnce(new Error('retry failed'))
     const configStore = useConfigStore()
@@ -460,7 +666,7 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = await chatStore.addMessage({
       type: 'assistant',
       content: '生成失败',
       status: 'error',
@@ -529,12 +735,12 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const userMessage = chatStore.addMessage({
+    const userMessage = await chatStore.addMessage({
       type: 'user',
       content: 'old prompt',
       status: 'success',
     })
-    const assistantMessage = chatStore.addMessage({
+    const assistantMessage = await chatStore.addMessage({
       type: 'assistant',
       content: 'old result',
       status: 'success',
@@ -583,7 +789,7 @@ describe('useChat', () => {
       model: 'gpt-image-2',
     })
     const chatStore = useChatStore()
-    const userMessage = chatStore.addMessage({
+    const userMessage = await chatStore.addMessage({
       type: 'user',
       content: 'old prompt',
       status: 'success',
@@ -596,7 +802,7 @@ describe('useChat', () => {
         },
       ],
     })
-    chatStore.addMessage({
+    await chatStore.addMessage({
       type: 'assistant',
       content: 'old result',
       status: 'success',
@@ -631,12 +837,12 @@ describe('useChat', () => {
     mockState.saveCurrentChat.mockResolvedValueOnce('history-1')
     const sourceImage = generatedImage()
     const chatStore = useChatStore()
-    chatStore.addMessage({
+    await chatStore.addMessage({
       type: 'user',
       content: 'make a landscape',
       status: 'success',
     })
-    const sourceMessage = chatStore.addMessage({
+    const sourceMessage = await chatStore.addMessage({
       type: 'assistant',
       content: 'done',
       status: 'success',
@@ -702,8 +908,123 @@ describe('useChat', () => {
       error: 'Unable to save changes locally. Check storage space and try again.',
     })
     expect(chatStore.messages.at(-1)?.images).toBeUndefined()
+    const persistedMessages = mockState.setWebCurrentMessages.mock.calls.at(-1)?.[0] as
+      | ChatMessage[]
+      | undefined
+    expect(persistedMessages?.at(-1)).toMatchObject({
+      status: 'error',
+      error: 'Unable to save changes locally. Check storage space and try again.',
+    })
+    expect(persistedMessages?.at(-1)?.images).toBeUndefined()
     expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([derivedImage])
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-1')
+  })
+
+  it('discards a derived image when its message cannot be persisted', async () => {
+    const derivedImage = generatedImage()
+    mockState.persistGeneratedImagesFromResponse.mockResolvedValueOnce([derivedImage])
+    mockState.setWebCurrentMessages.mockRejectedValueOnce(
+      new PersistenceError('Failed to save chat history'),
+    )
+
+    await expect(
+      useChat().appendDerivedImageResult(imageResponse(), {
+        content: 'variationGenerated',
+        idPrefix: 'variation',
+        prompt: 'make it snowy',
+        generationOptions: {
+          size: '1024x1024',
+          quality: 'medium',
+          n: 1,
+        },
+      }),
+    ).rejects.toBeInstanceOf(PersistenceError)
+
+    expect(useChatStore().messages).toEqual([])
+    expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([derivedImage])
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-1')
+  })
+
+  it('runs a concurrent update after a failed derived message has rolled back', async () => {
+    const derivedImage = generatedImage()
+    mockState.persistGeneratedImagesFromResponse.mockResolvedValueOnce([derivedImage])
+    let markFirstSaveStarted: () => void = () => undefined
+    const firstSaveStarted = new Promise<void>((resolve) => {
+      markFirstSaveStarted = resolve
+    })
+    let rejectFirstSave: (error: Error) => void = () => undefined
+    mockState.setWebCurrentMessages.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectFirstSave = reject
+          markFirstSaveStarted()
+        }),
+    )
+
+    const chatStore = useChatStore()
+    const appendPromise = useChat().appendDerivedImageResult(imageResponse(), {
+      content: 'variationGenerated',
+      idPrefix: 'variation',
+      prompt: 'make it snowy',
+      generationOptions: {
+        size: '1024x1024',
+        quality: 'medium',
+        n: 1,
+      },
+    })
+    await firstSaveStarted
+    const retainedMessage = chatStore.messages.at(-1)
+    if (!retainedMessage) throw new Error('Expected the derived message to be applied in memory')
+    const favoritePromise = chatStore.setFavorite(retainedMessage.id, true)
+
+    rejectFirstSave(new PersistenceError('Failed to save chat history'))
+    await expect(appendPromise).rejects.toBeInstanceOf(PersistenceError)
+    await expect(favoritePromise).resolves.toBeUndefined()
+
+    expect(chatStore.messages).toEqual([])
+    expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([derivedImage])
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-1')
+  })
+
+  it('discards a derived image when an import starts before its message is added', async () => {
+    const derivedImage = generatedImage()
+    let finishImagePersistence: (images: GeneratedImage[]) => void = () => undefined
+    mockState.persistGeneratedImagesFromResponse.mockReturnValueOnce(
+      new Promise<GeneratedImage[]>((resolve) => {
+        finishImagePersistence = resolve
+      }),
+    )
+    const chatStore = useChatStore()
+    const appendPromise = useChat().appendDerivedImageResult(imageResponse(), {
+      content: 'variationGenerated',
+      idPrefix: 'variation',
+      prompt: 'make it snowy',
+      generationOptions: {
+        size: '1024x1024',
+        quality: 'medium',
+        n: 1,
+      },
+    })
+    await vi.waitFor(() =>
+      expect(mockState.persistGeneratedImagesFromResponse).toHaveBeenCalledTimes(1),
+    )
+
+    let finishImport: () => void = () => undefined
+    const importGate = new Promise<void>((resolve) => {
+      finishImport = resolve
+    })
+    const importPromise = chatStore.runMessageImport(async () => {
+      await importGate
+    })
+    await vi.waitFor(() => expect(chatStore.isImportingMessages).toBe(true))
+
+    finishImagePersistence([derivedImage])
+    await expect(appendPromise).rejects.toThrow('import is in progress')
+    expect(mockState.deleteUnreferencedLocalImages).toHaveBeenCalledWith([derivedImage])
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:image-1')
+
+    finishImport()
+    await expect(importPromise).resolves.toBeUndefined()
   })
 
   it('cancels an active generation before loading a different history item', async () => {
@@ -737,10 +1058,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(chatStore.isLoading).toBe(true)
+    await vi.waitFor(() => expect(chatStore.isLoading).toBe(true))
     expect(chatStore.messages[1]).toMatchObject({
       type: 'assistant',
       status: 'pending',
@@ -803,10 +1121,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(chatStore.isLoading).toBe(true)
+    await vi.waitFor(() => expect(chatStore.isLoading).toBe(true))
 
     await chat.startNewChat()
 

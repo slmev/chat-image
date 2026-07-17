@@ -96,7 +96,11 @@ function closeSidebar() {
 <template>
   <div class="app-container">
     <!-- Header -->
-    <Header @toggle-config="toggleConfig" @toggle-sidebar="toggleSidebar" />
+    <Header
+      v-if="isPersistenceReady"
+      @toggle-config="toggleConfig"
+      @toggle-sidebar="toggleSidebar"
+    />
 
     <!-- Main Content -->
     <main class="main-content">

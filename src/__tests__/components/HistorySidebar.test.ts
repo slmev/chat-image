@@ -26,6 +26,7 @@ vi.mock('../../platform/imageReferenceCleanup', () => ({
 
 vi.mock('../../composables/useChat', () => ({
   useChat: () => ({
+    chatStore: { isImportingMessages: false },
     clearChat: vi.fn(),
     loadChat: vi.fn(),
   }),

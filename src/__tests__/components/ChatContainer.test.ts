@@ -20,6 +20,7 @@ const mockState = vi.hoisted(() => ({
   chatStore: {
     messages: [] as ChatMessage[],
     isLoading: false,
+    isImportingMessages: false,
   },
 }))
 
@@ -154,6 +155,7 @@ describe('ChatContainer clipboard attachments', () => {
     vi.clearAllMocks()
     mockState.chatStore.messages.splice(0)
     mockState.chatStore.isLoading = false
+    mockState.chatStore.isImportingMessages = false
     Object.defineProperty(URL, 'createObjectURL', {
       configurable: true,
       value: vi.fn((file: File) => `blob:${file.name}`),
@@ -284,7 +286,7 @@ describe('ChatContainer clipboard attachments', () => {
     expect(wrapper.get('textarea').element).toHaveProperty('value', '')
   })
 
-  it('disables quick-start actions while unconfigured or loading', async () => {
+  it('disables chat entry points while unconfigured, loading, or importing', async () => {
     const unconfigured = await mountContainer({ configured: false })
 
     expect(unconfigured.get('.quick-start-card').attributes('disabled')).toBeDefined()
@@ -296,6 +298,15 @@ describe('ChatContainer clipboard attachments', () => {
 
     expect(loading.get('.quick-start-card').attributes('disabled')).toBeDefined()
     await loading.get('.quick-start-card').trigger('click')
+    expect(mockState.sendMessage).not.toHaveBeenCalled()
+
+    mockState.chatStore.isLoading = false
+    mockState.chatStore.isImportingMessages = true
+    const importing = await mountContainer()
+
+    expect(importing.get('.quick-start-card').attributes('disabled')).toBeDefined()
+    expect(importing.get('textarea').attributes('disabled')).toBeDefined()
+    await importing.get('.quick-start-card').trigger('click')
     expect(mockState.sendMessage).not.toHaveBeenCalled()
   })
 

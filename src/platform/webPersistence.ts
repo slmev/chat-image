@@ -63,12 +63,8 @@ function getDatabase(): Promise<IDBPDatabase<WebPersistenceSchema>> {
 }
 
 function readLegacyValue<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
+  const raw = localStorage.getItem(key)
+  return raw === null ? fallback : (JSON.parse(raw) as T)
 }
 
 function base64ToBlob(base64: string, mimeType = 'image/png'): Blob {
@@ -162,23 +158,39 @@ function prepareLegacyMessages(
   return JSON.parse(JSON.stringify(prepared)) as ChatMessage[]
 }
 
-function removeLegacyWebStorage(historyList: ChatHistory[]): void {
+function removeLegacyWebStorage(historyList: unknown[]): void {
+  const historyIds = historyList.flatMap((history) =>
+    typeof history === 'object' &&
+    history !== null &&
+    'id' in history &&
+    typeof history.id === 'string'
+      ? [history.id]
+      : [],
+  )
   localStorage.removeItem(STORAGE_KEYS.CHAT_HISTORY)
   localStorage.removeItem(HISTORY_LIST_KEY)
-  historyList.forEach((history) => {
-    localStorage.removeItem(HISTORY_MESSAGES_PREFIX + history.id)
+  historyIds.forEach((historyId) => {
+    localStorage.removeItem(HISTORY_MESSAGES_PREFIX + historyId)
   })
 }
 
 async function migrateLegacyWebStorage(database: IDBPDatabase<WebPersistenceSchema>) {
   try {
     const migration = await database.get('state', MIGRATION_VERSION_KEY)
-    const legacyHistoryList = readLegacyValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
     if (migration?.value === MIGRATION_VERSION) {
+      let legacyHistoryList: unknown
+      try {
+        legacyHistoryList = readLegacyValue<unknown>(HISTORY_LIST_KEY, [])
+      } catch {
+        // IndexedDB was already verified. Keep malformed legacy keys for manual recovery.
+        return
+      }
+      if (!Array.isArray(legacyHistoryList)) return
       removeLegacyWebStorage(legacyHistoryList)
       return
     }
 
+    const legacyHistoryList = readLegacyValue<ChatHistory[]>(HISTORY_LIST_KEY, [])
     const legacyCurrent = readLegacyValue<ChatMessage[]>(STORAGE_KEYS.CHAT_HISTORY, [])
     const imageRecords = new Map<string, WebImageRecord>()
     const currentMessages = prepareLegacyMessages(legacyCurrent, imageRecords)

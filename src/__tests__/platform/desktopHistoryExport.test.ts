@@ -133,6 +133,39 @@ describe('desktop history ZIP export', () => {
     expect(result.missingImageCount).toBe(0)
   })
 
+  it('exports generation attachments and rewrites their ZIP paths', async () => {
+    const { buildDesktopHistoryExportZip } = await import('../../platform/desktopHistoryExport')
+    const reference = attachment('generation-reference', 'images/generation-reference.png')
+    const generatedMessage = message('message-1')
+    generatedMessage.generation = {
+      prompt: 'edit this image',
+      size: '1024x1024',
+      quality: 'auto',
+      n: 1,
+      attachmentIds: [reference.id],
+      attachments: [reference],
+    }
+
+    const result = await buildDesktopHistoryExportZip({
+      currentMessages: [generatedMessage],
+      historyList: [],
+      historyMessages: {},
+      exportedAt: 123,
+    })
+    const { zip, data } = await readZip(result.bytes)
+
+    expect(data.currentMessages[0].generation?.attachments?.[0]).toMatchObject({
+      id: reference.id,
+      name: reference.name,
+      url: 'images/generation-reference.png',
+      localPath: 'images/generation-reference.png',
+    })
+    expect(data.currentMessages[0].generation?.attachments?.[0]).not.toHaveProperty('base64')
+    expect(zip.file('images/generation-reference.png')).toBeTruthy()
+    expect(result.imageCount).toBe(1)
+    expect(result.missingImageCount).toBe(0)
+  })
+
   it('includes saved history list and each history message set', async () => {
     const { buildDesktopHistoryExportZip } = await import('../../platform/desktopHistoryExport')
     const historyList: ChatHistory[] = [

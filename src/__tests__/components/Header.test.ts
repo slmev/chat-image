@@ -8,6 +8,7 @@ const mockState = vi.hoisted(() => ({
   clearChat: vi.fn(),
   routerPush: vi.fn(),
   showError: vi.fn(),
+  isImportingMessages: false,
 }))
 
 vi.mock('vue-router', () => ({
@@ -20,6 +21,9 @@ vi.mock('../../composables/useChat', () => ({
   useChat: () => ({
     chatStore: {
       messageCount: 1,
+      get isImportingMessages() {
+        return mockState.isImportingMessages
+      },
     },
     startNewChat: mockState.startNewChat,
     clearChat: mockState.clearChat,
@@ -41,6 +45,7 @@ describe('Header failure feedback', () => {
     mockState.routerPush.mockReset()
     mockState.routerPush.mockResolvedValue(undefined)
     mockState.showError.mockReset()
+    mockState.isImportingMessages = false
     i18n.global.locale.value = 'zh-CN'
   })
 
@@ -86,5 +91,13 @@ describe('Header failure feedback', () => {
 
     expect(mockState.showError).toHaveBeenCalledWith('清空对话失败')
     consoleError.mockRestore()
+  })
+
+  it('disables new and clear chat actions while importing', () => {
+    mockState.isImportingMessages = true
+    const wrapper = mountHeader()
+
+    expect(wrapper.get('button[aria-label="新对话"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('button[aria-label="清空对话"]').attributes('disabled')).toBeDefined()
   })
 })

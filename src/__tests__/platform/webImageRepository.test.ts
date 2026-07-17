@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { webImageRepository } from '../../platform/webImageRepository'
 
 describe('web image repository', () => {
@@ -45,5 +45,43 @@ describe('web image repository', () => {
     })
     expect(result).not.toHaveProperty('base64')
     expect(await (await webImageRepository.readImageBlob(result)).text()).toBe('png')
+  })
+
+  it('replaces the cached object URL when overwriting the same storage key', async () => {
+    const first = await webImageRepository.saveGeneratedImage({
+      id: 'same-image',
+      b64Json: btoa('first'),
+      timestamp: 1,
+    })
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL')
+
+    const second = await webImageRepository.saveGeneratedImage({
+      id: 'same-image',
+      b64Json: btoa('second'),
+      timestamp: 2,
+    })
+
+    expect(second.url).not.toBe(first.url)
+    expect(revokeObjectUrl).toHaveBeenCalledWith(first.url)
+    expect(await (await webImageRepository.readImageBlob(second)).text()).toBe('second')
+  })
+
+  it('uses an independent storage key without changing the imported image id', async () => {
+    const original = await webImageRepository.saveGeneratedImage({
+      id: 'shared-id',
+      b64Json: btoa('original'),
+      timestamp: 1,
+    })
+
+    const imported = await webImageRepository.saveGeneratedImage({
+      id: 'shared-id',
+      storageId: 'import-batch-0',
+      b64Json: btoa('imported'),
+      timestamp: 2,
+    })
+
+    expect(imported).toMatchObject({ id: 'shared-id', webStorageKey: 'web:import-batch-0' })
+    expect(await (await webImageRepository.readImageBlob(original)).text()).toBe('original')
+    expect(await (await webImageRepository.readImageBlob(imported)).text()).toBe('imported')
   })
 })

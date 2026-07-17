@@ -354,6 +354,8 @@ export default {
   selectFileToImport: 'Select File to Import',
   importFailed: 'Import failed',
   importFailedRollback: 'Import failed. Existing data was left unchanged.',
+  importFailedRollbackIncomplete:
+    'Import failed and rollback was incomplete. Some data may have changed; imported images were kept.',
   historyReplaced: 'History replaced',
   historyMerged: 'History merged',
   invalidFileFormat: 'Invalid file format',

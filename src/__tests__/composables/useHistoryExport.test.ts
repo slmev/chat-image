@@ -13,7 +13,9 @@ const getMetadataValue = vi.fn(
 )
 const setMetadataValue = vi.fn<(...args: [string, unknown]) => Promise<void>>()
 const removeMetadataValue = vi.fn<(...args: [string]) => Promise<void>>()
-const exportDesktopHistoryZip = vi.fn()
+const selectDesktopHistoryExportPath = vi.fn()
+const buildDesktopHistoryExportZip = vi.fn()
+const writeDesktopHistoryExportZip = vi.fn()
 const deleteUnreferencedLocalImages = vi.fn<(...args: [unknown[]]) => Promise<void>>()
 
 vi.mock('../../platform/runtime', () => ({
@@ -31,7 +33,9 @@ vi.mock('../../platform/metadataStore', () => ({
 }))
 
 vi.mock('../../platform/desktopHistoryExport', () => ({
-  exportDesktopHistoryZip,
+  selectDesktopHistoryExportPath,
+  buildDesktopHistoryExportZip,
+  writeDesktopHistoryExportZip,
 }))
 
 vi.mock('../../platform/imageReferenceCleanup', () => ({
@@ -70,8 +74,16 @@ describe('useHistory desktop export', () => {
     setMetadataValue.mockResolvedValue(undefined)
     removeMetadataValue.mockReset()
     removeMetadataValue.mockResolvedValue(undefined)
-    exportDesktopHistoryZip.mockReset()
-    exportDesktopHistoryZip.mockResolvedValue({ canceled: false })
+    selectDesktopHistoryExportPath.mockReset()
+    selectDesktopHistoryExportPath.mockResolvedValue('/tmp/history.zip')
+    buildDesktopHistoryExportZip.mockReset()
+    buildDesktopHistoryExportZip.mockResolvedValue({
+      bytes: new Uint8Array([1]),
+      imageCount: 1,
+      missingImageCount: 0,
+    })
+    writeDesktopHistoryExportZip.mockReset()
+    writeDesktopHistoryExportZip.mockResolvedValue({ canceled: false })
     deleteUnreferencedLocalImages.mockReset()
     deleteUnreferencedLocalImages.mockResolvedValue(undefined)
     localStorage.clear()
@@ -90,7 +102,8 @@ describe('useHistory desktop export', () => {
     expect(initializeDesktopPersistence).toHaveBeenCalledOnce()
     expect(getDesktopChatHistory).toHaveBeenCalledOnce()
     expect(chatStore.hasHydratedDesktopHistory).toBe(true)
-    expect(exportDesktopHistoryZip).toHaveBeenCalledWith(
+    expect(selectDesktopHistoryExportPath).toHaveBeenCalledOnce()
+    expect(buildDesktopHistoryExportZip).toHaveBeenCalledWith(
       expect.objectContaining({
         currentMessages: [
           expect.objectContaining({
@@ -102,5 +115,69 @@ describe('useHistory desktop export', () => {
         historyMessages: {},
       }),
     )
+    expect(writeDesktopHistoryExportZip).toHaveBeenCalledWith(
+      '/tmp/history.zip',
+      expect.objectContaining({ imageCount: 1, missingImageCount: 0 }),
+    )
+  })
+
+  it('does not hydrate or build an archive when path selection is canceled', async () => {
+    selectDesktopHistoryExportPath.mockResolvedValueOnce(null)
+    const { useHistory } = await import('../../composables/useHistory')
+
+    await expect(useHistory().exportHistory()).resolves.toEqual({ canceled: true })
+
+    expect(selectDesktopHistoryExportPath).toHaveBeenCalledOnce()
+    expect(initializeDesktopPersistence).not.toHaveBeenCalled()
+    expect(buildDesktopHistoryExportZip).not.toHaveBeenCalled()
+    expect(writeDesktopHistoryExportZip).not.toHaveBeenCalled()
+  })
+
+  it('holds an internally consistent snapshot while building the archive', async () => {
+    let markBuildStarted: () => void = () => undefined
+    const buildStarted = new Promise<void>((resolve) => {
+      markBuildStarted = resolve
+    })
+    let finishBuild: () => void = () => undefined
+    const buildGate = new Promise<void>((resolve) => {
+      finishBuild = resolve
+    })
+    buildDesktopHistoryExportZip.mockImplementationOnce(async (input) => {
+      markBuildStarted()
+      await buildGate
+      return {
+        bytes: new Uint8Array([1]),
+        imageCount: input.currentMessages.length,
+        missingImageCount: 0,
+      }
+    })
+
+    const { useChatStore } = await import('../../stores/chat')
+    const { useHistory } = await import('../../composables/useHistory')
+    const chatStore = useChatStore()
+    const exportPromise = useHistory().exportHistory()
+    await buildStarted
+
+    let messageAdded = false
+    const addPromise = chatStore
+      .addMessage({ type: 'user', content: 'after snapshot', status: 'success' })
+      .then(() => {
+        messageAdded = true
+      })
+    await Promise.resolve()
+    expect(messageAdded).toBe(false)
+
+    finishBuild()
+    await expect(exportPromise).resolves.toEqual({ canceled: false })
+    await addPromise
+
+    const exportedInput = buildDesktopHistoryExportZip.mock.calls[0][0]
+    expect(exportedInput.currentMessages.map((message: ChatMessage) => message.id)).toEqual([
+      'current-message',
+    ])
+    expect(chatStore.messages.map((message) => message.content)).toEqual([
+      'hydrated current chat',
+      'after snapshot',
+    ])
   })
 })

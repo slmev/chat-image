@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
+import type { HistoryWriteToken, ImportMessagesCommit } from '../stores/chat'
 import type {
   ChatExportData,
   ChatHistory,
@@ -9,7 +10,7 @@ import type {
 } from '../types'
 import type { DesktopHistoryImportData } from '../platform/desktopHistoryImport'
 import { PersistenceError, generateId } from '../utils/storage'
-import { stripBase64FromMessages } from '../utils/imagePersistence'
+import { imageStorageIdentity, stripBase64FromMessages } from '../utils/imagePersistence'
 import {
   HISTORY_LIST_KEY,
   HISTORY_MESSAGES_PREFIX,
@@ -60,9 +61,7 @@ function collectImages(messages: ChatMessage[]) {
 }
 
 function galleryImageDedupeKey(image: GeneratedImage): string {
-  if (image.id) return `id:${image.id}`
-  if (image.localPath) return `local:${image.localPath}`
-  return `url:${image.url}`
+  return imageStorageIdentity(image)
 }
 
 function promptForGalleryImage(message: ChatMessage): string {
@@ -95,7 +94,7 @@ function collectGalleryImageItems(
         sourceType: source.type,
         prompt: promptForGalleryImage(message),
         timestamp: image.timestamp || message.timestamp,
-        isFavorite: Boolean(message.isFavorite || source.history?.isFavorite),
+        isFavorite: Boolean(message.isFavorite),
       })
     })
   })
@@ -116,6 +115,10 @@ function cloneData<T>(value: T): T {
 }
 
 const historyList = ref<ChatHistory[]>([])
+
+class DesktopZipImportRollbackError extends PersistenceError {}
+const IMPORT_ROLLBACK_INCOMPLETE_MESSAGE =
+  '导入失败且回滚未完成，部分数据可能已变更；导入图片已保留'
 
 function messageIds(messages: ChatMessage[]): string[] {
   return messages.map((message) => message.id)
@@ -303,16 +306,30 @@ export function useHistory() {
   const searchQuery = ref('')
   const showFavoritesOnly = ref(false)
   const t = i18n.global.t
+
+  function requireHistoryWritesAvailable(): void {
+    if (chatStore.isImportingMessages) {
+      throw new Error('Chat history cannot be changed while an import is in progress')
+    }
+  }
+
+  async function runHistoryWrite<T>(
+    operation: (token: HistoryWriteToken) => Promise<T>,
+  ): Promise<T> {
+    requireHistoryWritesAvailable()
+    return await chatStore.runHistoryWrite(operation)
+  }
+
   const defaultHistoryTitle = (messages: ChatMessage[]): string => {
     const firstUserMessage = messages.find((message) => message.type === 'user')
     return firstUserMessage?.content.slice(0, 50) || t('newChat')
   }
-  void refreshHistoryList(defaultHistoryTitle).catch((error) => {
+  void runHistoryWrite(() => refreshHistoryList(defaultHistoryTitle)).catch((error) => {
     console.error('Failed to load history list:', error)
   })
 
   async function hydrateHistoryList(): Promise<void> {
-    await refreshHistoryList(defaultHistoryTitle)
+    await runHistoryWrite(() => refreshHistoryList(defaultHistoryTitle))
   }
 
   async function ensureDesktopHistoryHydrated(): Promise<void> {
@@ -357,63 +374,176 @@ export function useHistory() {
     )
   }
 
-  async function loadGalleryImages(): Promise<GalleryImageItem[]> {
-    if (isTauriRuntime()) {
-      await ensureDesktopHistoryHydrated()
-      historyList.value = await getMetadataValue<ChatHistory[]>(HISTORY_LIST_KEY, historyList.value)
-    } else {
-      await hydrateHistoryList()
-    }
+  interface GalleryMutationSnapshot {
+    currentMessages: ChatMessage[]
+    historyList: ChatHistory[]
+    historyMessages: Map<string, ChatMessage[]>
+  }
 
-    const seenKeys = new Set<string>()
-    const items = collectGalleryImageItems(chatStore.messages, { type: 'current' }, seenKeys)
-
-    const savedHistories = [...historyList.value].sort((a, b) => b.timestamp - a.timestamp)
-    const savedMessages = await Promise.all(
-      savedHistories.map((history) => readHistoryMessages(history.id)),
+  async function captureGalleryMutationSnapshot(
+    historyIds: Iterable<string>,
+  ): Promise<GalleryMutationSnapshot> {
+    const uniqueHistoryIds = Array.from(new Set(historyIds))
+    const historyMessages = new Map(
+      await Promise.all(
+        uniqueHistoryIds.map(
+          async (historyId) =>
+            [historyId, cloneData(await readHistoryMessages(historyId))] as const,
+        ),
+      ),
     )
 
-    savedMessages.forEach((messages, index) => {
-      items.push(
-        ...collectGalleryImageItems(
-          messages,
-          { type: 'history', history: savedHistories[index] },
-          seenKeys,
-        ),
-      )
-    })
+    return {
+      currentMessages: cloneData(chatStore.messages),
+      historyList: cloneData(historyList.value),
+      historyMessages,
+    }
+  }
 
-    return items.sort((a, b) => b.timestamp - a.timestamp)
+  async function restoreGalleryMutationSnapshot(
+    snapshot: GalleryMutationSnapshot,
+    restoreHistoryList: boolean,
+    writeToken: HistoryWriteToken,
+  ): Promise<unknown[]> {
+    const rollbackErrors: unknown[] = []
+    historyList.value = cloneData(snapshot.historyList)
+
+    try {
+      await chatStore.restoreMessagesSnapshot(snapshot.currentMessages, writeToken)
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+
+    if (restoreHistoryList) {
+      try {
+        await setHistoryList(snapshot.historyList)
+      } catch (error) {
+        rollbackErrors.push(error)
+      }
+    }
+
+    for (const [historyId, messages] of snapshot.historyMessages) {
+      try {
+        await setHistoryMessages(historyId, messages)
+      } catch (error) {
+        rollbackErrors.push(error)
+      }
+    }
+
+    historyList.value = cloneData(snapshot.historyList)
+    return rollbackErrors
+  }
+
+  async function rollbackGalleryMutation(
+    snapshot: GalleryMutationSnapshot,
+    originalError: unknown,
+    restoreHistoryList: boolean,
+    writeToken: HistoryWriteToken,
+  ): Promise<never> {
+    const rollbackErrors = await restoreGalleryMutationSnapshot(
+      snapshot,
+      restoreHistoryList,
+      writeToken,
+    )
+    if (rollbackErrors.length > 0) {
+      console.error('Gallery mutation rollback failed:', rollbackErrors)
+      throw new PersistenceError('Gallery mutation failed and rollback was incomplete', {
+        cause: { originalError, rollbackErrors },
+      })
+    }
+    throw originalError
+  }
+
+  async function loadGalleryImages(): Promise<GalleryImageItem[]> {
+    return chatStore.runHistoryRead(async () => {
+      if (isTauriRuntime()) {
+        await ensureDesktopHistoryHydrated()
+        historyList.value = await getMetadataValue<ChatHistory[]>(
+          HISTORY_LIST_KEY,
+          historyList.value,
+        )
+      } else {
+        await refreshHistoryList(defaultHistoryTitle)
+      }
+
+      const seenKeys = new Set<string>()
+      const items = collectGalleryImageItems(chatStore.messages, { type: 'current' }, seenKeys)
+
+      const savedHistories = [...historyList.value].sort((a, b) => b.timestamp - a.timestamp)
+      const savedMessages = await Promise.all(
+        savedHistories.map((history) => readHistoryMessages(history.id)),
+      )
+
+      savedMessages.forEach((messages, index) => {
+        items.push(
+          ...collectGalleryImageItems(
+            messages,
+            { type: 'history', history: savedHistories[index] },
+            seenKeys,
+          ),
+        )
+      })
+
+      return items.sort((a, b) => b.timestamp - a.timestamp)
+    })
   }
 
   function isZipHistoryFile(file: File): boolean {
     return file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip'
   }
 
-  async function restoreDesktopSnapshot(snapshot: {
-    currentMessages: ChatMessage[]
-    historyList: ChatHistory[]
-    historyMessages: Record<string, ChatMessage[]>
-    knownHistoryIds: Set<string>
-  }): Promise<void> {
-    await setHistoryList(snapshot.historyList)
-    await Promise.all(
-      snapshot.historyList.map((item) =>
-        setHistoryMessages(item.id, snapshot.historyMessages[item.id] || []),
-      ),
-    )
-    await Promise.all(
-      Array.from(snapshot.knownHistoryIds)
-        .filter((historyId) => !snapshot.historyMessages[historyId])
-        .map((historyId) => deleteHistoryMessages(historyId)),
-    )
-    historyList.value = snapshot.historyList
-    await chatStore.importMessages(snapshot.currentMessages, 'replace')
+  async function restoreDesktopSnapshot(
+    snapshot: {
+      currentMessages: ChatMessage[]
+      historyList: ChatHistory[]
+      historyMessages: Record<string, ChatMessage[]>
+      knownHistoryIds: Set<string>
+    },
+    commitMessages: ImportMessagesCommit,
+  ): Promise<unknown[]> {
+    const rollbackErrors: unknown[] = []
+    let historyListRestored = false
+
+    try {
+      await setHistoryList(snapshot.historyList)
+      historyList.value = cloneData(snapshot.historyList)
+      historyListRestored = true
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+
+    for (const item of snapshot.historyList) {
+      try {
+        await setHistoryMessages(item.id, snapshot.historyMessages[item.id] || [])
+      } catch (error) {
+        rollbackErrors.push(error)
+      }
+    }
+
+    if (historyListRestored) {
+      for (const historyId of snapshot.knownHistoryIds) {
+        if (Object.prototype.hasOwnProperty.call(snapshot.historyMessages, historyId)) continue
+        try {
+          await deleteHistoryMessages(historyId)
+        } catch (error) {
+          rollbackErrors.push(error)
+        }
+      }
+    }
+
+    try {
+      await commitMessages(snapshot.currentMessages, 'replace')
+    } catch (error) {
+      rollbackErrors.push(error)
+    }
+
+    return rollbackErrors
   }
 
   async function commitDesktopZipImport(
     data: DesktopHistoryImportData,
     mode: 'replace' | 'merge',
+    commitMessages: ImportMessagesCommit,
   ): Promise<string[]> {
     const currentHistoryList = await getMetadataValue<ChatHistory[]>(
       HISTORY_LIST_KEY,
@@ -447,42 +577,50 @@ export function useHistory() {
           ),
         )
         historyList.value = data.historyList
-        await chatStore.importMessages(data.currentMessages, 'replace')
-        await deleteUnreferencedLocalImages(replacedImages)
-        return []
-      }
-
-      const existingMessageIds = new Set(chatStore.messages.map((message) => message.id))
-      const existingHistoryIds = new Set(currentHistoryList.map((item) => item.id))
-      const uniqueCurrentMessages = data.currentMessages.filter(
-        (message) => !existingMessageIds.has(message.id),
-      )
-      const newHistoryItems = data.historyList.filter((item) => !existingHistoryIds.has(item.id))
-      const mergedHistoryList = [...currentHistoryList, ...newHistoryItems]
-      const usedImportedImagePaths = collectLocalImagePaths(uniqueCurrentMessages)
-      newHistoryItems.forEach((item) => {
-        collectLocalImagePaths(data.historyMessages[item.id] || []).forEach((path) => {
-          usedImportedImagePaths.add(path)
+        await commitMessages(data.currentMessages, 'replace')
+      } else {
+        const existingMessageIds = new Set(chatStore.messages.map((message) => message.id))
+        const existingHistoryIds = new Set(currentHistoryList.map((item) => item.id))
+        const uniqueCurrentMessages = data.currentMessages.filter(
+          (message) => !existingMessageIds.has(message.id),
+        )
+        const newHistoryItems = data.historyList.filter((item) => !existingHistoryIds.has(item.id))
+        const mergedHistoryList = [...currentHistoryList, ...newHistoryItems]
+        const usedImportedImagePaths = collectLocalImagePaths(uniqueCurrentMessages)
+        newHistoryItems.forEach((item) => {
+          collectLocalImagePaths(data.historyMessages[item.id] || []).forEach((path) => {
+            usedImportedImagePaths.add(path)
+          })
         })
-      })
 
-      await setHistoryList(mergedHistoryList)
-      await Promise.all(
-        newHistoryItems.map((item) =>
-          setHistoryMessages(item.id, data.historyMessages[item.id] || []),
-        ),
-      )
-      historyList.value = mergedHistoryList
-      await chatStore.importMessages(data.currentMessages, 'merge')
-      return data.writtenImagePaths.filter((path) => !usedImportedImagePaths.has(path))
+        await setHistoryList(mergedHistoryList)
+        await Promise.all(
+          newHistoryItems.map((item) =>
+            setHistoryMessages(item.id, data.historyMessages[item.id] || []),
+          ),
+        )
+        historyList.value = mergedHistoryList
+        await commitMessages(data.currentMessages, 'merge')
+        return data.writtenImagePaths.filter((path) => !usedImportedImagePaths.has(path))
+      }
     } catch (error) {
-      try {
-        await restoreDesktopSnapshot(snapshot)
-      } catch (rollbackError) {
-        console.error('Desktop ZIP import rollback failed:', rollbackError)
+      const rollbackErrors = await restoreDesktopSnapshot(snapshot, commitMessages)
+      if (rollbackErrors.length > 0) {
+        console.error('Desktop ZIP import rollback failed:', rollbackErrors)
+        throw new DesktopZipImportRollbackError(
+          'Desktop ZIP import failed and rollback was incomplete',
+          { cause: { originalError: error, rollbackErrors } },
+        )
       }
       throw error
     }
+
+    try {
+      await deleteUnreferencedLocalImages(replacedImages)
+    } catch (error) {
+      console.warn('Failed to clean up images replaced by desktop ZIP import:', error)
+    }
+    return []
   }
 
   // 过滤后的消息
@@ -520,9 +658,16 @@ export function useHistory() {
   }
 
   // 保存当前对话到历史记录
-  async function saveCurrentChat(existingHistoryId?: string | null): Promise<string | null> {
-    if (chatStore.messages.length === 0) return null
+  function saveCurrentChat(existingHistoryId?: string | null): Promise<string | null> {
+    return runHistoryWrite(async () => {
+      if (chatStore.messages.length === 0) return null
+      return saveCurrentChatInternal(existingHistoryId)
+    })
+  }
 
+  async function saveCurrentChatInternal(
+    existingHistoryId?: string | null,
+  ): Promise<string | null> {
     const firstUserMessage = chatStore.messages.find((m) => m.type === 'user')
     const existingHistory = existingHistoryId
       ? historyList.value.find((item) => item.id === existingHistoryId)
@@ -569,7 +714,11 @@ export function useHistory() {
     return (await findMatchingHistory(chatStore.messages))?.id || historyId
   }
 
-  async function ensureCurrentChatInHistory(
+  function ensureCurrentChatInHistory(existingHistoryId?: string | null): Promise<string | null> {
+    return runHistoryWrite(() => ensureCurrentChatInHistoryInternal(existingHistoryId))
+  }
+
+  async function ensureCurrentChatInHistoryInternal(
     existingHistoryId?: string | null,
   ): Promise<string | null> {
     if (chatStore.messages.length === 0) return null
@@ -584,80 +733,90 @@ export function useHistory() {
       return historyCandidate.id
     }
 
-    return saveCurrentChat(null)
+    return saveCurrentChatInternal(null)
   }
 
   // 加载历史对话
   async function loadHistoryChat(historyId: string): Promise<ChatMessage[] | null> {
-    const messages = await readHistoryMessages(historyId)
-    if (messages.length === 0) return null
+    return chatStore.runMessageImport(async (commitMessages) => {
+      const messages = await readHistoryMessages(historyId)
+      if (messages.length === 0) return null
 
-    // 恢复消息到 chatStore
-    await chatStore.clearMessages()
-    await chatStore.importMessages(messages, 'replace')
+      // 恢复消息到 chatStore
+      await commitMessages(messages, 'replace')
 
-    return messages
+      return messages
+    })
   }
 
   // 删除历史记录
-  async function deleteHistoryItem(id: string): Promise<void> {
-    const removedMessages = await readHistoryMessages(id)
-    const nextList = historyList.value.filter((history) => history.id !== id)
-    if (isTauriRuntime()) {
-      await setHistoryList(nextList)
-      await deleteHistoryMessages(id)
-    } else {
-      await deleteWebHistoryRecords([id])
-    }
-    historyList.value = nextList
-    await deleteUnreferencedLocalImages(collectImages(removedMessages))
+  function deleteHistoryItem(id: string): Promise<void> {
+    return runHistoryWrite(async () => {
+      const removedMessages = await readHistoryMessages(id)
+      const nextList = historyList.value.filter((history) => history.id !== id)
+      if (isTauriRuntime()) {
+        await setHistoryList(nextList)
+        await deleteHistoryMessages(id)
+      } else {
+        await deleteWebHistoryRecords([id])
+      }
+      historyList.value = nextList
+      await deleteUnreferencedLocalImages(collectImages(removedMessages))
+    })
   }
 
   // 清空所有历史记录
-  async function clearHistory(): Promise<void> {
-    const removedMessages = (
-      await Promise.all(historyList.value.map((h) => readHistoryMessages(h.id)))
-    ).flat()
-    if (isTauriRuntime()) {
-      await Promise.all(historyList.value.map((history) => deleteHistoryMessages(history.id)))
-      await setHistoryList([])
-    } else {
-      await clearWebHistoryRecords()
-    }
-    historyList.value = []
-    await deleteUnreferencedLocalImages(collectImages(removedMessages))
+  function clearHistory(): Promise<void> {
+    return runHistoryWrite(async () => {
+      const targetHistories = [...historyList.value]
+      const removedMessages = (
+        await Promise.all(targetHistories.map((h) => readHistoryMessages(h.id)))
+      ).flat()
+      if (isTauriRuntime()) {
+        await Promise.all(targetHistories.map((history) => deleteHistoryMessages(history.id)))
+        await setHistoryList([])
+      } else {
+        await clearWebHistoryRecords()
+      }
+      historyList.value = []
+      await deleteUnreferencedLocalImages(collectImages(removedMessages))
+    })
   }
 
   // 切换收藏状态
-  async function toggleHistoryFavorite(id: string): Promise<void> {
-    const item = historyList.value.find((h) => h.id === id)
-    if (item) {
-      const previousValue = item.isFavorite
-      item.isFavorite = !previousValue
+  function toggleHistoryFavorite(id: string): Promise<void> {
+    return runHistoryWrite(async () => {
+      const item = historyList.value.find((h) => h.id === id)
+      if (item) {
+        const previousValue = item.isFavorite
+        item.isFavorite = !previousValue
+        try {
+          await setHistoryList(historyList.value)
+        } catch (error) {
+          item.isFavorite = previousValue
+          throw error
+        }
+      }
+    })
+  }
+
+  function renameHistoryItem(id: string, title: string): Promise<void> {
+    return runHistoryWrite(async () => {
+      const trimmedTitle = title.trim()
+      if (!trimmedTitle) return
+
+      const item = historyList.value.find((h) => h.id === id)
+      if (!item || item.title === trimmedTitle) return
+
+      const previousTitle = item.title
+      item.title = trimmedTitle
       try {
         await setHistoryList(historyList.value)
       } catch (error) {
-        item.isFavorite = previousValue
+        item.title = previousTitle
         throw error
       }
-    }
-  }
-
-  async function renameHistoryItem(id: string, title: string): Promise<void> {
-    const trimmedTitle = title.trim()
-    if (!trimmedTitle) return
-
-    const item = historyList.value.find((h) => h.id === id)
-    if (!item || item.title === trimmedTitle) return
-
-    const previousTitle = item.title
-    item.title = trimmedTitle
-    try {
-      await setHistoryList(historyList.value)
-    } catch (error) {
-      item.title = previousTitle
-      throw error
-    }
+    })
   }
 
   // 删除消息
@@ -670,31 +829,10 @@ export function useHistory() {
     await chatStore.toggleFavorite(messageId)
   }
 
-  // 将历史对话中指定消息的收藏状态设为目标值，写回并同步列表。
-  async function setHistoryMessagesFavorite(
-    historyId: string,
-    messageIdsToUpdate: Set<string>,
-    isFavorite: boolean,
-  ): Promise<void> {
-    const messages = await readHistoryMessages(historyId)
-    let changed = false
-    const nextMessages = messages.map((message) => {
-      if (!messageIdsToUpdate.has(message.id) || Boolean(message.isFavorite) === isFavorite) {
-        return message
-      }
-      changed = true
-      return { ...message, isFavorite }
-    })
-    if (!changed) return
-    await setHistoryMessages(historyId, nextMessages)
-  }
-
-  // 从历史对话中删除指定图片；助手消息删空则移除，历史删空则删除整条记录。
-  async function deleteImagesFromHistory(
-    historyId: string,
-    imageIds: Set<string>,
-  ): Promise<GeneratedImage[]> {
-    const messages = await readHistoryMessages(historyId)
+  function removeImagesFromMessages(
+    messages: ChatMessage[],
+    imageKeys: Set<string>,
+  ): { messages: ChatMessage[]; removedImages: GeneratedImage[] } {
     const removedImages: GeneratedImage[] = []
     const nextMessages: ChatMessage[] = []
 
@@ -704,12 +842,16 @@ export function useHistory() {
         nextMessages.push(message)
         continue
       }
-      const keptImages = originalImages.filter((image) => !imageIds.has(image.id))
+      const keptImages = originalImages.filter(
+        (image) => !imageKeys.has(imageStorageIdentity(image)),
+      )
       if (keptImages.length === originalImages.length) {
         nextMessages.push(message)
         continue
       }
-      removedImages.push(...originalImages.filter((image) => imageIds.has(image.id)))
+      removedImages.push(
+        ...originalImages.filter((image) => imageKeys.has(imageStorageIdentity(image))),
+      )
       if (keptImages.length === 0 && message.type === 'assistant') continue
       nextMessages.push({
         ...message,
@@ -717,32 +859,50 @@ export function useHistory() {
       })
     }
 
-    if (removedImages.length === 0) return []
+    return { messages: nextMessages, removedImages }
+  }
+
+  async function persistHistoryImageRemoval(
+    history: ChatHistory,
+    nextMessages: ChatMessage[],
+  ): Promise<void> {
+    const nextHistoryList =
+      nextMessages.length === 0
+        ? historyList.value.filter((item) => item.id !== history.id)
+        : historyList.value.map((item) =>
+            item.id === history.id ? { ...item, messageCount: nextMessages.length } : item,
+          )
 
     if (nextMessages.length === 0) {
-      await deleteHistoryItem(historyId)
-      return removedImages
+      if (isTauriRuntime()) {
+        await setHistoryList(nextHistoryList)
+        await deleteHistoryMessages(history.id)
+      } else {
+        await deleteWebHistoryRecords([history.id])
+      }
+      historyList.value = nextHistoryList
+      return
     }
 
-    // 先更新列表中的 messageCount，再写回消息：web 端 setHistoryMessages 会用
-    // historyList 里的 history 组装 IndexedDB 记录，若不先更新则持久化的计数会是旧值。
-    const history = historyList.value.find((item) => item.id === historyId)
-    if (history) {
-      const updated: ChatHistory = { ...history, messageCount: nextMessages.length }
-      historyList.value = historyList.value.map((item) => (item.id === historyId ? updated : item))
-    }
-
-    await setHistoryMessages(historyId, nextMessages)
+    // Web 端会从 historyList 读取同一条记录的 messageCount 后整体写回。
+    historyList.value = nextHistoryList
+    await setHistoryMessages(history.id, nextMessages)
     if (isTauriRuntime()) {
-      await setHistoryList(historyList.value)
+      await setHistoryList(nextHistoryList)
     }
-    return removedImages
   }
 
   // 画廊：将一组图片项的收藏状态设为目标值（消息级），覆盖当前对话与历史对话。
-  async function setGalleryItemsFavorite(
+  function setGalleryItemsFavorite(items: GalleryImageItem[], isFavorite: boolean): Promise<void> {
+    return runHistoryWrite((writeToken) =>
+      setGalleryItemsFavoriteInternal(items, isFavorite, writeToken),
+    )
+  }
+
+  async function setGalleryItemsFavoriteInternal(
     items: GalleryImageItem[],
     isFavorite: boolean,
+    writeToken: HistoryWriteToken,
   ): Promise<void> {
     const currentMessageIds = new Set<string>()
     const historyMessageIds = new Map<string, Set<string>>()
@@ -758,58 +918,111 @@ export function useHistory() {
       }
     }
 
-    for (const messageId of currentMessageIds) {
-      await chatStore.setFavorite(messageId, isFavorite)
-    }
-    for (const [historyId, ids] of historyMessageIds) {
-      await setHistoryMessagesFavorite(historyId, ids, isFavorite)
+    const snapshot = await captureGalleryMutationSnapshot(historyMessageIds.keys())
+    try {
+      await chatStore.setMessagesFavorite(Array.from(currentMessageIds), isFavorite, writeToken)
+
+      for (const [historyId, ids] of historyMessageIds) {
+        const messages = snapshot.historyMessages.get(historyId) || []
+        let changed = false
+        const nextMessages = messages.map((message) => {
+          if (!ids.has(message.id) || Boolean(message.isFavorite) === isFavorite) {
+            return message
+          }
+          changed = true
+          return { ...message, isFavorite }
+        })
+        if (changed) {
+          await setHistoryMessages(historyId, nextMessages)
+        }
+      }
+    } catch (error) {
+      await rollbackGalleryMutation(snapshot, error, false, writeToken)
     }
   }
 
-  // 画廊：删除一组图片项。因去重后同一 image.id 可能同时存在于当前对话与历史，
+  // 画廊：删除一组存储实体。同一实体可能同时存在于当前对话与历史，
   // 需从所有来源删除，避免刷新后历史副本重现。
-  async function deleteGalleryItems(items: GalleryImageItem[]): Promise<void> {
+  function deleteGalleryItems(items: GalleryImageItem[]): Promise<void> {
+    return runHistoryWrite((writeToken) => deleteGalleryItemsInternal(items, writeToken))
+  }
+
+  async function deleteGalleryItemsInternal(
+    items: GalleryImageItem[],
+    writeToken: HistoryWriteToken,
+  ): Promise<void> {
     if (items.length === 0) return
-    const imageIds = new Set(items.map((item) => item.image.id))
-
-    await chatStore.removeImages(Array.from(imageIds))
-
+    const imageKeys = new Set(items.map((item) => imageStorageIdentity(item.image)))
+    const snapshot = await captureGalleryMutationSnapshot(
+      historyList.value.map((history) => history.id),
+    )
     const removedImages: GeneratedImage[] = []
-    for (const history of [...historyList.value]) {
-      removedImages.push(...(await deleteImagesFromHistory(history.id, imageIds)))
+
+    try {
+      removedImages.push(
+        ...(await chatStore.removeImages(
+          items.map((item) => item.image),
+          { deferCleanup: true, writeToken },
+        )),
+      )
+
+      for (const history of snapshot.historyList) {
+        const result = removeImagesFromMessages(
+          snapshot.historyMessages.get(history.id) || [],
+          imageKeys,
+        )
+        if (result.removedImages.length === 0) continue
+
+        removedImages.push(...result.removedImages)
+        await persistHistoryImageRemoval(history, result.messages)
+      }
+    } catch (error) {
+      await rollbackGalleryMutation(snapshot, error, true, writeToken)
     }
 
-    if (removedImages.length > 0) {
-      await deleteUnreferencedLocalImages(removedImages)
-    }
+    await chatStore.cleanupRemovedImages(removedImages)
   }
 
   // 导出历史记录
-  async function exportHistory(): Promise<{ canceled: boolean }> {
+  function exportHistory(): Promise<{ canceled: boolean }> {
+    return chatStore.runHistoryExport(exportHistoryInternal)
+  }
+
+  async function exportHistoryInternal(): Promise<{ canceled: boolean }> {
     if (isTauriRuntime()) {
-      await ensureDesktopHistoryHydrated()
-      const desktopHistoryList = await getMetadataValue<ChatHistory[]>(
-        HISTORY_LIST_KEY,
-        historyList.value,
-      )
-      historyList.value = desktopHistoryList
-      const historyMessages = await readHistoryMessageMap(desktopHistoryList)
+      const {
+        buildDesktopHistoryExportZip,
+        selectDesktopHistoryExportPath,
+        writeDesktopHistoryExportZip,
+      } = await import('../platform/desktopHistoryExport')
+      const target = await selectDesktopHistoryExportPath()
+      if (!target) return { canceled: true }
 
-      const { exportDesktopHistoryZip } = await import('../platform/desktopHistoryExport')
-      return exportDesktopHistoryZip({
-        currentMessages: chatStore.messages,
-        historyList: desktopHistoryList,
-        historyMessages,
+      const archive = await runHistoryWrite(async () => {
+        await ensureDesktopHistoryHydrated()
+        const desktopHistoryList = await getMetadataValue<ChatHistory[]>(
+          HISTORY_LIST_KEY,
+          historyList.value,
+        )
+        historyList.value = desktopHistoryList
+        const historyMessages = await readHistoryMessageMap(desktopHistoryList)
+        return buildDesktopHistoryExportZip({
+          currentMessages: chatStore.messages,
+          historyList: desktopHistoryList,
+          historyMessages,
+        })
       })
+      return writeDesktopHistoryExportZip(target, archive)
     }
 
-    const exportData: ChatExportData = {
-      version: 1,
-      exportedAt: Date.now(),
-      messages: await prepareMessagesForWebExport(chatStore.messages),
-    }
-
-    const json = JSON.stringify(exportData, null, 2)
+    const json = await runHistoryWrite(async () => {
+      const exportData: ChatExportData = {
+        version: 1,
+        exportedAt: Date.now(),
+        messages: await prepareMessagesForWebExport(chatStore.messages),
+      }
+      return JSON.stringify(exportData, null, 2)
+    })
     const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
 
@@ -829,64 +1042,84 @@ export function useHistory() {
     file: File,
     mode: 'replace' | 'merge',
   ): Promise<{ success: boolean; message: string }> {
-    try {
-      if (isTauriRuntime() && isZipHistoryFile(file)) {
-        await ensureDesktopHistoryHydrated()
-        const { importDesktopHistoryZip, cleanupDesktopImportedImages } =
-          await import('../platform/desktopHistoryImport')
-        const result = await importDesktopHistoryZip(file)
-        if (!result.success) {
-          return result
-        }
-
-        try {
-          const unusedImagePaths = await commitDesktopZipImport(result.data, mode)
-          if (unusedImagePaths.length > 0) {
-            await cleanupDesktopImportedImages(unusedImagePaths)
+    return chatStore.runMessageImport(async (commitMessages) => {
+      try {
+        if (isTauriRuntime() && isZipHistoryFile(file)) {
+          await ensureDesktopHistoryHydrated()
+          const { importDesktopHistoryZip, cleanupDesktopImportedImages } =
+            await import('../platform/desktopHistoryImport')
+          const result = await importDesktopHistoryZip(file)
+          if (!result.success) {
+            return result
           }
-        } catch (error) {
-          await cleanupDesktopImportedImages(result.data.writtenImagePaths)
-          console.error('Desktop ZIP import commit error:', error)
-          return { success: false, message: '导入失败，现有数据已保持不变' }
+
+          try {
+            const unusedImagePaths = await commitDesktopZipImport(result.data, mode, commitMessages)
+            if (unusedImagePaths.length > 0) {
+              await cleanupDesktopImportedImages(unusedImagePaths)
+            }
+          } catch (error) {
+            if (error instanceof DesktopZipImportRollbackError) {
+              return {
+                success: false,
+                message: IMPORT_ROLLBACK_INCOMPLETE_MESSAGE,
+              }
+            }
+            await cleanupDesktopImportedImages(result.data.writtenImagePaths)
+            console.error('Desktop ZIP import commit error:', error)
+            return { success: false, message: '导入失败，现有数据已保持不变' }
+          }
+
+          return {
+            success: true,
+            message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并',
+          }
         }
 
-        return { success: true, message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并' }
-      }
+        const text = await file.text()
+        const data = JSON.parse(text) as ChatExportData
 
-      const text = await file.text()
-      const data = JSON.parse(text) as ChatExportData
-
-      if (!data.version || !Array.isArray(data.messages)) {
-        return { success: false, message: '无效的文件格式' }
-      }
-
-      // 验证消息数量限制
-      if (data.messages.length > 1000) {
-        return { success: false, message: '消息数量超过限制（最多 1000 条）' }
-      }
-
-      // 验证每条消息
-      const isValid = data.messages.every((msg) => {
-        if (!msg.id || !msg.type || !msg.content || !msg.timestamp || !msg.status) {
-          return false
+        if (!data.version || !Array.isArray(data.messages)) {
+          return { success: false, message: '无效的文件格式' }
         }
-        // 字段长度限制
-        if (msg.id.length > 100 || msg.content.length > 10000) {
-          return false
+
+        // 验证消息数量限制
+        if (data.messages.length > 1000) {
+          return { success: false, message: '消息数量超过限制（最多 1000 条）' }
         }
-        return true
-      })
 
-      if (!isValid) {
-        return { success: false, message: '文件数据格式不正确' }
+        // 验证每条消息
+        const isValid = data.messages.every((msg) => {
+          if (!msg.id || !msg.type || !msg.content || !msg.timestamp || !msg.status) {
+            return false
+          }
+          // 字段长度限制
+          if (msg.id.length > 100 || msg.content.length > 10000) {
+            return false
+          }
+          return true
+        })
+
+        if (!isValid) {
+          return { success: false, message: '文件数据格式不正确' }
+        }
+
+        await commitMessages(data.messages, mode)
+        return {
+          success: true,
+          message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并',
+        }
+      } catch (error) {
+        console.error('Import error:', error)
+        if (
+          error instanceof PersistenceError &&
+          error.message === 'Chat import failed and rollback was incomplete'
+        ) {
+          return { success: false, message: IMPORT_ROLLBACK_INCOMPLETE_MESSAGE }
+        }
+        return { success: false, message: '导入失败，请检查文件格式' }
       }
-
-      await chatStore.importMessages(data.messages, mode)
-      return { success: true, message: mode === 'replace' ? '历史记录已替换' : '历史记录已合并' }
-    } catch (error) {
-      console.error('Import error:', error)
-      return { success: false, message: '导入失败，请检查文件格式' }
-    }
+    })
   }
 
   // 清除搜索

@@ -26,6 +26,7 @@
           class="btn-secondary header-action"
           :aria-label="t('newChat')"
           :title="t('newChat')"
+          :disabled="chatStore.isImportingMessages"
           @click="handleNewChat"
         >
           <Plus :size="18" />
@@ -59,6 +60,7 @@
             class="btn-icon danger"
             :aria-label="t('clearChat')"
             :title="t('clearChat')"
+            :disabled="chatStore.isImportingMessages"
             @click="handleClearChat"
           >
             <Trash2 :size="20" />
@@ -94,6 +96,7 @@
                 v-if="chatStore.messageCount > 0"
                 class="more-menu-action danger"
                 role="menuitem"
+                :disabled="chatStore.isImportingMessages"
                 @click="handleClearChat"
               >
                 <Trash2 :size="18" />
