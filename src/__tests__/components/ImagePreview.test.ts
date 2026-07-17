@@ -72,6 +72,7 @@ vi.mock('vue-i18n', () => ({
         readLocalImageFailed: '读取本地图片失败',
         copyImageNotSupported: '不支持复制该图片到剪贴板',
         writeClipboardFailed: '写入系统剪贴板失败',
+        previewThumbnailLabel: '查看对话图片',
       })[key] ?? key,
   }),
 }))
@@ -116,6 +117,15 @@ function image(overrides: Partial<GeneratedImage> = {}): GeneratedImage {
     mimeType: 'image/png',
     timestamp: 1,
     ...overrides,
+  }
+}
+
+function previewEntry(key: string, source: GeneratedImage, imageIndex: number) {
+  return {
+    key,
+    messageId: key.split(':')[0],
+    imageIndex,
+    image: source,
   }
 }
 
@@ -206,6 +216,168 @@ describe('ImagePreview local image actions', () => {
     await triggerBodyButton('图片信息')
 
     expect(document.querySelector('.metadata-panel')).toBeNull()
+  })
+
+  it('opens on the clicked conversation image and switches through the thumbnail strip', async () => {
+    const first = image({ id: 'shared-id', url: 'blob:first', sourcePrompt: 'first prompt' })
+    const second = image({ id: 'shared-id', url: 'blob:second', sourcePrompt: 'second prompt' })
+    const previewImages = [
+      previewEntry('assistant-1:0', first, 0),
+      previewEntry('assistant-2:0', second, 0),
+    ]
+    const wrapper = mount(ImagePreview, {
+      props: {
+        image: second,
+        previewImages,
+        previewKey: 'assistant-2:0',
+      },
+    })
+
+    await openPreview(wrapper)
+
+    const thumbnails = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.preview-thumbnail'),
+    )
+    expect(thumbnails).toHaveLength(2)
+    expect(document.querySelector<HTMLImageElement>('.preview-image')?.src).toContain('blob:second')
+    expect(thumbnails[1].getAttribute('aria-current')).toBe('true')
+
+    await triggerBodyButton('图片信息')
+    expect(document.querySelector('.metadata-panel')?.textContent).toContain('second prompt')
+
+    await new DOMWrapper(thumbnails[0]).trigger('click')
+
+    expect(document.querySelector<HTMLImageElement>('.preview-image')?.src).toContain('blob:first')
+    expect(thumbnails[0].getAttribute('aria-current')).toBe('true')
+    expect(document.querySelector('.metadata-panel')).toBeNull()
+
+    await triggerBodyButton('编辑图片')
+    expect(wrapper.emitted('editImage')?.at(-1)).toEqual([first, 'assistant-1'])
+    await triggerBodyButton('创建变体')
+    expect(wrapper.emitted('createVariation')?.at(-1)).toEqual([first, 'assistant-1'])
+  })
+
+  it('ignores a stale image resolution after switching thumbnails', async () => {
+    let finishSlowResolution: () => void = () => undefined
+    const slowResolution = new Promise<void>((resolve) => {
+      finishSlowResolution = resolve
+    })
+    mockState.resolveDisplayUrl.mockImplementation(async (source: GeneratedImage) => {
+      if (source.id === 'slow-image') {
+        await slowResolution
+      }
+      return { ...source, url: `blob:resolved-${source.id}` }
+    })
+    const slow = image({
+      id: 'slow-image',
+      url: 'https://images.example.test/slow.png',
+      localPath: undefined,
+    })
+    const fast = image({
+      id: 'fast-image',
+      url: 'https://images.example.test/fast.png',
+      localPath: undefined,
+    })
+    const wrapper = mount(ImagePreview, {
+      props: {
+        image: slow,
+        previewImages: [
+          previewEntry('assistant-1:0', slow, 0),
+          previewEntry('assistant-2:0', fast, 0),
+        ],
+        previewKey: 'assistant-1:0',
+      },
+    })
+
+    await openPreview(wrapper)
+    const thumbnails = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.preview-thumbnail'),
+    )
+    await new DOMWrapper(thumbnails[1]).trigger('click')
+    await flushPromises()
+
+    expect(document.querySelector<HTMLImageElement>('.preview-image')?.src).toContain(
+      'blob:resolved-fast-image',
+    )
+
+    finishSlowResolution()
+    await flushPromises()
+
+    expect(document.querySelector<HTMLImageElement>('.preview-image')?.src).toContain(
+      'blob:resolved-fast-image',
+    )
+  })
+
+  it('falls back to the adjacent image when the active entry is removed', async () => {
+    const first = image({ id: 'first-image', url: 'blob:first' })
+    const second = image({ id: 'second-image', url: 'blob:second' })
+    const firstEntry = previewEntry('assistant-1:0', first, 0)
+    const secondEntry = previewEntry('assistant-2:0', second, 0)
+    const wrapper = mount(ImagePreview, {
+      props: {
+        image: second,
+        previewImages: [firstEntry, secondEntry],
+        previewKey: secondEntry.key,
+      },
+    })
+
+    await openPreview(wrapper)
+    await wrapper.setProps({ previewImages: [firstEntry] })
+    await flushPromises()
+
+    expect(document.querySelector<HTMLImageElement>('.preview-image')?.src).toContain('blob:first')
+    expect(document.querySelector('.preview-thumbnail-strip')).toBeNull()
+  })
+
+  it('resolves only the adjacent fallback when the active entry is removed', async () => {
+    mockState.resolveDisplayUrl.mockImplementation(async (source: GeneratedImage) => ({
+      ...source,
+      url: `blob:resolved-${source.id}`,
+    }))
+    const first = image({
+      id: 'first-image',
+      url: 'https://images.example.test/first.png',
+      localPath: undefined,
+    })
+    const removed = image({
+      id: 'removed-image',
+      url: 'https://images.example.test/removed.png',
+      localPath: undefined,
+    })
+    const adjacent = image({
+      id: 'adjacent-image',
+      url: 'https://images.example.test/adjacent.png',
+      localPath: undefined,
+    })
+    const firstEntry = previewEntry('assistant-1:0', first, 0)
+    const removedEntry = previewEntry('assistant-2:0', removed, 0)
+    const adjacentEntry = previewEntry('assistant-3:0', adjacent, 0)
+    const wrapper = mount(ImagePreview, {
+      props: {
+        image: removed,
+        previewImages: [firstEntry, removedEntry, adjacentEntry],
+        previewKey: removedEntry.key,
+      },
+    })
+
+    await openPreview(wrapper)
+    await flushPromises()
+    mockState.resolveDisplayUrl.mockClear()
+
+    await wrapper.setProps({ previewImages: [firstEntry, adjacentEntry] })
+    await flushPromises()
+
+    expect(mockState.resolveDisplayUrl.mock.calls.map(([source]) => source.id)).toEqual([
+      'adjacent-image',
+    ])
+  })
+
+  it('keeps the existing single-image preview without a thumbnail strip', async () => {
+    const wrapper = mount(ImagePreview, { props: { image: image() } })
+
+    await openPreview(wrapper)
+
+    expect(document.querySelector('.preview-thumbnail-strip')).toBeNull()
   })
 
   it('keeps the enlarged preview open when requesting a variation from it', async () => {

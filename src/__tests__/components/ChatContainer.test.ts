@@ -509,4 +509,86 @@ describe('ChatContainer clipboard attachments', () => {
 
     expect(messagesArea.scrollTop).toBe(1180)
   })
+
+  it('builds one ordered preview collection from assistant images only', async () => {
+    mockState.chatStore.messages.push(
+      {
+        id: 'assistant-first',
+        type: 'assistant',
+        content: 'first result',
+        timestamp: 1,
+        status: 'success',
+        images: [
+          { id: 'first', url: 'blob:first', timestamp: 1 },
+          { id: 'second', url: 'blob:second', timestamp: 2 },
+        ],
+      },
+      {
+        id: 'user-reference',
+        type: 'user',
+        content: 'reference',
+        timestamp: 3,
+        status: 'success',
+        attachments: [
+          {
+            id: 'attachment',
+            name: 'reference.png',
+            url: 'blob:attachment',
+            timestamp: 3,
+          },
+        ],
+      },
+      {
+        id: 'assistant-second',
+        type: 'assistant',
+        content: 'second result',
+        timestamp: 4,
+        status: 'success',
+        images: [{ id: 'third', url: 'blob:third', timestamp: 4 }],
+      },
+    )
+
+    const wrapper = await mountContainer()
+    const bubbles = wrapper.findAllComponents({ name: 'MessageBubble' })
+    const previewImages = bubbles[0].props('previewImages') as Array<{
+      key: string
+      image: { id: string }
+    }>
+
+    expect(previewImages.map(({ image }) => image.id)).toEqual(['first', 'second', 'third'])
+    expect(new Set(previewImages.map(({ key }) => key)).size).toBe(3)
+    expect(bubbles.every((bubble) => bubble.props('previewImages') === previewImages)).toBe(true)
+  })
+
+  it('keeps image preview keys stable when an earlier image is removed', async () => {
+    const images = [
+      { id: 'first', url: 'blob:first', timestamp: 1 },
+      { id: 'second', url: 'blob:second', timestamp: 2 },
+      { id: 'third', url: 'blob:third', timestamp: 3 },
+    ]
+    mockState.chatStore.messages.push({
+      id: 'assistant-message',
+      type: 'assistant',
+      content: 'results',
+      timestamp: 1,
+      status: 'success',
+      images,
+    })
+    const wrapper = await mountContainer()
+    const bubble = wrapper.getComponent({ name: 'MessageBubble' })
+    const initialEntries = bubble.props('previewImages') as Array<{
+      key: string
+      image: { id: string }
+    }>
+    const secondImageKey = initialEntries.find((entry) => entry.image.id === 'second')?.key
+
+    mockState.chatStore.messages[0].images!.splice(0, 1)
+    await wrapper.vm.$nextTick()
+
+    const updatedEntries = bubble.props('previewImages') as Array<{
+      key: string
+      image: { id: string }
+    }>
+    expect(updatedEntries.find((entry) => entry.image.id === 'second')?.key).toBe(secondImageKey)
+  })
 })

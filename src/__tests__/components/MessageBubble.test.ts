@@ -16,6 +16,7 @@ const mockState = vi.hoisted(() => ({
   showSuccess: vi.fn(),
   showError: vi.fn(),
   downloadMultipleImages: vi.fn(),
+  appendDerivedImageResult: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -33,6 +34,7 @@ vi.mock('../../composables/useChat', () => ({
   useChat: () => ({
     retryGeneration: mockState.retryGeneration,
     editUserPrompt: mockState.editUserPrompt,
+    appendDerivedImageResult: mockState.appendDerivedImageResult,
   }),
 }))
 
@@ -100,17 +102,27 @@ function message(overrides: Partial<ChatMessage> = {}): ChatMessage {
   }
 }
 
-function mountBubble(chatMessage: ChatMessage) {
+function mountBubble(
+  chatMessage: ChatMessage,
+  previewImages: Array<{
+    key: string
+    messageId: string
+    imageIndex: number
+    image: GeneratedImage
+  }> = [],
+) {
   return mount(MessageBubble, {
     props: {
       message: chatMessage,
+      previewImages,
     },
     global: {
       stubs: {
         ImagePreview: {
-          props: ['image'],
+          name: 'ImagePreview',
+          props: ['image', 'previewImages', 'previewKey'],
           template:
-            '<button class="image-preview-stub" @click="$emit(\'imageLoad\')">{{ image.id }}</button>',
+            '<div><button class="image-preview-stub" @click="$emit(\'imageLoad\')">{{ image.id }}</button><button v-if="previewImages.length > 1" class="preview-edit-stub" @click="$emit(\'editImage\', previewImages[1].image, previewImages[1].messageId)">edit preview</button></div>',
         },
         MessageActions: {
           props: {
@@ -143,6 +155,7 @@ describe('MessageBubble generation display', () => {
     mockState.showSuccess.mockReset()
     mockState.showError.mockReset()
     mockState.downloadMultipleImages.mockReset()
+    mockState.appendDerivedImageResult.mockReset()
   })
 
   it('shows a glass placeholder and cancel action for pending assistant messages', async () => {
@@ -201,6 +214,113 @@ describe('MessageBubble generation display', () => {
     expect(wrapper.text()).not.toContain('图片已生成')
     expect(wrapper.find('.assistant-bubble').exists()).toBe(false)
     expect(wrapper.find('.image-preview-stub').exists()).toBe(true)
+  })
+
+  it('passes the conversation preview collection and stable image keys to each image', () => {
+    const first = image({ id: 'first-image', url: 'blob:first' })
+    const second = image({ id: 'second-image', url: 'blob:second' })
+    const assistantMessage = message({
+      id: 'assistant-message',
+      status: 'success',
+      images: [first, second],
+    })
+    const previewImages = [
+      {
+        key: 'assistant-message:0',
+        messageId: assistantMessage.id,
+        imageIndex: 0,
+        image: first,
+      },
+      {
+        key: 'assistant-message:1',
+        messageId: assistantMessage.id,
+        imageIndex: 1,
+        image: second,
+      },
+    ]
+
+    const wrapper = mountBubble(assistantMessage, previewImages)
+    const previews = wrapper.findAllComponents({ name: 'ImagePreview' })
+
+    expect(previews.map((preview) => preview.props('previewKey'))).toEqual([
+      'assistant-message:0',
+      'assistant-message:1',
+    ])
+    expect(previews[0].props('previewImages')).toEqual(previewImages)
+  })
+
+  it('keeps the selected image source message when editing across message previews', async () => {
+    const first = image({ id: 'first-image', url: 'blob:first' })
+    const second = image({ id: 'second-image', url: 'blob:second' })
+    const assistantMessage = message({
+      id: 'assistant-first',
+      status: 'success',
+      images: [first],
+    })
+    const previewImages = [
+      {
+        key: 'assistant-first:0',
+        messageId: assistantMessage.id,
+        imageIndex: 0,
+        image: first,
+      },
+      {
+        key: 'assistant-second:0',
+        messageId: 'assistant-second',
+        imageIndex: 0,
+        image: second,
+      },
+    ]
+    const wrapper = mountBubble(assistantMessage, previewImages)
+
+    await wrapper.get('.preview-edit-stub').trigger('click')
+    wrapper.getComponent({ name: 'ImageEditDialog' }).vm.$emit(
+      'result',
+      {
+        created: 1,
+        data: [{ b64_json: 'result' }],
+      },
+      'edit prompt',
+    )
+    await vi.waitFor(() => expect(mockState.appendDerivedImageResult).toHaveBeenCalled())
+
+    expect(mockState.appendDerivedImageResult).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sourceImage: second,
+        sourceMessageId: 'assistant-second',
+      }),
+    )
+  })
+
+  it('uses stable preview keys when one message contains duplicate image IDs', async () => {
+    const duplicateId = 'duplicate-image'
+    const assistantMessage = message({
+      status: 'success',
+      images: [
+        image({ id: duplicateId, url: 'blob:first' }),
+        image({ id: duplicateId, url: 'blob:second' }),
+      ],
+    })
+    const previewImages = assistantMessage.images!.map((source, imageIndex) => ({
+      key: `${assistantMessage.id}:${imageIndex}`,
+      messageId: assistantMessage.id,
+      imageIndex,
+      image: source,
+    }))
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const wrapper = mountBubble(
+      { ...assistantMessage, images: [assistantMessage.images![0]] },
+      previewImages,
+    )
+    await wrapper.setProps({ message: assistantMessage })
+
+    expect(wrapper.findAllComponents({ name: 'ImagePreview' })).toHaveLength(2)
+    expect(
+      consoleWarn.mock.calls.some(([message]) => String(message).includes('Duplicate keys')),
+    ).toBe(false)
+    consoleWarn.mockRestore()
   })
 
   it('forwards generated image load events with the message id', async () => {

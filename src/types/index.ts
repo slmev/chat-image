@@ -70,6 +70,13 @@ export interface GeneratedImage {
   sourceMessageId?: string
 }
 
+export interface ConversationPreviewImage {
+  key: string
+  messageId: string
+  imageIndex: number
+  image: GeneratedImage
+}
+
 export interface ChatAttachment extends GeneratedImage {
   name: string
 }

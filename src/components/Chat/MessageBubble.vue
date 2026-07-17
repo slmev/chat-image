@@ -143,9 +143,15 @@
         <div v-if="message.isFavorite" class="favorite-badge image-favorite-badge">
           <Star :size="12" fill="currentColor" />
         </div>
-        <div v-for="image in message.images || []" :key="image.id" class="result-image-item">
+        <div
+          v-for="(image, imageIndex) in message.images || []"
+          :key="previewKeyFor(imageIndex)"
+          class="result-image-item"
+        >
           <ImagePreview
             :image="image"
+            :preview-images="previewImages"
+            :preview-key="previewKeyFor(imageIndex)"
             @create-variation="openVariationDialog"
             @edit-image="openEditDialog"
             @image-load="emit('imageLoad', message.id)"
@@ -306,6 +312,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import type {
   ChatMessage,
+  ConversationPreviewImage,
   GeneratedImage,
   ImageGenerationResponse,
   VariationOptions,
@@ -333,6 +340,7 @@ import { isPersistenceError } from '../../utils/storage'
 
 interface Props {
   message: ChatMessage
+  previewImages?: ConversationPreviewImage[]
   searchQuery?: string
 }
 
@@ -358,6 +366,8 @@ const showEditDialog = ref(false)
 const showDeleteConfirm = ref(false)
 const selectedImageForVariation = ref<GeneratedImage | null>(null)
 const selectedImageForEdit = ref<GeneratedImage | null>(null)
+const variationSourceMessageId = ref<string | null>(null)
+const editSourceMessageId = ref<string | null>(null)
 const pendingDeleteId = ref<string | null>(null)
 const isRetrying = ref(false)
 const showParameterDialog = ref(false)
@@ -383,6 +393,14 @@ const hasImages = computed(() => !!props.message.images && props.message.images.
 const hasAttachments = computed(
   () => !!props.message.attachments && props.message.attachments.length > 0,
 )
+
+function previewKeyFor(imageIndex: number): string {
+  return (
+    props.previewImages?.find(
+      (entry) => entry.messageId === props.message.id && entry.imageIndex === imageIndex,
+    )?.key ?? `${props.message.id}:${imageIndex}`
+  )
+}
 
 const placeholderAspectRatio = computed(() => {
   return generationAspectRatio(props.message.generation)
@@ -528,24 +546,28 @@ function handleCreateVariation(_messageId?: string) {
   }
 }
 
-function openVariationDialog(image: GeneratedImage) {
+function openVariationDialog(image: GeneratedImage, sourceMessageId?: string) {
   selectedImageForVariation.value = image
+  variationSourceMessageId.value = sourceMessageId || props.message.id
   showVariationDialog.value = true
 }
 
 function closeVariationDialog() {
   showVariationDialog.value = false
   selectedImageForVariation.value = null
+  variationSourceMessageId.value = null
 }
 
-function openEditDialog(image: GeneratedImage) {
+function openEditDialog(image: GeneratedImage, sourceMessageId?: string) {
   selectedImageForEdit.value = image
+  editSourceMessageId.value = sourceMessageId || props.message.id
   showEditDialog.value = true
 }
 
 function closeEditDialog() {
   showEditDialog.value = false
   selectedImageForEdit.value = null
+  editSourceMessageId.value = null
 }
 
 async function handleVariationResult(response: ImageGenerationResponse, options: VariationOptions) {
@@ -556,7 +578,7 @@ async function handleVariationResult(response: ImageGenerationResponse, options:
       prompt: options.prompt,
       generationOptions: options,
       sourceImage: selectedImageForVariation.value,
-      sourceMessageId: props.message.id,
+      sourceMessageId: variationSourceMessageId.value || props.message.id,
     })
   } catch (error) {
     console.error('Variation result failed:', error)
@@ -574,7 +596,7 @@ async function handleEditResult(response: ImageGenerationResponse, prompt: strin
         ...DEFAULT_GENERATION_OPTIONS,
       },
       sourceImage: selectedImageForEdit.value,
-      sourceMessageId: props.message.id,
+      sourceMessageId: editSourceMessageId.value || props.message.id,
     })
   } catch (error) {
     console.error('Edit result failed:', error)

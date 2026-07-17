@@ -331,6 +331,8 @@ export default {
   currentChat: 'Current chat',
   sourceHistory: 'Source',
   previewImage: 'Preview image',
+  conversationImageStrip: 'Current conversation images',
+  previewThumbnailLabel: 'View image {index} of {total}',
 
   // Import/export
   exportImportHistory: 'Import/Export History',

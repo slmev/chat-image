@@ -56,6 +56,7 @@
           v-for="message in filteredMessages"
           :key="message.id"
           :message="message"
+          :preview-images="conversationPreviewImages"
           :search-query="searchQuery"
           @delete="handleDelete"
           @toggle-favorite="handleToggleFavorite"
@@ -93,6 +94,7 @@ import ChatInput from './ChatInput.vue'
 import SearchBar from './SearchBar.vue'
 import type {
   ChatInputAttachment,
+  ConversationPreviewImage,
   GeneratedImage,
   GenerationMetadata,
   GenerationOptions,
@@ -147,6 +149,39 @@ const chatInputRef = ref<{
 } | null>(null)
 
 const isConfigured = computed(() => configStore.isConfigured)
+
+const previewImageKeys = new WeakMap<GeneratedImage, string>()
+let previewImageKeySequence = 0
+
+function stablePreviewImageKey(messageId: string, image: GeneratedImage): string {
+  const existingKey = previewImageKeys.get(image)
+  if (existingKey) return existingKey
+  const key = `${messageId}:${image.id}:${previewImageKeySequence++}`
+  previewImageKeys.set(image, key)
+  return key
+}
+
+const conversationPreviewImages = computed<ConversationPreviewImage[]>(() => {
+  const entries: ConversationPreviewImage[] = []
+  const usedKeys = new Set<string>()
+
+  chatStore.messages.forEach((message) => {
+    if (message.type !== 'assistant') return
+    const images = message.images || []
+    images.forEach((image, imageIndex) => {
+      const baseKey = stablePreviewImageKey(message.id, image)
+      let key = baseKey
+      let duplicateIndex = 1
+      while (usedKeys.has(key)) {
+        key = `${baseKey}:duplicate:${duplicateIndex++}`
+      }
+      usedKeys.add(key)
+      entries.push({ key, messageId: message.id, imageIndex, image })
+    })
+  })
+
+  return entries
+})
 
 // Quick start templates
 const quickStartTemplates = computed(() => {

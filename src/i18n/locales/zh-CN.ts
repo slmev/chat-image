@@ -327,6 +327,8 @@ export default {
   currentChat: '当前对话',
   sourceHistory: '来源',
   previewImage: '预览图片',
+  conversationImageStrip: '当前对话图片',
+  previewThumbnailLabel: '查看第 {index} 张图片，共 {total} 张',
 
   // Import/export
   exportImportHistory: '导入/导出历史记录',
