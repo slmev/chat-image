@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { webImageRepository } from '../../platform/webImageRepository'
+import { revokeWebImageObjectUrls, webImageRepository } from '../../platform/webImageRepository'
 
 describe('web image repository', () => {
   it('stores generated base64 images as blobs', async () => {
@@ -83,5 +83,25 @@ describe('web image repository', () => {
     expect(imported).toMatchObject({ id: 'shared-id', webStorageKey: 'web:import-batch-0' })
     expect(await (await webImageRepository.readImageBlob(original)).text()).toBe('original')
     expect(await (await webImageRepository.readImageBlob(imported)).text()).toBe('imported')
+  })
+
+  it('reuses one object URL when the same stored image resolves concurrently', async () => {
+    const stored = await webImageRepository.saveGeneratedImage({
+      id: 'concurrent-image',
+      b64Json: btoa('concurrent'),
+      timestamp: 1,
+    })
+    revokeWebImageObjectUrls([stored])
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL')
+    createObjectUrl.mockClear()
+
+    const [first, second] = await Promise.all([
+      webImageRepository.resolveDisplayUrl(stored),
+      webImageRepository.resolveDisplayUrl(stored),
+    ])
+
+    expect(first.url).toBe(second.url)
+    expect(createObjectUrl).toHaveBeenCalledOnce()
+    createObjectUrl.mockRestore()
   })
 })

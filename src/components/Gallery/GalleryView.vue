@@ -552,6 +552,7 @@ const galleryGridRef = ref<HTMLElement | null>(null)
 const galleryGridWidth = ref(0)
 const ownedObjectUrls = new Set<string>()
 let galleryResizeObserver: ResizeObserver | null = null
+let resolveDisplayRun = 0
 
 const currentImageCount = computed(
   () => galleryItems.value.filter((item) => item.sourceType === 'current').length,
@@ -729,6 +730,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  resolveDisplayRun += 1
   revokeOwnedObjectUrls()
   galleryResizeObserver?.disconnect()
   window.removeEventListener('resize', updateGalleryGridWidth)
@@ -763,7 +765,8 @@ async function refreshGalleryImages() {
 }
 
 async function resolveDisplayImages(items: GalleryImageItem[]) {
-  revokeOwnedObjectUrls()
+  const run = ++resolveDisplayRun
+  const resolvedObjectUrls = new Set<string>()
   const entries = await Promise.all(
     items.map(async (item) => {
       try {
@@ -773,7 +776,7 @@ async function resolveDisplayImages(items: GalleryImageItem[]) {
           resolved.url !== item.image.url &&
           !resolved.webStorageKey
         ) {
-          ownedObjectUrls.add(resolved.url)
+          resolvedObjectUrls.add(resolved.url)
         }
         return [item.id, resolved] as const
       } catch (err) {
@@ -783,16 +786,27 @@ async function resolveDisplayImages(items: GalleryImageItem[]) {
     }),
   )
 
+  if (run !== resolveDisplayRun) {
+    revokeObjectUrls(resolvedObjectUrls)
+    return
+  }
+
+  revokeOwnedObjectUrls()
+  resolvedObjectUrls.forEach((url) => ownedObjectUrls.add(url))
   displayImages.value = Object.fromEntries(entries)
 }
 
-function revokeOwnedObjectUrls() {
-  ownedObjectUrls.forEach((url) => {
+function revokeObjectUrls(urls: Set<string>) {
+  urls.forEach((url) => {
     if (typeof URL.revokeObjectURL === 'function') {
       URL.revokeObjectURL(url)
     }
   })
-  ownedObjectUrls.clear()
+  urls.clear()
+}
+
+function revokeOwnedObjectUrls() {
+  revokeObjectUrls(ownedObjectUrls)
 }
 
 function isRecent(timestamp: number): boolean {

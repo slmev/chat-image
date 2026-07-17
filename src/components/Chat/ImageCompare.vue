@@ -108,18 +108,25 @@ function revokeObjectUrl(url: string) {
 }
 
 function revokeOwnedObjectUrls() {
-  ownedObjectUrls.forEach(revokeObjectUrl)
-  ownedObjectUrls.clear()
+  revokeObjectUrls(ownedObjectUrls)
 }
 
-async function resolveImageUrl(image: GeneratedImage): Promise<string> {
+function revokeObjectUrls(urls: Set<string>) {
+  urls.forEach(revokeObjectUrl)
+  urls.clear()
+}
+
+async function resolveImageUrl(
+  image: GeneratedImage,
+  resolvedObjectUrls: Set<string>,
+): Promise<string> {
   if (!shouldResolveDisplayUrl(image)) {
     return isValidImageUrl(image.url) ? image.url : ''
   }
   try {
     const resolved = await getImageRepository().resolveDisplayUrl(image)
     if (resolved.url.startsWith('blob:') && resolved.url !== image.url) {
-      ownedObjectUrls.add(resolved.url)
+      resolvedObjectUrls.add(resolved.url)
     }
     return resolved.url
   } catch (err) {
@@ -132,22 +139,24 @@ watch(
   () => [props.isOpen, props.leftImage, props.rightImage] as const,
   async () => {
     if (!props.isOpen) {
+      resolveRun += 1
       revokeOwnedObjectUrls()
       leftUrl.value = ''
       rightUrl.value = ''
       return
     }
     const run = ++resolveRun
-    revokeOwnedObjectUrls()
+    const resolvedObjectUrls = new Set<string>()
     const [left, right] = await Promise.all([
-      resolveImageUrl(props.leftImage),
-      resolveImageUrl(props.rightImage),
+      resolveImageUrl(props.leftImage, resolvedObjectUrls),
+      resolveImageUrl(props.rightImage, resolvedObjectUrls),
     ])
     if (run !== resolveRun) {
-      // A newer resolve superseded this one; drop any URLs it created.
-      revokeOwnedObjectUrls()
+      revokeObjectUrls(resolvedObjectUrls)
       return
     }
+    revokeOwnedObjectUrls()
+    resolvedObjectUrls.forEach((url) => ownedObjectUrls.add(url))
     leftUrl.value = left
     rightUrl.value = right
   },
@@ -191,6 +200,7 @@ function stopDrag() {
 }
 
 onUnmounted(() => {
+  resolveRun += 1
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('touchmove', onDrag)

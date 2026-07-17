@@ -33,6 +33,12 @@ vi.mock('../../platform/metadataStore', () => ({
 
 vi.mock('../../services/api', () => ({
   ImageGenerationService: mockState.ImageGenerationService,
+  ImageGenerationCanceledError: class ImageGenerationCanceledError extends Error {
+    constructor() {
+      super('Image generation canceled')
+      this.name = 'ImageGenerationCanceledError'
+    }
+  },
 }))
 
 vi.mock('../../platform/imageRepository', () => ({
@@ -112,5 +118,30 @@ describe('useImageEdit', () => {
       n: 2,
       response_format: 'b64_json',
     })
+  })
+
+  it('does not start an edit request after cancellation while reading the source image', async () => {
+    let finishImageRead: (blob: Blob) => void = () => undefined
+    mockState.readImageBlob.mockReturnValueOnce(
+      new Promise<Blob>((resolve) => {
+        finishImageRead = resolve
+      }),
+    )
+    mockState.service.editImage.mockResolvedValue(response())
+    const editor = useImageEdit()
+
+    const variation = editor.createVariation(image(), {
+      prompt: 'make it winter',
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await vi.waitFor(() => expect(mockState.readImageBlob).toHaveBeenCalledOnce())
+    editor.cancelEdit()
+    finishImageRead(new Blob(['source'], { type: 'image/png' }))
+
+    await expect(variation).rejects.toMatchObject({ name: 'ImageGenerationCanceledError' })
+    expect(mockState.service.editImage).not.toHaveBeenCalled()
+    expect(editor.isLoading.value).toBe(false)
   })
 })

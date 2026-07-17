@@ -31,6 +31,12 @@ vi.mock('../../platform/metadataStore', () => ({
 
 vi.mock('../../services/api', () => ({
   createImageGenerationService: mockState.createImageGenerationService,
+  ImageGenerationCanceledError: class ImageGenerationCanceledError extends Error {
+    constructor() {
+      super('Image generation canceled')
+      this.name = 'ImageGenerationCanceledError'
+    }
+  },
 }))
 
 vi.mock('../../platform/imageRepository', () => ({
@@ -73,6 +79,7 @@ describe('useImageGeneration', () => {
   beforeEach(async () => {
     setActivePinia(createPinia())
     localStorage.clear()
+    useImageGeneration().cancelGeneration()
     mockState.service.generateImage.mockReset()
     mockState.service.editImage.mockReset()
     mockState.service.cancelRequest.mockReset()
@@ -137,5 +144,47 @@ describe('useImageGeneration', () => {
       n: 2,
       response_format: 'b64_json',
     })
+  })
+
+  it('cancels the previous service before starting a newer request', async () => {
+    let finishFirstRequest: (response: ImageGenerationResponse) => void = () => undefined
+    const firstService = {
+      generateImage: vi.fn(
+        () =>
+          new Promise<ImageGenerationResponse>((resolve) => {
+            finishFirstRequest = resolve
+          }),
+      ),
+      editImage: vi.fn(),
+      cancelRequest: vi.fn(),
+    }
+    const secondService = {
+      generateImage: vi.fn().mockResolvedValue(response()),
+      editImage: vi.fn(),
+      cancelRequest: vi.fn(),
+    }
+    mockState.createImageGenerationService
+      .mockImplementationOnce(() => firstService)
+      .mockImplementationOnce(() => secondService)
+    mockState.persistGeneratedImagesFromResponse.mockResolvedValue([generatedImage()])
+    const generator = useImageGeneration()
+
+    const firstRequest = generator.generateImage('first', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+    await vi.waitFor(() => expect(firstService.generateImage).toHaveBeenCalledOnce())
+    const secondRequest = generator.generateImage('second', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+
+    expect(firstService.cancelRequest).toHaveBeenCalledOnce()
+    await expect(secondRequest).resolves.toEqual([generatedImage()])
+
+    finishFirstRequest(response())
+    await expect(firstRequest).rejects.toMatchObject({ name: 'ImageGenerationCanceledError' })
   })
 })

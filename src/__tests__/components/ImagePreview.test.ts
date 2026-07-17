@@ -308,6 +308,30 @@ describe('ImagePreview local image actions', () => {
     )
   })
 
+  it('revokes an inline image URL that resolves after the component unmounts', async () => {
+    let finishResolution: (image: GeneratedImage) => void = () => undefined
+    mockState.resolveDisplayUrl.mockReturnValueOnce(
+      new Promise<GeneratedImage>((resolve) => {
+        finishResolution = resolve
+      }),
+    )
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL')
+    const remoteImage = image({
+      id: 'late-image',
+      url: 'https://images.example.test/late.png',
+      localPath: undefined,
+    })
+    const wrapper = mount(ImagePreview, { props: { image: remoteImage } })
+    await vi.waitFor(() => expect(mockState.resolveDisplayUrl).toHaveBeenCalledOnce())
+
+    wrapper.unmount()
+    finishResolution({ ...remoteImage, url: 'blob:late-image' })
+    await flushPromises()
+
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:late-image')
+    revokeObjectUrl.mockRestore()
+  })
+
   it('falls back to the adjacent image when the active entry is removed', async () => {
     const first = image({ id: 'first-image', url: 'blob:first' })
     const second = image({ id: 'second-image', url: 'blob:second' })

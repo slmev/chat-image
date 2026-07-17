@@ -1,5 +1,5 @@
 import { useConfigStore } from '../stores/config'
-import { createImageGenerationService } from '../services/api'
+import { createImageGenerationService, ImageGenerationCanceledError } from '../services/api'
 import type { ChatAttachment, GenerationOptions, GeneratedImage } from '../types'
 import { getImageRepository } from '../platform/imageRepository'
 import { persistGeneratedImagesFromResponse } from '../utils/images'
@@ -22,8 +22,9 @@ export function useImageGeneration() {
       throw new Error(t('configureApiFirst'))
     }
 
-    // 创建新的服务实例
-    currentService = createImageGenerationService(configStore.apiConfig)
+    currentService?.cancelRequest()
+    const service = createImageGenerationService(configStore.apiConfig)
+    currentService = service
 
     const generationOptions = normalizeGenerationOptions(options)
 
@@ -34,23 +35,33 @@ export function useImageGeneration() {
 
     try {
       const repository = getImageRepository()
-      const response =
-        attachments.length > 0
-          ? await currentService.editImage({
-              image: await Promise.all(
-                attachments.map((attachment) => repository.readImageBlob(attachment)),
-              ),
-              prompt: finalPrompt,
-              size: generationOptions.size,
-              quality: generationOptions.quality,
-              n: generationOptions.n,
-              response_format: 'b64_json',
-            })
-          : await currentService.generateImage(finalPrompt, {
-              size: generationOptions.size,
-              quality: generationOptions.quality,
-              n: generationOptions.n,
-            })
+      let response
+      if (attachments.length > 0) {
+        const inputImages = await Promise.all(
+          attachments.map((attachment) => repository.readImageBlob(attachment)),
+        )
+        if (currentService !== service) {
+          throw new ImageGenerationCanceledError()
+        }
+        response = await service.editImage({
+          image: inputImages,
+          prompt: finalPrompt,
+          size: generationOptions.size,
+          quality: generationOptions.quality,
+          n: generationOptions.n,
+          response_format: 'b64_json',
+        })
+      } else {
+        response = await service.generateImage(finalPrompt, {
+          size: generationOptions.size,
+          quality: generationOptions.quality,
+          n: generationOptions.n,
+        })
+      }
+
+      if (currentService !== service) {
+        throw new ImageGenerationCanceledError()
+      }
 
       const images: GeneratedImage[] = await persistGeneratedImagesFromResponse(response, {
         sourcePrompt: finalPrompt,
@@ -60,6 +71,10 @@ export function useImageGeneration() {
     } catch (error) {
       console.error('Image generation failed:', error)
       throw error
+    } finally {
+      if (currentService === service) {
+        currentService = null
+      }
     }
   }
 

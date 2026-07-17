@@ -5,6 +5,7 @@ import type { GeneratedImage } from '../../types'
 
 const mockState = vi.hoisted(() => ({
   createVariation: vi.fn(),
+  cancelEdit: vi.fn(),
 }))
 
 vi.mock('vue-i18n', () => ({
@@ -69,6 +70,7 @@ vi.mock('../../composables/useImageEdit', () => ({
     isLoading: false,
     error: null,
     createVariation: mockState.createVariation,
+    cancelEdit: mockState.cancelEdit,
   }),
 }))
 
@@ -113,6 +115,7 @@ async function mountDialog(sourceImage = image()) {
 describe('VariationDialog image sizing', () => {
   beforeEach(() => {
     mockState.createVariation.mockReset()
+    mockState.cancelEdit.mockReset()
     mockState.createVariation.mockResolvedValue({
       created: 1,
       data: [{ b64_json: 'variation' }],
@@ -252,5 +255,14 @@ describe('VariationDialog image sizing', () => {
 
     expect(wrapper.text()).toContain('未保存的更改')
     expect(wrapper.emitted('close')).toBeUndefined()
+  })
+
+  it('cancels any active variation request when closing', async () => {
+    const wrapper = await mountDialog()
+
+    await wrapper.get('.btn-secondary').trigger('click')
+
+    expect(mockState.cancelEdit).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('close')).toHaveLength(1)
   })
 })

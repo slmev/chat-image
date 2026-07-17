@@ -212,24 +212,32 @@ export function useChat() {
       throw new Error(t('enterImageDescription'))
     }
 
-    const generationOptions = normalizeGenerationOptions(options)
-    const { attachments, persistedAttachments } = await persistInputAttachments(
-      inputAttachments,
-      content,
-    )
-    try {
-      requireChatMessageWritesAvailable()
-    } catch (error) {
-      await discardGeneratedImages(persistedAttachments)
-      throw error
-    }
+    if (chatStore.isLoading) return
 
-    const generation = createGenerationMetadata(content, generationOptions, attachments)
+    const generationOptions = normalizeGenerationOptions(options)
     const generationToken = Symbol('generation')
     activeGenerationToken = generationToken
     chatStore.setLoading(true)
 
     try {
+      const { attachments, persistedAttachments } = await persistInputAttachments(
+        inputAttachments,
+        content,
+      )
+
+      if (activeGenerationToken !== generationToken) {
+        await discardGeneratedImages(persistedAttachments)
+        return
+      }
+
+      try {
+        requireChatMessageWritesAvailable()
+      } catch (error) {
+        await discardGeneratedImages(persistedAttachments)
+        throw error
+      }
+
+      const generation = createGenerationMetadata(content, generationOptions, attachments)
       let assistantMessage: ChatMessage
 
       try {
@@ -333,6 +341,7 @@ export function useChat() {
 
     const retryTarget = chatStore.messages.find((message) => message.id === messageId)
     if (!retryTarget || retryTarget.type !== 'assistant') return
+    if (chatStore.isLoading) return
 
     const generationOptions = normalizeGenerationOptions(options)
     const generation = createGenerationMetadata(content, generationOptions, attachments)

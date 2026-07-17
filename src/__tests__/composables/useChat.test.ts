@@ -262,6 +262,45 @@ describe('useChat', () => {
     })
   })
 
+  it('ignores a concurrent send while the first send is persisting attachments', async () => {
+    let finishAttachmentPersistence: (attachments: ChatAttachment[]) => void = () => undefined
+    mockState.persistChatAttachments.mockReturnValueOnce(
+      new Promise<ChatAttachment[]>((resolve) => {
+        finishAttachmentPersistence = resolve
+      }),
+    )
+    mockState.generateImage.mockResolvedValue([generatedImage()])
+    const configStore = useConfigStore()
+    await configStore.saveConfig({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+    const chat = useChat()
+    const firstSend = chat.sendMessage('first prompt', { size: 'auto', quality: 'auto', n: 1 }, [
+      new File(['reference'], 'reference.png', { type: 'image/png' }),
+    ])
+    const secondSend = chat.sendMessage('second prompt', {
+      size: 'auto',
+      quality: 'auto',
+      n: 1,
+    })
+
+    finishAttachmentPersistence([attachment()])
+    await Promise.all([firstSend, secondSend])
+
+    expect(mockState.generateImage).toHaveBeenCalledTimes(1)
+    expect(mockState.generateImage).toHaveBeenCalledWith(
+      'first prompt',
+      { size: 'auto', quality: 'auto', n: 1 },
+      [attachment()],
+    )
+    expect(chat.chatStore.messages).toHaveLength(2)
+    expect(chat.chatStore.messages[0]).toMatchObject({ content: 'first prompt' })
+    expect(chat.chatStore.messages[1]).toMatchObject({ status: 'success' })
+    expect(chat.chatStore.isLoading).toBe(false)
+  })
+
   it('rejects after marking the assistant message as failed when generation fails', async () => {
     mockState.generateImage.mockRejectedValueOnce(new Error('image service unavailable'))
     const configStore = useConfigStore()
@@ -1080,7 +1119,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await vi.waitFor(() => expect(chatStore.isLoading).toBe(true))
+    await vi.waitFor(() => expect(mockState.generateImage).toHaveBeenCalledOnce())
     expect(chatStore.messages[1]).toMatchObject({
       type: 'assistant',
       status: 'pending',
@@ -1143,7 +1182,7 @@ describe('useChat', () => {
       quality: 'auto',
       n: 1,
     })
-    await vi.waitFor(() => expect(chatStore.isLoading).toBe(true))
+    await vi.waitFor(() => expect(mockState.generateImage).toHaveBeenCalledOnce())
 
     await chat.startNewChat()
 

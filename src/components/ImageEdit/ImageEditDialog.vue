@@ -83,6 +83,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  cancelEdit()
   window.removeEventListener('resize', updateFitScale)
 })
 

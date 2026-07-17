@@ -6,6 +6,7 @@ import {
   generateId,
   getApiConfigState,
   normalizeApiConfigState,
+  PersistenceError,
   setApiConfigState,
 } from '../utils/storage'
 import { DEFAULT_MODEL, STORAGE_KEYS } from '../utils/constants'
@@ -16,6 +17,7 @@ type ConfigInput = ApiConfig & { name?: string }
 
 export const useConfigStore = defineStore('config', () => {
   const configState = ref<ApiConfigState>(getApiConfigState())
+  let pendingMutation: Promise<void> = Promise.resolve()
 
   const configs = computed(() => configState.value.configs)
   const activeConfigId = computed(() => configState.value.activeConfigId)
@@ -61,32 +63,76 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  async function persist(): Promise<void> {
-    const snapshot: ApiConfigState = {
-      configs: configState.value.configs.map((profile) => ({ ...profile })),
-      activeConfigId: configState.value.activeConfigId,
-    }
-
-    if (isTauriRuntime()) {
-      await setMetadataValue(STORAGE_KEYS.API_CONFIG, snapshot)
-    } else {
-      setApiConfigState(snapshot)
+  function cloneConfigState(source: ApiConfigState = configState.value): ApiConfigState {
+    return {
+      configs: source.configs.map((profile) => ({ ...profile })),
+      activeConfigId: source.activeConfigId,
     }
   }
 
-  async function addConfig(input: ConfigInput): Promise<ApiConfigProfile> {
+  function enqueueMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const mutation = pendingMutation.then(operation)
+    pendingMutation = mutation.then(
+      () => undefined,
+      () => undefined,
+    )
+    return mutation
+  }
+
+  async function persistSnapshot(snapshot: ApiConfigState, remove = false): Promise<void> {
+    const storedSnapshot = cloneConfigState(snapshot)
+
+    if (isTauriRuntime()) {
+      if (remove) {
+        await removeMetadataValue(STORAGE_KEYS.API_CONFIG)
+      } else {
+        await setMetadataValue(STORAGE_KEYS.API_CONFIG, storedSnapshot)
+      }
+    } else {
+      if (remove) {
+        clearApiConfigState()
+      } else {
+        setApiConfigState(storedSnapshot)
+      }
+
+      if (JSON.stringify(getApiConfigState()) !== JSON.stringify(storedSnapshot)) {
+        throw new PersistenceError('Failed to save API configuration')
+      }
+    }
+  }
+
+  async function commitConfigState(nextState: ApiConfigState, remove = false): Promise<void> {
+    const previousState = cloneConfigState()
+    const nextSnapshot = cloneConfigState(nextState)
+    configState.value = nextSnapshot
+
+    try {
+      await persistSnapshot(nextSnapshot, remove)
+    } catch (originalError) {
+      configState.value = previousState
+      try {
+        await persistSnapshot(previousState, previousState.configs.length === 0)
+      } catch (rollbackError) {
+        throw new PersistenceError('Config write failed and rollback was incomplete', {
+          cause: { originalError, rollbackError },
+        })
+      }
+      throw originalError
+    }
+  }
+
+  async function addConfigInternal(input: ConfigInput): Promise<ApiConfigProfile> {
     const profile = normalizeProfile(input)
     const shouldActivate = configState.value.configs.length === 0
-    configState.value = {
+    await commitConfigState({
       configs: [...configState.value.configs, profile],
       activeConfigId: shouldActivate ? profile.id : configState.value.activeConfigId,
-    }
-    await persist()
+    })
     return profile
   }
 
-  async function updateConfig(id: string, updates: Partial<ConfigInput>): Promise<void> {
-    configState.value = {
+  async function updateConfigInternal(id: string, updates: Partial<ConfigInput>): Promise<void> {
+    await commitConfigState({
       ...configState.value,
       configs: configState.value.configs.map((profile) =>
         profile.id === id
@@ -98,88 +144,112 @@ export const useConfigStore = defineStore('config', () => {
             }
           : profile,
       ),
-    }
-    await persist()
+    })
   }
 
-  async function activateConfig(id: string): Promise<void> {
+  async function activateConfigInternal(id: string): Promise<void> {
     if (!configState.value.configs.some((profile) => profile.id === id)) return
-    configState.value = {
+    await commitConfigState({
       ...configState.value,
       activeConfigId: id,
-    }
-    await persist()
+    })
   }
 
-  async function deleteConfig(id: string): Promise<void> {
+  async function deleteConfigInternal(id: string): Promise<void> {
     const configsAfterDelete = configState.value.configs.filter((profile) => profile.id !== id)
     const activeWasDeleted = configState.value.activeConfigId === id
-    configState.value = {
+    await commitConfigState({
       configs: configsAfterDelete,
       activeConfigId: activeWasDeleted
         ? (configsAfterDelete[0]?.id ?? null)
         : configState.value.activeConfigId,
-    }
-    await persist()
+    })
   }
 
-  async function clearAllConfigs(): Promise<void> {
-    configState.value = {
-      configs: [],
-      activeConfigId: null,
-    }
-    if (isTauriRuntime()) {
-      await removeMetadataValue(STORAGE_KEYS.API_CONFIG)
-    } else {
-      clearApiConfigState()
-    }
+  async function clearAllConfigsInternal(): Promise<void> {
+    await commitConfigState(
+      {
+        configs: [],
+        activeConfigId: null,
+      },
+      true,
+    )
   }
 
-  async function saveConfig(config: ApiConfig): Promise<void> {
-    if (configState.value.activeConfigId) {
-      await updateConfig(configState.value.activeConfigId, config)
-      return
-    }
-
-    await addConfig(config)
+  function addConfig(input: ConfigInput): Promise<ApiConfigProfile> {
+    return enqueueMutation(() => addConfigInternal(input))
   }
 
-  async function clearConfig(): Promise<void> {
-    if (configState.value.activeConfigId) {
-      await deleteConfig(configState.value.activeConfigId)
-    } else {
-      await clearAllConfigs()
-    }
+  function updateConfig(id: string, updates: Partial<ConfigInput>): Promise<void> {
+    return enqueueMutation(() => updateConfigInternal(id, updates))
   }
 
-  async function updateEndpoint(endpoint: string): Promise<void> {
-    if (configState.value.activeConfigId) {
-      await updateConfig(configState.value.activeConfigId, { endpoint })
-    } else {
-      await addConfig({
-        endpoint,
-        apiKey: '',
-        model: DEFAULT_MODEL,
-      })
-    }
+  function activateConfig(id: string): Promise<void> {
+    return enqueueMutation(() => activateConfigInternal(id))
   }
 
-  async function updateApiKey(apiKey: string): Promise<void> {
-    if (configState.value.activeConfigId) {
-      await updateConfig(configState.value.activeConfigId, { apiKey })
-    } else {
-      await addConfig({
-        endpoint: '',
-        apiKey,
-        model: DEFAULT_MODEL,
-      })
-    }
+  function deleteConfig(id: string): Promise<void> {
+    return enqueueMutation(() => deleteConfigInternal(id))
   }
 
-  async function updateModel(model: string): Promise<void> {
-    if (configState.value.activeConfigId) {
-      await updateConfig(configState.value.activeConfigId, { model })
-    }
+  function clearAllConfigs(): Promise<void> {
+    return enqueueMutation(clearAllConfigsInternal)
+  }
+
+  function saveConfig(config: ApiConfig): Promise<void> {
+    return enqueueMutation(async () => {
+      if (configState.value.activeConfigId) {
+        await updateConfigInternal(configState.value.activeConfigId, config)
+      } else {
+        await addConfigInternal(config)
+      }
+    })
+  }
+
+  function clearConfig(): Promise<void> {
+    return enqueueMutation(async () => {
+      if (configState.value.activeConfigId) {
+        await deleteConfigInternal(configState.value.activeConfigId)
+      } else {
+        await clearAllConfigsInternal()
+      }
+    })
+  }
+
+  function updateEndpoint(endpoint: string): Promise<void> {
+    return enqueueMutation(async () => {
+      if (configState.value.activeConfigId) {
+        await updateConfigInternal(configState.value.activeConfigId, { endpoint })
+      } else {
+        await addConfigInternal({
+          endpoint,
+          apiKey: '',
+          model: DEFAULT_MODEL,
+        })
+      }
+    })
+  }
+
+  function updateApiKey(apiKey: string): Promise<void> {
+    return enqueueMutation(async () => {
+      if (configState.value.activeConfigId) {
+        await updateConfigInternal(configState.value.activeConfigId, { apiKey })
+      } else {
+        await addConfigInternal({
+          endpoint: '',
+          apiKey,
+          model: DEFAULT_MODEL,
+        })
+      }
+    })
+  }
+
+  function updateModel(model: string): Promise<void> {
+    return enqueueMutation(async () => {
+      if (configState.value.activeConfigId) {
+        await updateConfigInternal(configState.value.activeConfigId, { model })
+      }
+    })
   }
 
   async function hydrateFromPersistence(): Promise<void> {
@@ -192,7 +262,7 @@ export const useConfigStore = defineStore('config', () => {
     }
 
     if (stored !== null) {
-      await persist()
+      await persistSnapshot(configState.value)
     }
   }
 

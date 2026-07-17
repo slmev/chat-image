@@ -120,7 +120,7 @@ describe('SettingsPage', () => {
     await clickButtonByText('setActive')
 
     expect(store.activeConfigId).toBe(second.id)
-    expect(mockState.success).toHaveBeenCalledWith('activeConfigSaved')
+    await vi.waitFor(() => expect(mockState.success).toHaveBeenCalledWith('activeConfigSaved'))
   })
 
   it('adds a config without replacing the existing active config', async () => {

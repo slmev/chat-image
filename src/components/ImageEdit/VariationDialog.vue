@@ -40,7 +40,7 @@ const emit = defineEmits<{
   result: [response: ImageGenerationResponse, options: VariationOptions]
 }>()
 
-const { isLoading, error, createVariation } = useImageEdit()
+const { isLoading, error, createVariation, cancelEdit } = useImageEdit()
 const { t } = useI18n()
 
 const prompt = ref(props.image.sourcePrompt || '')
@@ -104,6 +104,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  cancelEdit()
   window.removeEventListener('resize', updateFitScale)
 })
 
@@ -227,6 +228,7 @@ async function handleSubmit() {
 }
 
 function handleClose() {
+  cancelEdit()
   emit('close')
 }
 

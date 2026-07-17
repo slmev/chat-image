@@ -33,6 +33,8 @@ async function displayUrlForStorageKey(key: string): Promise<string> {
   if (!blob) {
     throw new Error('Stored image data is missing')
   }
+  const resolvedWhileReading = objectUrlCache.get(key)
+  if (resolvedWhileReading) return resolvedWhileReading
   const url = URL.createObjectURL(blob)
   objectUrlCache.set(key, url)
   return url

@@ -570,6 +570,8 @@ function requestEdit() {
 }
 
 onUnmounted(() => {
+  resolveRun += 1
+  previewResolveRun += 1
   if (showPreview.value) {
     document.body.style.overflow = ''
   }

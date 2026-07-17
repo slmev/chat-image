@@ -67,6 +67,27 @@ describe('ImageGenerationService', () => {
     })
   })
 
+  it('normalizes whitespace and trailing slashes in the configured endpoint', async () => {
+    mockState.runtimeFetch.mockResolvedValueOnce(
+      jsonResponse({
+        created: 1,
+        data: [{ b64_json: 'image-bytes' }],
+      }),
+    )
+    const service = new ImageGenerationService({
+      endpoint: '  https://api.example.test///  ',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    await service.generateImage('draw a desk')
+
+    expect(mockState.runtimeFetch).toHaveBeenCalledWith(
+      'https://api.example.test/v1/images/generations',
+      expect.any(Object),
+    )
+  })
+
   it('sends image edit requests as form data through the runtime HTTP client', async () => {
     mockState.runtimeFetch.mockResolvedValueOnce(
       jsonResponse({
@@ -162,6 +183,45 @@ describe('ImageGenerationService', () => {
     const promise = service.generateImage('draw')
     await expect(promise).rejects.toBeInstanceOf(ImageGenerationCanceledError)
     await expect(promise).rejects.toSatisfy(isImageGenerationCanceledError)
+  })
+
+  it('keeps a newer request cancelable when an older response finishes parsing late', async () => {
+    let finishFirstJson: (value: unknown) => void = () => undefined
+    const firstJson = new Promise<unknown>((resolve) => {
+      finishFirstJson = resolve
+    })
+    let finishSecondFetch: (response: Response) => void = () => undefined
+    const secondFetch = new Promise<Response>((resolve) => {
+      finishSecondFetch = resolve
+    })
+    mockState.runtimeFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => firstJson,
+      } as Response)
+      .mockReturnValueOnce(secondFetch)
+    const service = new ImageGenerationService({
+      endpoint: 'https://api.example.test',
+      apiKey: 'sk-test',
+      model: 'gpt-image-2',
+    })
+
+    const firstRequest = service.generateImage('first')
+    await vi.waitFor(() => expect(mockState.runtimeFetch).toHaveBeenCalledTimes(1))
+    const secondRequest = service.generateImage('second')
+    await vi.waitFor(() => expect(mockState.runtimeFetch).toHaveBeenCalledTimes(2))
+    const secondSignal = (mockState.runtimeFetch.mock.calls[1][1] as RequestInit)
+      .signal as AbortSignal
+
+    finishFirstJson({ created: 1, data: [{ b64_json: 'first-image' }] })
+    await expect(firstRequest).resolves.toMatchObject({ created: 1 })
+    service.cancelRequest()
+
+    expect(secondSignal.aborted).toBe(true)
+
+    finishSecondFetch(jsonResponse({ created: 2, data: [] }))
+    await expect(secondRequest).resolves.toMatchObject({ created: 2 })
   })
 
   it('maps API status errors as before', async () => {

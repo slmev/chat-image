@@ -64,7 +64,8 @@ export class ImageGenerationService {
     this.cancelRequest()
 
     // 创建新的 AbortController
-    this.abortController = new AbortController()
+    const controller = new AbortController()
+    this.abortController = controller
 
     const { size, quality, n } = normalizeGenerationOptions(options)
 
@@ -78,14 +79,15 @@ export class ImageGenerationService {
     }
 
     try {
-      const response = await runtimeFetch(`${this.config.endpoint}/v1/images/generations`, {
+      const endpoint = this.config.endpoint.trim().replace(/\/+$/, '')
+      const response = await runtimeFetch(`${endpoint}/v1/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(requestBody),
-        signal: this.abortController.signal,
+        signal: controller.signal,
       })
 
       if (!response.ok) {
@@ -93,9 +95,7 @@ export class ImageGenerationService {
         throw this.handleApiError(response.status, errorData)
       }
 
-      const data: ImageGenerationResponse = await response.json()
-      this.abortController = null
-      return data
+      return (await response.json()) as ImageGenerationResponse
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
@@ -104,6 +104,10 @@ export class ImageGenerationService {
         throw error
       }
       throw new Error(API_ERROR_MESSAGES.NETWORK_ERROR)
+    } finally {
+      if (this.abortController === controller) {
+        this.abortController = null
+      }
     }
   }
 
@@ -115,7 +119,8 @@ export class ImageGenerationService {
     this.cancelRequest()
 
     // 创建新的 AbortController
-    this.abortController = new AbortController()
+    const controller = new AbortController()
+    this.abortController = controller
 
     const formData = new FormData()
     const images = Array.isArray(request.image) ? request.image : [request.image]
@@ -134,13 +139,14 @@ export class ImageGenerationService {
     formData.append('quality', generationOptions.quality)
 
     try {
-      const response = await runtimeFetch(`${this.config.endpoint}/v1/images/edits`, {
+      const endpoint = this.config.endpoint.trim().replace(/\/+$/, '')
+      const response = await runtimeFetch(`${endpoint}/v1/images/edits`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: formData,
-        signal: this.abortController.signal,
+        signal: controller.signal,
       })
 
       if (!response.ok) {
@@ -148,9 +154,7 @@ export class ImageGenerationService {
         throw this.handleApiError(response.status, errorData)
       }
 
-      const data: ImageGenerationResponse = await response.json()
-      this.abortController = null
-      return data
+      return (await response.json()) as ImageGenerationResponse
     } catch (error) {
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
@@ -159,6 +163,10 @@ export class ImageGenerationService {
         throw error
       }
       throw new Error(API_ERROR_MESSAGES.NETWORK_ERROR)
+    } finally {
+      if (this.abortController === controller) {
+        this.abortController = null
+      }
     }
   }
 

@@ -112,7 +112,7 @@ function history(id: string, overrides: Partial<ChatHistory> = {}): ChatHistory 
   }
 }
 
-async function mountGallery() {
+async function mountGallery(waitForCards = true) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const router = createRouter({
@@ -175,7 +175,9 @@ async function mountGallery() {
     },
   })
   await flushPromises()
-  await vi.waitFor(() => expect(wrapper.findAll('.gallery-card')).toHaveLength(2))
+  if (waitForCards) {
+    await vi.waitFor(() => expect(wrapper.findAll('.gallery-card')).toHaveLength(2))
+  }
 
   return { wrapper, router }
 }
@@ -330,6 +332,30 @@ describe('GalleryView', () => {
 
     expect(revokeObjectUrl).toHaveBeenCalledWith('blob:gallery-temporary')
     expect(revokeObjectUrl).not.toHaveBeenCalledWith('blob:repository-history')
+    revokeObjectUrl.mockRestore()
+  })
+
+  it('revokes a temporary display URL that resolves after the gallery unmounts', async () => {
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL')
+    let historyImageResolveCount = 0
+    let finishGalleryResolution: (image: GeneratedImage) => void = () => undefined
+    mockState.resolveDisplayUrl.mockImplementation(async (storedImage: GeneratedImage) => {
+      if (storedImage.id !== 'history-image') return storedImage
+      historyImageResolveCount += 1
+      return await new Promise<GeneratedImage>((resolve) => {
+        finishGalleryResolution = resolve
+      })
+    })
+    const { wrapper } = await mountGallery(false)
+    await vi.waitFor(() => expect(historyImageResolveCount).toBe(1))
+
+    wrapper.unmount()
+    finishGalleryResolution({
+      ...image({ id: 'history-image' }),
+      url: 'blob:late-gallery-image',
+    })
+
+    await vi.waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith('blob:late-gallery-image'))
     revokeObjectUrl.mockRestore()
   })
 

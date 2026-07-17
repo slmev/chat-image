@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useConfigStore } from '../stores/config'
-import { ImageGenerationService } from '../services/api'
+import { ImageGenerationCanceledError, ImageGenerationService } from '../services/api'
 import type {
   GeneratedImage,
   GenerationQuality,
@@ -21,6 +21,7 @@ export function useImageEdit() {
   const t = i18n.global.t
 
   let currentService: ImageGenerationService | null = null
+  let activeOperation: symbol | null = null
 
   function getService(): ImageGenerationService {
     if (!currentService) {
@@ -60,6 +61,9 @@ export function useImageEdit() {
     image: GeneratedImage,
     options: VariationOptions,
   ): Promise<ImageGenerationResponse> {
+    currentService?.cancelRequest()
+    const operation = Symbol('image-variation')
+    activeOperation = operation
     isLoading.value = true
     error.value = null
 
@@ -67,6 +71,9 @@ export function useImageEdit() {
       const service = getService()
       const generationOptions = normalizeGenerationOptions(options)
       const imageBlob = await fetchImageAsBlob(image)
+      if (activeOperation !== operation) {
+        throw new ImageGenerationCanceledError()
+      }
 
       // Build variation prompt
       const basePrompt = options.prompt?.trim() || image.sourcePrompt || ''
@@ -86,13 +93,22 @@ export function useImageEdit() {
         response_format: 'b64_json',
       })
 
+      if (activeOperation !== operation) {
+        throw new ImageGenerationCanceledError()
+      }
+
       return response
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('createVariationFailed')
-      error.value = message
+      if (activeOperation === operation) {
+        const message = err instanceof Error ? err.message : t('createVariationFailed')
+        error.value = message
+      }
       throw err
     } finally {
-      isLoading.value = false
+      if (activeOperation === operation) {
+        activeOperation = null
+        isLoading.value = false
+      }
     }
   }
 
@@ -106,12 +122,18 @@ export function useImageEdit() {
     size?: GenerationSize,
     quality?: GenerationQuality,
   ): Promise<ImageGenerationResponse> {
+    currentService?.cancelRequest()
+    const operation = Symbol('image-edit')
+    activeOperation = operation
     isLoading.value = true
     error.value = null
 
     try {
       const service = getService()
       const imageBlob = await fetchImageAsBlob(image)
+      if (activeOperation !== operation) {
+        throw new ImageGenerationCanceledError()
+      }
 
       const request: ImageEditRequest = {
         image: imageBlob,
@@ -122,13 +144,21 @@ export function useImageEdit() {
       }
 
       const response = await service.editImage(request)
+      if (activeOperation !== operation) {
+        throw new ImageGenerationCanceledError()
+      }
       return response
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('editImageFailed')
-      error.value = message
+      if (activeOperation === operation) {
+        const message = err instanceof Error ? err.message : t('editImageFailed')
+        error.value = message
+      }
       throw err
     } finally {
-      isLoading.value = false
+      if (activeOperation === operation) {
+        activeOperation = null
+        isLoading.value = false
+      }
     }
   }
 
@@ -136,6 +166,8 @@ export function useImageEdit() {
    * Cancel current request
    */
   function cancelEdit(): void {
+    activeOperation = null
+    isLoading.value = false
     if (currentService) {
       currentService.cancelRequest()
     }
